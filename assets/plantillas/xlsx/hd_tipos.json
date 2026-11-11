@@ -1,0 +1,2672 @@
+{
+ "PIT": {
+  "titulo": "HOJA DE DATOS DE TRANSMISOR INDICADOR DE PRESIÓN",
+  "referencia": "PIT",
+  "filas": [
+   {
+    "seccion": "IDENTIFICACIÓN DE UNIDAD"
+   },
+   {
+    "desc": "Equipo",
+    "unidad": "-",
+    "ref": "Transmisor indicador de presión",
+    "nota": ""
+   },
+   {
+    "desc": "Servicio del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ubicación del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL SITIO"
+   },
+   {
+    "desc": "Ubicación del proyecto",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Altitud",
+    "unidad": "m s.n.m",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente media",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad promedio",
+    "unidad": "% HR",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ambiente",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Zona sísmica (NTE E.030)",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Precipitación anual",
+    "unidad": "mm",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del viento",
+    "unidad": "km/h",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL PROCESO"
+   },
+   {
+    "desc": "Fluido",
+    "unidad": "-",
+    "ref": "Aire comprimido",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura",
+    "unidad": "°C",
+    "ref": "3.1 a 31.4",
+    "nota": ""
+   },
+   {
+    "desc": "Presión de operación",
+    "unidad": "psi",
+    "ref": "90  a 100",
+    "nota": ""
+   },
+   {
+    "desc": "Viscosidad",
+    "unidad": "mPa.s",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del fluido",
+    "unidad": "m/s",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Conductividad",
+    "unidad": "uS/cm",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Porcentaje de sólidos",
+    "unidad": "%",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Corrosión / Abrasión",
+    "unidad": "-",
+    "ref": "No corrosivo / no abrasivo",
+    "nota": ""
+   },
+   {
+    "seccion": "DATOS DE OPERACIÓN"
+   },
+   {
+    "desc": "Régimen de Operación",
+    "unidad": "-",
+    "ref": "Continuo",
+    "nota": ""
+   },
+   {
+    "desc": "Horas por día",
+    "unidad": "h/d",
+    "ref": "24",
+    "nota": ""
+   },
+   {
+    "desc": "Días por año",
+    "unidad": "d/a",
+    "ref": "365",
+    "nota": ""
+   },
+   {
+    "seccion": "CARACTERÍSTICAS GENERALES"
+   },
+   {
+    "desc": "Tag",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Marca",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Modelo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Código",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Indicador local",
+    "unidad": "-",
+    "ref": "Display LCD con teclado",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de operación",
+    "unidad": "°C",
+    "ref": "-40 a 85",
+    "nota": ""
+   },
+   {
+    "seccion": "MEDICIÓN"
+   },
+   {
+    "desc": "Unidades",
+    "unidad": "-",
+    "ref": "psi, bar",
+    "nota": ""
+   },
+   {
+    "desc": "Variable medida",
+    "unidad": "-",
+    "ref": "Presión manométrica",
+    "nota": ""
+   },
+   {
+    "desc": "Rango (celda de medición)",
+    "unidad": "psi",
+    "ref": "0 a 232 (0 a 16 bar)",
+    "nota": ""
+   },
+   {
+    "desc": "Rango calibrado",
+    "unidad": "psi",
+    "ref": "0 a 232",
+    "nota": ""
+   },
+   {
+    "desc": "Span",
+    "unidad": "psi",
+    "ref": "232",
+    "nota": ""
+   },
+   {
+    "desc": "Turn down",
+    "unidad": "-",
+    "ref": "100:1",
+    "nota": ""
+   },
+   {
+    "desc": "Exactitud",
+    "unidad": "-",
+    "ref": "≤ 0.065 % del span calibrado",
+    "nota": ""
+   },
+   {
+    "seccion": "SENSOR"
+   },
+   {
+    "desc": "Principio de medición",
+    "unidad": "-",
+    "ref": "Piezorresistivo",
+    "nota": ""
+   },
+   {
+    "desc": "Material del sensor",
+    "unidad": "-",
+    "ref": "Diafragma de acero inoxidable 316L",
+    "nota": ""
+   },
+   {
+    "desc": "Longitud de la sonda",
+    "unidad": "mm",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "seccion": "CONEXIÓN AL PROCESO"
+   },
+   {
+    "desc": "Montaje del transmisor",
+    "unidad": "-",
+    "ref": "Local",
+    "nota": ""
+   },
+   {
+    "desc": "Grado de protección",
+    "unidad": "-",
+    "ref": "IP66/IP68",
+    "nota": ""
+   },
+   {
+    "desc": "Material de la carcasa",
+    "unidad": "-",
+    "ref": "Fundición de aluminio con pintura en polvo de poliuretano",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión al proceso",
+    "unidad": "-",
+    "ref": "1/2\" NPT hembra",
+    "nota": ""
+   },
+   {
+    "seccion": "ALIMENTACIÓN Y COMUNICACIÓN"
+   },
+   {
+    "desc": "Alimentación eléctrica",
+    "unidad": "V",
+    "ref": "24 Vdc / Loop powered",
+    "nota": ""
+   },
+   {
+    "desc": "Potencia",
+    "unidad": "W",
+    "ref": "< 1",
+    "nota": ""
+   },
+   {
+    "desc": "Salida analógica",
+    "unidad": "mA",
+    "ref": "4 a 20",
+    "nota": ""
+   },
+   {
+    "desc": "Salida discreta",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Protocolo de comunicación",
+    "unidad": "-",
+    "ref": "4 a 20 mA + HART",
+    "nota": ""
+   },
+   {
+    "desc": "Configuración de conexionado",
+    "unidad": "-",
+    "ref": "2 hilos",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión eléctrica",
+    "unidad": "-",
+    "ref": "1/2\" NPT",
+    "nota": ""
+   },
+   {
+    "seccion": "ACCESORIOS"
+   },
+   {
+    "desc": "Soportes de montaje",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Manifold",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Drenaje / Venteo",
+    "unidad": "-",
+    "ref": "Válvula de bloqueo y purga",
+    "nota": ""
+   },
+   {
+    "desc": "Otros",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "seccion": "HOMOLOGACIONES Y NORMAS"
+   },
+   {
+    "desc": "Certificado de calibración",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificaciones generales",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificación de áreas peligrosas (ATEX / IECEx / FM / N/A)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   }
+  ]
+ },
+ "PI": {
+  "titulo": "HOJA DE DATOS DE INDICADOR DE PRESIÓN",
+  "referencia": "PI",
+  "filas": [
+   {
+    "seccion": "IDENTIFICACIÓN DE UNIDAD"
+   },
+   {
+    "desc": "Equipo",
+    "unidad": "-",
+    "ref": "Indicador de presión (manómetro)",
+    "nota": ""
+   },
+   {
+    "desc": "Servicio del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ubicación del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL SITIO"
+   },
+   {
+    "desc": "Ubicación del proyecto",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Altitud",
+    "unidad": "m s.n.m",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente media",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad promedio",
+    "unidad": "% HR",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ambiente",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Zona sísmica (NTE E.030)",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Precipitación anual",
+    "unidad": "mm",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del viento",
+    "unidad": "km/h",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL PROCESO"
+   },
+   {
+    "desc": "Fluido",
+    "unidad": "-",
+    "ref": "Aire comprimido",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura",
+    "unidad": "°C",
+    "ref": "3.1 a 31.4",
+    "nota": ""
+   },
+   {
+    "desc": "Presión de operación",
+    "unidad": "psi",
+    "ref": "90  a 100",
+    "nota": ""
+   },
+   {
+    "desc": "Viscosidad",
+    "unidad": "mPa.s",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del fluido",
+    "unidad": "m/s",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Conductividad",
+    "unidad": "uS/cm",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Porcentaje de sólidos",
+    "unidad": "%",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Corrosión / Abrasión",
+    "unidad": "-",
+    "ref": "No corrosivo / no abrasivo",
+    "nota": ""
+   },
+   {
+    "seccion": "DATOS DE OPERACIÓN"
+   },
+   {
+    "desc": "Régimen de Operación",
+    "unidad": "-",
+    "ref": "Continuo",
+    "nota": ""
+   },
+   {
+    "desc": "Horas por día",
+    "unidad": "h/d",
+    "ref": "24",
+    "nota": ""
+   },
+   {
+    "desc": "Días por año",
+    "unidad": "d/a",
+    "ref": "365",
+    "nota": ""
+   },
+   {
+    "seccion": "CARACTERÍSTICAS GENERALES"
+   },
+   {
+    "desc": "Tag",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Marca",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Modelo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Código",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Indicador local",
+    "unidad": "-",
+    "ref": "Dial analógico 100 mm (4\")",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de operación",
+    "unidad": "°C",
+    "ref": "-40 a 120",
+    "nota": ""
+   },
+   {
+    "seccion": "MEDICIÓN"
+   },
+   {
+    "desc": "Unidades",
+    "unidad": "-",
+    "ref": "psi / bar",
+    "nota": ""
+   },
+   {
+    "desc": "Variable medida",
+    "unidad": "-",
+    "ref": "Presión manométrica",
+    "nota": ""
+   },
+   {
+    "desc": "Rango",
+    "unidad": "psi",
+    "ref": "0 a 300 (0 a 20.7 bar)",
+    "nota": ""
+   },
+   {
+    "desc": "Span",
+    "unidad": "psi",
+    "ref": "300",
+    "nota": ""
+   },
+   {
+    "desc": "Presión máxima de trabajo",
+    "unidad": "-",
+    "ref": "75 % de la escala máxima",
+    "nota": ""
+   },
+   {
+    "desc": "Exactitud",
+    "unidad": "-",
+    "ref": "± 1 % de la escala máxima",
+    "nota": ""
+   },
+   {
+    "seccion": "SENSOR"
+   },
+   {
+    "desc": "Principio de medición",
+    "unidad": "-",
+    "ref": "Tubo Bourdon",
+    "nota": ""
+   },
+   {
+    "desc": "Material del sensor",
+    "unidad": "-",
+    "ref": "Tubo Bourdon y socket en acero inoxidable 316L",
+    "nota": ""
+   },
+   {
+    "desc": "Longitud de la sonda",
+    "unidad": "mm",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "seccion": "CONEXIÓN AL PROCESO"
+   },
+   {
+    "desc": "Montaje del instrumento",
+    "unidad": "-",
+    "ref": "Local",
+    "nota": ""
+   },
+   {
+    "desc": "Grado de protección",
+    "unidad": "-",
+    "ref": "IP66 / NEMA 4X",
+    "nota": ""
+   },
+   {
+    "desc": "Material de la carcasa",
+    "unidad": "-",
+    "ref": "Acero inoxidable AISI 304",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión al proceso",
+    "unidad": "-",
+    "ref": "1/2\" NPT macho",
+    "nota": ""
+   },
+   {
+    "seccion": "ACCESORIOS"
+   },
+   {
+    "desc": "Soportes de montaje",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Manifold",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Drenaje / Venteo",
+    "unidad": "-",
+    "ref": "Válvula de bloqueo y purga",
+    "nota": ""
+   },
+   {
+    "desc": "Otros",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "seccion": "HOMOLOGACIONES Y NORMAS"
+   },
+   {
+    "desc": "Certificado de calibración",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificaciones generales",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificación de áreas peligrosas (ATEX / IECEx / FM / N/A)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   }
+  ]
+ },
+ "XV": {
+  "titulo": "HOJA DE DATOS DE VÁLVULA SOLENOIDE DE PULSO",
+  "referencia": "XV",
+  "filas": [
+   {
+    "seccion": "IDENTIFICACIÓN DE UNIDAD"
+   },
+   {
+    "desc": "Equipo",
+    "unidad": "-",
+    "ref": "Válvula solenoide de pulso tipo diafragma",
+    "nota": ""
+   },
+   {
+    "desc": "Servicio del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ubicación del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL SITIO"
+   },
+   {
+    "desc": "Ubicación del proyecto",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Altitud",
+    "unidad": "m s.n.m",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente media",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad promedio",
+    "unidad": "% HR",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ambiente",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Zona sísmica (NTE E.030)",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Precipitación anual",
+    "unidad": "mm",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del viento",
+    "unidad": "km/h",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL PROCESO"
+   },
+   {
+    "desc": "Fluido",
+    "unidad": "-",
+    "ref": "Aire comprimido",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura",
+    "unidad": "°C",
+    "ref": "3.1 a 31.4",
+    "nota": ""
+   },
+   {
+    "desc": "Presión de operación",
+    "unidad": "psi",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Viscosidad",
+    "unidad": "mPa.s",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del fluido",
+    "unidad": "m/s",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Conductividad",
+    "unidad": "uS/cm",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Porcentaje de sólidos",
+    "unidad": "%",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Corrosión / Abrasión",
+    "unidad": "-",
+    "ref": "No corrosivo / no abrasivo",
+    "nota": ""
+   },
+   {
+    "seccion": "DATOS DE OPERACIÓN"
+   },
+   {
+    "desc": "Régimen de Operación",
+    "unidad": "-",
+    "ref": "Intermitente",
+    "nota": ""
+   },
+   {
+    "desc": "Horas por día",
+    "unidad": "h/d",
+    "ref": "24",
+    "nota": ""
+   },
+   {
+    "desc": "Días por año",
+    "unidad": "d/a",
+    "ref": "365",
+    "nota": ""
+   },
+   {
+    "seccion": "CARACTERÍSTICAS GENERALES"
+   },
+   {
+    "desc": "Tag",
+    "unidad": "-",
+    "ref": "",
+    "nota": "Nota 1"
+   },
+   {
+    "desc": "Cantidad",
+    "unidad": "und",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Marca",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Modelo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Código",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de válvula",
+    "unidad": "-",
+    "ref": "Diafragma, 2 vías, ángulo recto (90°)",
+    "nota": ""
+   },
+   {
+    "desc": "Función (control modulante / on-off / pulso)",
+    "unidad": "-",
+    "ref": "Pulso",
+    "nota": ""
+   },
+   {
+    "seccion": "CUERPO DE LA VÁLVULA"
+   },
+   {
+    "desc": "Tamaño nominal",
+    "unidad": "pulg",
+    "ref": "3",
+    "nota": ""
+   },
+   {
+    "desc": "Orificio",
+    "unidad": "mm",
+    "ref": "75",
+    "nota": ""
+   },
+   {
+    "desc": "Coeficiente de flujo Kv",
+    "unidad": "m³/h",
+    "ref": "170",
+    "nota": ""
+   },
+   {
+    "desc": "Presión diferencial de operación",
+    "unidad": "bar",
+    "ref": "1.0 a 6.0",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión al proceso",
+    "unidad": "-",
+    "ref": "Rosca G 3\" macho",
+    "nota": ""
+   },
+   {
+    "desc": "Material del cuerpo",
+    "unidad": "-",
+    "ref": "Aluminio",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura del fluido",
+    "unidad": "°C",
+    "ref": "-20 a 85",
+    "nota": ""
+   },
+   {
+    "seccion": "ACTUADOR"
+   },
+   {
+    "desc": "Tipo de actuador",
+    "unidad": "-",
+    "ref": "Solenoide con piloto integral",
+    "nota": ""
+   },
+   {
+    "desc": "Acción (retorno por resorte / doble efecto)",
+    "unidad": "-",
+    "ref": "Retorno por resorte",
+    "nota": ""
+   },
+   {
+    "desc": "Posición normal",
+    "unidad": "-",
+    "ref": "NC",
+    "nota": ""
+   },
+   {
+    "desc": "Posición a falla (FC / FO / FL)",
+    "unidad": "-",
+    "ref": "FC",
+    "nota": ""
+   },
+   {
+    "desc": "Presión de suministro de aire al actuador",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Operador manual",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "seccion": "ALIMENTACIÓN Y COMUNICACIÓN"
+   },
+   {
+    "desc": "Alimentación eléctrica",
+    "unidad": "V",
+    "ref": "120 Vac, 60 Hz",
+    "nota": ""
+   },
+   {
+    "desc": "Potencia / consumo de bobina",
+    "unidad": "VA",
+    "ref": "50",
+    "nota": ""
+   },
+   {
+    "desc": "Señal de control (4-20 mA / discreta)",
+    "unidad": "-",
+    "ref": "Discreta",
+    "nota": ""
+   },
+   {
+    "desc": "Señal de retroalimentación (4-20 mA / contactos)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Protocolo de comunicación",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Grado de protección de bobina",
+    "unidad": "-",
+    "ref": "IP65",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión eléctrica",
+    "unidad": "-",
+    "ref": "Conector DIN 43650",
+    "nota": ""
+   },
+   {
+    "seccion": "HOMOLOGACIONES Y NORMAS"
+   },
+   {
+    "desc": "Certificado de calibración",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Certificaciones generales",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificación de áreas peligrosas (ATEX / IECEx / FM / N/A)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   }
+  ]
+ },
+ "PDT": {
+  "titulo": "HOJA DE DATOS DEL CONTROLADOR DE LIMPIEZA",
+  "referencia": "PDT",
+  "filas": [
+   {
+    "seccion": "IDENTIFICACIÓN DE UNIDAD"
+   },
+   {
+    "desc": "Equipo",
+    "unidad": "-",
+    "ref": "Controlador de limpieza con transmisor de presión diferencial integrado",
+    "nota": ""
+   },
+   {
+    "desc": "Servicio del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ubicación del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL SITIO"
+   },
+   {
+    "desc": "Ubicación del proyecto",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Altitud",
+    "unidad": "m s.n.m",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente media",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad promedio",
+    "unidad": "% HR",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ambiente",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Zona sísmica (NTE E.030)",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Precipitación anual",
+    "unidad": "mm",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del viento",
+    "unidad": "km/h",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL PROCESO"
+   },
+   {
+    "desc": "Fluido",
+    "unidad": "-",
+    "ref": "Aire con polvo de mineral",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura",
+    "unidad": "°C",
+    "ref": "3.1 a 31.4",
+    "nota": ""
+   },
+   {
+    "desc": "Presión diferencial de operación",
+    "unidad": "in w.c.",
+    "ref": "2 a 6",
+    "nota": ""
+   },
+   {
+    "desc": "Presión estática",
+    "unidad": "in w.c.",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Viscosidad",
+    "unidad": "mPa.s",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del fluido",
+    "unidad": "m/s",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Porcentaje de sólidos",
+    "unidad": "%",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Corrosión / Abrasión",
+    "unidad": "-",
+    "ref": "Abrasivo",
+    "nota": ""
+   },
+   {
+    "seccion": "DATOS DE OPERACIÓN"
+   },
+   {
+    "desc": "Régimen de Operación",
+    "unidad": "-",
+    "ref": "Continuo",
+    "nota": ""
+   },
+   {
+    "desc": "Horas por día",
+    "unidad": "h/d",
+    "ref": "24",
+    "nota": ""
+   },
+   {
+    "desc": "Días por año",
+    "unidad": "d/a",
+    "ref": "365",
+    "nota": ""
+   },
+   {
+    "seccion": "CARACTERÍSTICAS GENERALES"
+   },
+   {
+    "desc": "Tag",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Marca",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Modelo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Código",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Número de canales",
+    "unidad": "und",
+    "ref": "22",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de operación",
+    "unidad": "°C",
+    "ref": "-40 a 60",
+    "nota": ""
+   },
+   {
+    "seccion": "MEDICIÓN"
+   },
+   {
+    "desc": "Variable medida",
+    "unidad": "-",
+    "ref": "Presión diferencial",
+    "nota": ""
+   },
+   {
+    "desc": "Unidades",
+    "unidad": "-",
+    "ref": "in w.c.",
+    "nota": ""
+   },
+   {
+    "desc": "Rango",
+    "unidad": "in w.c.",
+    "ref": "0 a 20",
+    "nota": ""
+   },
+   {
+    "desc": "Exactitud",
+    "unidad": "-",
+    "ref": "± 1.5 % F.S. a 23 °C",
+    "nota": ""
+   },
+   {
+    "desc": "Presión máxima del módulo",
+    "unidad": "psi",
+    "ref": "10",
+    "nota": ""
+   },
+   {
+    "seccion": "CONTROL DE LIMPIEZA"
+   },
+   {
+    "desc": "Tiempo de pulso (on-time)",
+    "unidad": "ms",
+    "ref": "10 a 600 (pasos de 10 ms)",
+    "nota": ""
+   },
+   {
+    "desc": "Tiempo entre pulsos (off-time)",
+    "unidad": "s",
+    "ref": "1 a 255 (pasos de 1 s)",
+    "nota": ""
+   },
+   {
+    "desc": "Modo de limpieza",
+    "unidad": "-",
+    "ref": "Por demanda o continua",
+    "nota": ""
+   },
+   {
+    "seccion": "ALIMENTACIÓN Y COMUNICACIÓN"
+   },
+   {
+    "desc": "Alimentación eléctrica",
+    "unidad": "V",
+    "ref": "85 a 270 Vac, 50/60 Hz",
+    "nota": ""
+   },
+   {
+    "desc": "Tensión de salida a válvulas solenoides",
+    "unidad": "V",
+    "ref": "120 Vac",
+    "nota": ""
+   },
+   {
+    "desc": "Salida analógica",
+    "unidad": "mA",
+    "ref": "4 a 20",
+    "nota": ""
+   },
+   {
+    "desc": "Salida discreta",
+    "unidad": "-",
+    "ref": "Relé de alarma",
+    "nota": ""
+   },
+   {
+    "desc": "Protocolo de comunicación",
+    "unidad": "-",
+    "ref": "4 a 20 mA",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión eléctrica",
+    "unidad": "-",
+    "ref": "Borneras en tarjeta",
+    "nota": ""
+   },
+   {
+    "seccion": "MONTAJE"
+   },
+   {
+    "desc": "Montaje",
+    "unidad": "-",
+    "ref": "Tarjeta para montaje en gabinete",
+    "nota": "Nota 1"
+   },
+   {
+    "desc": "Grado de protección del gabinete",
+    "unidad": "-",
+    "ref": "NEMA 4X",
+    "nota": "Nota 1"
+   },
+   {
+    "desc": "Conexión a tomas de presión",
+    "unidad": "-",
+    "ref": "Tubing flexible",
+    "nota": ""
+   },
+   {
+    "seccion": "HOMOLOGACIONES Y NORMAS"
+   },
+   {
+    "desc": "Certificado de calibración",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificaciones generales",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificación de áreas peligrosas (ATEX / IECEx / FM / N/A)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   }
+  ]
+ },
+ "LSH": {
+  "titulo": "HOJA DE DATOS DE INTERRUPTOR DE NIVEL TIPO VIBRATORIO",
+  "referencia": "LSH",
+  "filas": [
+   {
+    "seccion": "IDENTIFICACIÓN DE UNIDAD"
+   },
+   {
+    "desc": "Equipo",
+    "unidad": "-",
+    "ref": "Interruptor de nivel tipo horquilla vibratoria",
+    "nota": ""
+   },
+   {
+    "desc": "Servicio del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": "Nota 1"
+   },
+   {
+    "desc": "Ubicación del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": "Nota 1"
+   },
+   {
+    "seccion": "CONDICIONES DEL SITIO"
+   },
+   {
+    "desc": "Ubicación del proyecto",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Altitud",
+    "unidad": "m s.n.m",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente media",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad promedio",
+    "unidad": "% HR",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ambiente",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Zona sísmica (NTE E.030)",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Precipitación anual",
+    "unidad": "mm",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del viento",
+    "unidad": "km/h",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL PROCESO"
+   },
+   {
+    "desc": "Material",
+    "unidad": "-",
+    "ref": "Aire con polvo de mineral",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura",
+    "unidad": "°C",
+    "ref": "3.1 a 31.4",
+    "nota": ""
+   },
+   {
+    "desc": "Presión",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Granulometría",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad del material",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Porcentaje de sólidos",
+    "unidad": "%",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Corrosión / Abrasión",
+    "unidad": "-",
+    "ref": "Abrasivo",
+    "nota": ""
+   },
+   {
+    "seccion": "DATOS DE OPERACIÓN"
+   },
+   {
+    "desc": "Régimen de Operación",
+    "unidad": "-",
+    "ref": "Continuo",
+    "nota": ""
+   },
+   {
+    "desc": "Horas por día",
+    "unidad": "h/d",
+    "ref": "24",
+    "nota": ""
+   },
+   {
+    "desc": "Días por año",
+    "unidad": "d/a",
+    "ref": "365",
+    "nota": ""
+   },
+   {
+    "seccion": "CARACTERÍSTICAS GENERALES"
+   },
+   {
+    "desc": "Tag",
+    "unidad": "-",
+    "ref": "",
+    "nota": "Nota 2"
+   },
+   {
+    "desc": "Marca",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Modelo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Código",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de instrumento",
+    "unidad": "-",
+    "ref": "Interruptor de nivel tipo horquilla vibratoria",
+    "nota": ""
+   },
+   {
+    "desc": "Indicador local",
+    "unidad": "-",
+    "ref": "LED de estado",
+    "nota": ""
+   },
+   {
+    "seccion": "MEDICIÓN"
+   },
+   {
+    "desc": "Variable medida",
+    "unidad": "-",
+    "ref": "Nivel",
+    "nota": ""
+   },
+   {
+    "desc": "Función",
+    "unidad": "-",
+    "ref": "Alarma de nivel alto (tolva llena)",
+    "nota": ""
+   },
+   {
+    "desc": "Densidad mínima detectable",
+    "unidad": "g/l",
+    "ref": "30",
+    "nota": ""
+   },
+   {
+    "seccion": "SENSOR"
+   },
+   {
+    "desc": "Principio de medición",
+    "unidad": "-",
+    "ref": "Variación de frecuencia de vibración de la horquilla",
+    "nota": ""
+   },
+   {
+    "desc": "Material de la horquilla",
+    "unidad": "-",
+    "ref": "Acero inoxidable 304",
+    "nota": ""
+   },
+   {
+    "desc": "Material de la rosca",
+    "unidad": "-",
+    "ref": "Acero inoxidable 316Ti",
+    "nota": ""
+   },
+   {
+    "desc": "Longitud de la sonda",
+    "unidad": "mm",
+    "ref": "170",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de proceso",
+    "unidad": "°C",
+    "ref": "-40 a 150",
+    "nota": ""
+   },
+   {
+    "desc": "Presión de proceso máxima",
+    "unidad": "bar",
+    "ref": "10",
+    "nota": ""
+   },
+   {
+    "seccion": "CONEXIÓN AL PROCESO"
+   },
+   {
+    "desc": "Montaje",
+    "unidad": "-",
+    "ref": "Lateral en pared de tolva, inclinado hacia abajo",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión al proceso",
+    "unidad": "-",
+    "ref": "1 1/4\" NPT cónica",
+    "nota": ""
+   },
+   {
+    "desc": "Grado de protección",
+    "unidad": "-",
+    "ref": "IP66 / NEMA 4",
+    "nota": ""
+   },
+   {
+    "desc": "Material de la carcasa",
+    "unidad": "-",
+    "ref": "Aluminio con revestimiento epóxico",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura ambiente de operación",
+    "unidad": "°C",
+    "ref": "-40 a 60",
+    "nota": ""
+   },
+   {
+    "seccion": "ALIMENTACIÓN Y COMUNICACIÓN"
+   },
+   {
+    "desc": "Alimentación eléctrica",
+    "unidad": "V",
+    "ref": "19 a 230 Vac / 19 a 40 Vdc",
+    "nota": ""
+   },
+   {
+    "desc": "Potencia",
+    "unidad": "VA",
+    "ref": "8",
+    "nota": ""
+   },
+   {
+    "desc": "Salida analógica",
+    "unidad": "mA",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Salida discreta",
+    "unidad": "-",
+    "ref": "Relé DPDT",
+    "nota": ""
+   },
+   {
+    "desc": "Protocolo de comunicación",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión eléctrica",
+    "unidad": "-",
+    "ref": "1/2\" NPT",
+    "nota": ""
+   },
+   {
+    "seccion": "HOMOLOGACIONES Y NORMAS"
+   },
+   {
+    "desc": "Certificado de calibración",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Certificaciones generales",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificación de áreas peligrosas (ATEX / IECEx / FM / N/A)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   }
+  ]
+ },
+ "SSL": {
+  "titulo": "HOJA DE DATOS DE INTERRUPTOR DE VELOCIDAD CERO",
+  "referencia": "SSL",
+  "filas": [
+   {
+    "seccion": "IDENTIFICACIÓN DE UNIDAD"
+   },
+   {
+    "desc": "Equipo",
+    "unidad": "-",
+    "ref": "Interruptor de velocidad cero",
+    "nota": ""
+   },
+   {
+    "desc": "Servicio del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": "Nota 1"
+   },
+   {
+    "desc": "Ubicación del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": "Nota 1"
+   },
+   {
+    "seccion": "CONDICIONES DEL SITIO"
+   },
+   {
+    "desc": "Ubicación del proyecto",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Altitud",
+    "unidad": "m s.n.m",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente media",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad promedio",
+    "unidad": "% HR",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ambiente",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Zona sísmica (NTE E.030)",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Precipitación anual",
+    "unidad": "mm",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del viento",
+    "unidad": "km/h",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL PROCESO"
+   },
+   {
+    "desc": "Equipo monitoreado",
+    "unidad": "-",
+    "ref": "",
+    "nota": "Nota 1"
+   },
+   {
+    "desc": "Velocidad nominal del eje",
+    "unidad": "rpm",
+    "ref": "15",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura",
+    "unidad": "°C",
+    "ref": "3.1 a 31.4",
+    "nota": ""
+   },
+   {
+    "desc": "Presión",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Conductividad",
+    "unidad": "uS/cm",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Porcentaje de sólidos",
+    "unidad": "%",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Corrosión / Abrasión",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "seccion": "DATOS DE OPERACIÓN"
+   },
+   {
+    "desc": "Régimen de Operación",
+    "unidad": "-",
+    "ref": "Continuo",
+    "nota": ""
+   },
+   {
+    "desc": "Horas por día",
+    "unidad": "h/d",
+    "ref": "24",
+    "nota": ""
+   },
+   {
+    "desc": "Días por año",
+    "unidad": "d/a",
+    "ref": "365",
+    "nota": ""
+   },
+   {
+    "seccion": "CARACTERÍSTICAS GENERALES"
+   },
+   {
+    "desc": "Tag",
+    "unidad": "-",
+    "ref": "",
+    "nota": "Nota 2"
+   },
+   {
+    "desc": "Marca",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Modelo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Código",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Principio de detección",
+    "unidad": "-",
+    "ref": "Perturbación del campo magnético por objetivo ferroso",
+    "nota": ""
+   },
+   {
+    "desc": "Indicador local",
+    "unidad": "-",
+    "ref": "LED de estado",
+    "nota": ""
+   },
+   {
+    "seccion": "MEDICIÓN"
+   },
+   {
+    "desc": "Rango de velocidad",
+    "unidad": "ppm",
+    "ref": "6 a 3000, seleccionable por jumper",
+    "nota": ""
+   },
+   {
+    "desc": "Retardo de arranque",
+    "unidad": "s",
+    "ref": "10 a 14",
+    "nota": ""
+   },
+   {
+    "desc": "Retardo de velocidad cero",
+    "unidad": "s",
+    "ref": "5 ± 1 o 10 ± 2",
+    "nota": ""
+   },
+   {
+    "desc": "Distancia de detección máxima",
+    "unidad": "mm",
+    "ref": "Hasta 100",
+    "nota": ""
+   },
+   {
+    "seccion": "CONEXIÓN AL PROCESO"
+   },
+   {
+    "desc": "Montaje",
+    "unidad": "-",
+    "ref": "Local",
+    "nota": ""
+   },
+   {
+    "desc": "Material de la carcasa",
+    "unidad": "-",
+    "ref": "Aluminio, empaquetaduras de neopreno",
+    "nota": ""
+   },
+   {
+    "desc": "Grado de protección",
+    "unidad": "-",
+    "ref": "NEMA 4X",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura ambiente de operación",
+    "unidad": "°C",
+    "ref": "-40 a 60",
+    "nota": ""
+   },
+   {
+    "seccion": "ALIMENTACIÓN Y COMUNICACIÓN"
+   },
+   {
+    "desc": "Alimentación eléctrica",
+    "unidad": "V",
+    "ref": "115 Vac ± 10%, 50/60 Hz",
+    "nota": ""
+   },
+   {
+    "desc": "Potencia",
+    "unidad": "VA",
+    "ref": "7",
+    "nota": ""
+   },
+   {
+    "desc": "Salida analógica",
+    "unidad": "mA",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Salida discreta",
+    "unidad": "-",
+    "ref": "Contacto seco SPDT",
+    "nota": ""
+   },
+   {
+    "desc": "Protocolo de comunicación",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión eléctrica",
+    "unidad": "-",
+    "ref": "3/4\" NPT",
+    "nota": ""
+   },
+   {
+    "seccion": "HOMOLOGACIONES Y NORMAS"
+   },
+   {
+    "desc": "Certificado de calibración",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Certificaciones generales",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificación de áreas peligrosas (ATEX / IECEx / FM / N/A)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   }
+  ]
+ },
+ "VT": {
+  "titulo": "HOJA DE DATOS DE TRANSMISOR DE VIBRACIÓN",
+  "referencia": "VT",
+  "filas": [
+   {
+    "seccion": "IDENTIFICACIÓN DE UNIDAD"
+   },
+   {
+    "desc": "Equipo",
+    "unidad": "-",
+    "ref": "Transmisor de vibración",
+    "nota": ""
+   },
+   {
+    "desc": "Servicio del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ubicación del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL SITIO"
+   },
+   {
+    "desc": "Ubicación del proyecto",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Altitud",
+    "unidad": "m s.n.m",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente media",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad promedio",
+    "unidad": "% HR",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ambiente",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Zona sísmica (NTE E.030)",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Precipitación anual",
+    "unidad": "mm",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del viento",
+    "unidad": "km/h",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL PROCESO"
+   },
+   {
+    "desc": "Equipo monitoreado",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad nominal del eje",
+    "unidad": "rpm",
+    "ref": "1784",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura",
+    "unidad": "°C",
+    "ref": "3.1 a 31.4",
+    "nota": ""
+   },
+   {
+    "desc": "Presión",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Conductividad",
+    "unidad": "uS/cm",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Porcentaje de sólidos",
+    "unidad": "%",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Corrosión / Abrasión",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "seccion": "DATOS DE OPERACIÓN"
+   },
+   {
+    "desc": "Régimen de Operación",
+    "unidad": "-",
+    "ref": "Continuo",
+    "nota": ""
+   },
+   {
+    "desc": "Horas por día",
+    "unidad": "h/d",
+    "ref": "24",
+    "nota": ""
+   },
+   {
+    "desc": "Días por año",
+    "unidad": "d/a",
+    "ref": "365",
+    "nota": ""
+   },
+   {
+    "seccion": "CARACTERÍSTICAS GENERALES"
+   },
+   {
+    "desc": "Tag",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Marca",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Modelo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Código",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de operación",
+    "unidad": "°C",
+    "ref": "-40 a 85",
+    "nota": ""
+   },
+   {
+    "seccion": "MEDICIÓN"
+   },
+   {
+    "desc": "Variable medida",
+    "unidad": "-",
+    "ref": "Velocidad de vibración",
+    "nota": ""
+   },
+   {
+    "desc": "Rango",
+    "unidad": "mm/s",
+    "ref": "0 a 25",
+    "nota": ""
+   },
+   {
+    "desc": "Rango de frecuencia",
+    "unidad": "Hz",
+    "ref": "2 a 1000",
+    "nota": ""
+   },
+   {
+    "seccion": "CONEXIÓN AL PROCESO"
+   },
+   {
+    "desc": "Montaje",
+    "unidad": "-",
+    "ref": "Perno prisionero en agujero roscado M8",
+    "nota": ""
+   },
+   {
+    "desc": "Material de la carcasa",
+    "unidad": "-",
+    "ref": "Acero inoxidable",
+    "nota": ""
+   },
+   {
+    "desc": "Grado de protección",
+    "unidad": "-",
+    "ref": "IP67",
+    "nota": ""
+   },
+   {
+    "seccion": "ALIMENTACIÓN Y COMUNICACIÓN"
+   },
+   {
+    "desc": "Alimentación eléctrica",
+    "unidad": "V",
+    "ref": "24 Vdc / Loop powered",
+    "nota": ""
+   },
+   {
+    "desc": "Salida analógica",
+    "unidad": "mA",
+    "ref": "4 a 20",
+    "nota": ""
+   },
+   {
+    "desc": "Salida discreta",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Protocolo de comunicación",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Configuración de conexionado",
+    "unidad": "-",
+    "ref": "2 hilos",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión eléctrica",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "seccion": "HOMOLOGACIONES Y NORMAS"
+   },
+   {
+    "desc": "Certificado de calibración",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificaciones generales",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificación de áreas peligrosas (ATEX / IECEx / FM / N/A)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   }
+  ]
+ },
+ "AT": {
+  "titulo": "HOJA DE DATOS DE SENSOR DE MANGA ROTA",
+  "referencia": "AT",
+  "filas": [
+   {
+    "seccion": "IDENTIFICACIÓN DE UNIDAD"
+   },
+   {
+    "desc": "Equipo",
+    "unidad": "-",
+    "ref": "Sensor de manga rota",
+    "nota": ""
+   },
+   {
+    "desc": "Servicio del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ubicación del equipo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL SITIO"
+   },
+   {
+    "desc": "Ubicación del proyecto",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Altitud",
+    "unidad": "m s.n.m",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de ambiente media",
+    "unidad": "° C",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Humedad promedio",
+    "unidad": "% HR",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Ambiente",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Zona sísmica (NTE E.030)",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Precipitación anual",
+    "unidad": "mm",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del viento",
+    "unidad": "km/h",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "seccion": "CONDICIONES DEL PROCESO"
+   },
+   {
+    "desc": "Fluido",
+    "unidad": "-",
+    "ref": "Aire filtrado",
+    "nota": ""
+   },
+   {
+    "desc": "Flujo",
+    "unidad": "m³/h",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura",
+    "unidad": "°C",
+    "ref": "3.1 a 31.4",
+    "nota": ""
+   },
+   {
+    "desc": "Presión",
+    "unidad": "kPa",
+    "ref": "Atmosférica",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad del fluido",
+    "unidad": "fpm",
+    "ref": "3500 (17.78 m/s)",
+    "nota": ""
+   },
+   {
+    "desc": "Conductividad",
+    "unidad": "uS/cm",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Porcentaje de sólidos",
+    "unidad": "%",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Corrosión / Abrasión",
+    "unidad": "-",
+    "ref": "Abrasivo",
+    "nota": ""
+   },
+   {
+    "seccion": "DATOS DE OPERACIÓN"
+   },
+   {
+    "desc": "Régimen de Operación",
+    "unidad": "-",
+    "ref": "Continuo",
+    "nota": ""
+   },
+   {
+    "desc": "Horas por día",
+    "unidad": "h/d",
+    "ref": "24",
+    "nota": ""
+   },
+   {
+    "desc": "Días por año",
+    "unidad": "d/a",
+    "ref": "365",
+    "nota": ""
+   },
+   {
+    "seccion": "CARACTERÍSTICAS GENERALES"
+   },
+   {
+    "desc": "Tag",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Marca",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Modelo",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Código",
+    "unidad": "-",
+    "ref": "",
+    "nota": ""
+   },
+   {
+    "desc": "Indicador local",
+    "unidad": "-",
+    "ref": "LEDs de estado (sin display)",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura ambiente de operación",
+    "unidad": "°C",
+    "ref": "-40 a 60",
+    "nota": ""
+   },
+   {
+    "seccion": "MEDICIÓN"
+   },
+   {
+    "desc": "Variable medida",
+    "unidad": "-",
+    "ref": "Tendencia relativa de emisión de polvo",
+    "nota": ""
+   },
+   {
+    "desc": "Unidades",
+    "unidad": "-",
+    "ref": "% / mA (tendencia relativa)",
+    "nota": ""
+   },
+   {
+    "desc": "Límite de detección",
+    "unidad": "mg/m³",
+    "ref": "0.01",
+    "nota": ""
+   },
+   {
+    "desc": "Ajuste",
+    "unidad": "-",
+    "ref": "Autoajuste en puesta en marcha (< 30 min)",
+    "nota": ""
+   },
+   {
+    "seccion": "SENSOR"
+   },
+   {
+    "desc": "Principio de medición",
+    "unidad": "-",
+    "ref": "Electrificación inductiva",
+    "nota": ""
+   },
+   {
+    "desc": "Material de la sonda",
+    "unidad": "-",
+    "ref": "Acero inoxidable 316L con recubrimiento total de PTFE",
+    "nota": ""
+   },
+   {
+    "desc": "Longitud de la sonda",
+    "unidad": "mm",
+    "ref": "500",
+    "nota": ""
+   },
+   {
+    "desc": "Temperatura de proceso",
+    "unidad": "°C",
+    "ref": "Hasta 250",
+    "nota": ""
+   },
+   {
+    "desc": "Presión de proceso",
+    "unidad": "kPa",
+    "ref": "Hasta 600",
+    "nota": ""
+   },
+   {
+    "desc": "Velocidad de flujo",
+    "unidad": "m/s",
+    "ref": "3 a 40",
+    "nota": ""
+   },
+   {
+    "seccion": "CONEXIÓN AL PROCESO"
+   },
+   {
+    "desc": "Montaje del transmisor",
+    "unidad": "-",
+    "ref": "Directo en la chimenea",
+    "nota": ""
+   },
+   {
+    "desc": "Grado de protección",
+    "unidad": "-",
+    "ref": "IP65",
+    "nota": ""
+   },
+   {
+    "desc": "Soportes de montaje",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Otros",
+    "unidad": "-",
+    "ref": "Cubierta de intemperie de acero inoxidable",
+    "nota": ""
+   },
+   {
+    "seccion": "ALIMENTACIÓN Y COMUNICACIÓN"
+   },
+   {
+    "desc": "Alimentación eléctrica",
+    "unidad": "V",
+    "ref": "100 a 240 Vac, 60 Hz",
+    "nota": ""
+   },
+   {
+    "desc": "Salida analógica",
+    "unidad": "mA",
+    "ref": "4 a 20",
+    "nota": ""
+   },
+   {
+    "desc": "Salida discreta",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Protocolo de comunicación",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Configuración de conexionado",
+    "unidad": "-",
+    "ref": "4 hilos",
+    "nota": ""
+   },
+   {
+    "desc": "Tipo de conexión eléctrica",
+    "unidad": "-",
+    "ref": "Prensaestopa",
+    "nota": ""
+   },
+   {
+    "seccion": "HOMOLOGACIONES Y NORMAS"
+   },
+   {
+    "desc": "Certificado de calibración",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   },
+   {
+    "desc": "Certificaciones generales",
+    "unidad": "-",
+    "ref": "Sí",
+    "nota": ""
+   },
+   {
+    "desc": "Certificación de áreas peligrosas (ATEX / IECEx / FM / N/A)",
+    "unidad": "-",
+    "ref": "No aplica",
+    "nota": ""
+   }
+  ]
+ }
+}

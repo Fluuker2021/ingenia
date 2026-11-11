@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17191D">
+<title>Ingenia</title>
+<link rel="stylesheet" href="css/ingenia.css">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<script src="vendor/exceljs.min.js"></script>
+<script src="vendor/pizzip.min.js"></script>
+<script src="vendor/docxtemplater.min.js"></script>
+<script src="vendor/pako.min.js"></script>
+</head>
+<body>
+<header class="mobilebar">
+  <button class="menu-btn" id="nav-abrir" aria-label="Abrir menú"><svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+  <a class="brand" href="#/proyectos"><b class="marca">INGEN<span>IA</span></b></a>
+  <span class="ver" id="nav-ver-m"></span>
+</header>
+<div class="nav-scrim" id="nav-scrim"></div>
+<div class="app">
+  <aside class="sidenav">
+    <button class="nav-cerrar" id="nav-cerrar" aria-label="Cerrar menú"><svg class="icon" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+    <a class="brand" href="#/proyectos"><b class="marca">INGEN<span>IA</span></b></a>
+    <button class="btn-accent nav-cta" id="nav-nuevo"><svg class="icon" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nuevo proyecto</button>
+    <nav class="arbol" id="nav-arbol" aria-label="Menú principal"></nav>
+    <div class="spacer"></div>
+    <div class="foot"><div class="org" id="nav-org"></div><div class="ver" id="nav-ver" title="Fecha y hora de publicación de esta versión"></div></div>
+  </aside>
+  <main class="main" id="main"></main>
+</div>
+<div id="modal-root"></div>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

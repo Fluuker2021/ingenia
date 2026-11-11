@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17191D">
+<title>Ingenia — Ingeniería eléctrica e instrumentación automatizada</title>
+<meta name="description" content="Ingenia genera los entregables de ingeniería de Electricidad e Instrumentación & Control a partir de pocos datos: listados, memorias de cálculo, unifilares y planos con el formato de cada cliente.">
+<link rel="stylesheet" href="css/ingenia.css">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+</head>
+<body class="landing">
+<nav class="nav">
+  <a class="brand" href="./"><b class="marca">INGEN<span>IA</span></b></a>
+  <div class="links">
+    <a href="#como-funciona">Cómo funciona</a>
+    <a href="#entregables">Entregables</a>
+    <a href="#plantillas">Formatos de cliente</a>
+    <a class="btn btn-accent" href="app.html"><span>Entrar<span class="hide-sm"> a la plataforma</span></span></a>
+  </div>
+</nav>
+
+<section class="hero">
+  <div>
+    <h1>Ingeniería eléctrica e instrumentación, <span>generada desde los datos</span>.</h1>
+    <p class="lead">Ingresa cargas, tensiones e instrumentos una sola vez. Ingenia genera listados, memorias de cálculo, unifilares y planos de E&amp;I con el formato de tu cliente.</p>
+    <div class="cta">
+      <a class="btn btn-accent btn-lg" href="app.html#/proyectos">Crear un proyecto</a>
+      <a class="btn btn-lg" href="#como-funciona">Cómo funciona</a>
+    </div>
+  </div>
+  <div class="hero-visual" aria-hidden="true">
+    <div style="font-size:11px; color:#7D8591; margin-bottom:12px; letter-spacing:.12em; text-transform:uppercase; font-weight:600;">Proyecto · Tablero de fuerza 460 V</div>
+    <div class="row"><span>Listado de cargas<br><small>XXX-0000-07-LIS-001 · Rev. C</small></span><span class="badge badge-ok">Emitido</span></div>
+    <div class="row"><span>Memoria de cálculo de conductores<br><small>XXX-0000-07-MC-001 · Rev. B</small></span><span class="badge badge-ok">Emitido</span></div>
+    <div class="row"><span>Diagrama unifilar<br><small>XXX-0000-07-WD-001 · Rev. B</small></span><span class="badge badge-ok">DXF</span></div>
+    <div class="row"><span>Listado de cables<br><small>XXX-0000-07-LDC-001 · Rev. A</small></span><span class="badge badge-neutral">En revisión</span></div>
+    <div class="row"><span>Listado de instrumentos<br><small>XXX-0000-09-IL-001 · Rev. A</small></span><span class="badge badge-neutral">En revisión</span></div>
+  </div>
+</section>
+
+<section class="section" id="como-funciona">
+  <h2>Tres pasos, un solo origen de datos</h2>
+  <p class="sub">Cada dato se ingresa una vez y se propaga a todos los documentos.</p>
+  <div class="steps">
+    <div class="step"><h3>Define el proyecto</h3><p>Cliente, tensión, condiciones del sitio y tableros. Parte de un proyecto anterior para no repetir datos.</p></div>
+    <div class="step"><h3>Completa cada documento</h3><p>Cargas, instrumentos y señales. Protecciones, cables, demanda y canales I/O se calculan solos.</p></div>
+    <div class="step"><h3>Emite y descarga</h3><p>Revisa la vista previa, emite la revisión de todos los documentos a la vez y descarga en Excel, Word o DXF.</p></div>
+  </div>
+</section>
+
+<section class="section" id="entregables" style="background:var(--gris-50); max-width:none;">
+  <div style="max-width:1200px; margin:0 auto;">
+    <h2>Entregables por disciplina</h2>
+    <p class="sub">Basados en una ingeniería de detalle real de minería, por etapa y tipo de salida.</p>
+    <div class="features">
+      <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg></div><h3>Electricidad</h3><p>Listados de cargas, cables y equipos, hojas de datos, memorias de conductores y máxima demanda, unifilares.</p></div>
+      <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>Instrumentación &amp; Control</h3><p>P&amp;ID con recomendación de instrumentos, listados de instrumentos e I/O, hojas de datos, lazos, arquitectura, bloques y filosofía de control.</p></div>
+      <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><h3>Gestión documental</h3><p>Codificación del cliente, control de revisiones, emisión en lote y lista de documentos.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="plantillas">
+  <h2>El formato de cada cliente</h2>
+  <p class="sub">Carga sus formatos una vez por proyecto. Sin ellos, se usa el formato estándar con tu logo.</p>
+  <div class="features">
+    <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg></div><h3>Excel y Word</h3><p>Marcadores <code>{{proyecto}}</code>, <code>{{codigo}}</code>, <code>{{rev}}</code> y filas <code>{{tabla:cargas}}</code>. Se conservan estilos, logos y firmas.</p></div>
+    <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><path d="M4 20V4h16v16H4Z"/><path d="M4 15h16M14 15v5"/></svg></div><h3>Cajetín y lámina</h3><p>DXF del cliente con <code>{{PLANO}}</code>, <code>{{REV}}</code>, <code>{{TITULO}}</code>; el plano se arma dentro de ese formato.</p></div>
+    <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-8 4 5 4-9"/></svg></div><h3>Plumillas (CTB)</h3><p>Se validan colores, grosores y tramas por capa para la impresión.</p></div>
+  </div>
+</section>
+
+<footer class="footer">Ingenia · Todo documento generado debe ser revisado y aprobado por un ingeniero competente.</footer>
+<script type="module">import { comprobarVersion } from "./js/actualizar.js"; comprobarVersion();</script>
+</body>
+</html>

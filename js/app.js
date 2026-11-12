@@ -12,6 +12,7 @@ import { renderEditores } from "./editores.js";
 import { datos, nuevoTablero, TIPOS_TABLERO, ipRecomendado, tableros, instrumentos } from "./datos.js";
 import { VERSION } from "./version.js";
 import { comprobarVersion } from "./actualizar.js";
+import { iniciarCopito } from "./copito.js";
 
 const main = $("#main");
 const state = S.load();
@@ -63,7 +64,7 @@ function menuLateral(seg, id, tab){
   if(nuevaRuta){
     if(seg==="proyecto" && id){ navAb.proyectos = true; state.proyectos.forEach(q=>{ navAb[q.id] = q.id===id; }); }
     if(seg==="catalogo") navAb.catalogo = true;
-    if(seg==="organizacion" || seg==="respaldo") navAb.config = true;
+    if(seg==="organizacion" || seg==="respaldo" || seg==="estandares") navAb.config = true;
   }
   const p = seg==="proyecto" && id ? S.proyecto(id) : null;
   if(p) p.visto = Date.now();
@@ -79,8 +80,7 @@ function menuLateral(seg, id, tab){
   $("#nav-arbol").innerHTML =
     grupo("proyectos", IC.proy, "Proyectos", (ps.length ? ps.map(proyecto).join("") : `<span class="vacio-txt">Sin proyectos</span>`) + enlace("#/proyectos", IC.todos, "Ver todos", seg==="proyectos"), ps.length) +
     grupo("catalogo", IC.cat, "Catálogo de entregables", enlace("#/catalogo", "", "Todos", seg==="catalogo" && !id) + enlace("#/catalogo/ELE", "", "Electricidad", seg==="catalogo" && id==="ELE") + enlace("#/catalogo/INS", "", "Instrumentación y control", seg==="catalogo" && id==="INS")) +
-    enlace("#/estandares", IC.fmt, "Formatos estándar", seg==="estandares") +
-    grupo("config", IC.cfg, "Configuración", enlace("#/organizacion", "", "Mi organización", seg==="organizacion") + enlace("#/respaldo", "", "Respaldo de datos", seg==="respaldo"));
+    grupo("config", IC.cfg, "Configuración", enlace("#/organizacion", "", "Mi organización", seg==="organizacion") + enlace("#/estandares", "", "Formatos estándar", seg==="estandares") + enlace("#/respaldo", "", "Respaldo de datos", seg==="respaldo"));
   // grupos: abrir / cerrar
   $$("#nav-arbol [data-grp]").forEach(b=>b.onclick = ()=>{ navAb[b.dataset.grp] = !navAb[b.dataset.grp]; guardarNav(); menuLateral(); });
   // proyecto: si ya está abierto en pantalla, el clic solo pliega o despliega sus secciones
@@ -90,7 +90,6 @@ function menuLateral(seg, id, tab){
     navAb[k] = true; guardarNav();
   });
   guardarNav();
-  $("#nav-org").textContent = state.org.nombreCorto || state.org.nombre || "Mi organización";
   const m = String(VERSION).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
   $("#nav-ver").textContent = "Versión " + (m ? `${m[3]}/${m[2]}/${m[1]} · ${m[4]}:${m[5]}` : VERSION);
   $("#nav-ver-m").textContent = m ? `v ${m[3]}/${m[2]} · ${m[4]}:${m[5]}` : VERSION;
@@ -558,7 +557,7 @@ function screenRespaldo(){
 /* ================= formatos estándar ================= */
 function screenEstandares(){
   const filas = Object.entries(DOCS).filter(([id,d])=>!d.alias && entregable(id) && !entregable(id).interno).map(([id,d])=>({ id, e: entregable(id), d }));
-  main.innerHTML = topbar({ crumbs:[{label:"Formatos estándar"}], title:"Formatos estándar", sub:"Se usan cuando el proyecto no tiene el formato del cliente." }) + html`
+  main.innerHTML = topbar({ crumbs:[{label:"Configuración"},{label:"Formatos estándar"}], title:"Formatos estándar", sub:"Se usan cuando el proyecto no tiene el formato del cliente." }) + html`
     <div class="table-wrap"><table><thead><tr><th>Documento</th><th>Formato</th><th>Base</th><th></th></tr></thead><tbody>
     ${filas.map(({id,e,d})=>`<tr><td>${esc(e?e.nombre:id)}</td><td>${{xlsx:"Excel",docx:"Word",dxf:"DXF A1"}[d.formato]}</td><td class="muted">${esc(d.ref)}</td><td>${d.plantilla && !d.estandar ? `<a class="btn btn-sm" href="assets/plantillas/${esc(d.plantilla)}" download>${ICON.download} Plantilla</a>` : ""}</td></tr>`).join("")}
     </tbody></table></div>
@@ -570,3 +569,4 @@ function screenEstandares(){
 
 route();
 comprobarVersion();
+iniciarCopito(()=>rutaMenu.seg==="proyecto" ? { id: rutaMenu.id } : {});

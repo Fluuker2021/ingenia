@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#17191D">
 <title>Ingenia — Ingeniería eléctrica e instrumentación automatizada</title>
-<meta name="description" content="Ingenia genera los entregables de ingeniería de Electricidad e Instrumentación & Control a partir de pocos datos: listados, memorias de cálculo, unifilares y planos con el formato de cada cliente.">
+<meta name="description" content="Ingenia genera los entregables de ingeniería de Electricidad e Instrumentación & Control a partir de pocos datos: listados, memorias de cálculo, unifilares y planos con el formato de cada cliente, con un asistente de IA para tus proyectos.">
 <link rel="stylesheet" href="css/ingenia.css">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 </head>
@@ -16,6 +16,7 @@
     <a href="#como-funciona">Cómo funciona</a>
     <a href="#entregables">Entregables</a>
     <a href="#plantillas">Formatos de cliente</a>
+    <a href="#planes">Planes</a>
     <a class="btn btn-accent" href="app.html"><span>Entrar<span class="hide-sm"> a la plataforma</span></span></a>
   </div>
 </nav>
@@ -23,19 +24,21 @@
 <section class="hero">
   <div>
     <h1>Ingeniería eléctrica e instrumentación, <span>generada desde los datos</span>.</h1>
-    <p class="lead">Ingresa cargas, tensiones e instrumentos una sola vez. Ingenia genera listados, memorias de cálculo, unifilares y planos de E&amp;I con el formato de tu cliente.</p>
-    <div class="cta">
-      <a class="btn btn-accent btn-lg" href="app.html#/proyectos">Crear un proyecto</a>
-      <a class="btn btn-lg" href="#como-funciona">Cómo funciona</a>
-    </div>
+    <p class="lead">Ingresa cargas, tensiones e instrumentos una sola vez. Ingenia genera listados, memorias de cálculo, unifilares y planos de E&amp;I con el formato de tu cliente, y <b>Copito</b>, tu asistente, responde cualquier pregunta sobre tus proyectos.</p>
   </div>
-  <div class="hero-visual" aria-hidden="true">
-    <div style="font-size:11px; color:#7D8591; margin-bottom:12px; letter-spacing:.12em; text-transform:uppercase; font-weight:600;">Proyecto · Tablero de fuerza 460 V</div>
-    <div class="row"><span>Listado de cargas<br><small>XXX-0000-07-LIS-001 · Rev. C</small></span><span class="badge badge-ok">Emitido</span></div>
-    <div class="row"><span>Memoria de cálculo de conductores<br><small>XXX-0000-07-MC-001 · Rev. B</small></span><span class="badge badge-ok">Emitido</span></div>
-    <div class="row"><span>Diagrama unifilar<br><small>XXX-0000-07-WD-001 · Rev. B</small></span><span class="badge badge-ok">DXF</span></div>
-    <div class="row"><span>Listado de cables<br><small>XXX-0000-07-LDC-001 · Rev. A</small></span><span class="badge badge-neutral">En revisión</span></div>
-    <div class="row"><span>Listado de instrumentos<br><small>XXX-0000-09-IL-001 · Rev. A</small></span><span class="badge badge-neutral">En revisión</span></div>
+  <div class="carrusel" id="carrusel" aria-roledescription="carrusel" aria-label="Vistas de proyectos generados">
+    <div class="car-pista" id="car-pista">
+      <figure><img src="assets/vistas/01-resumen.jpg" alt="Resumen de un proyecto con su avance" loading="eager" width="1280" height="780"><figcaption>Resumen y avance del proyecto</figcaption></figure>
+      <figure><img src="assets/vistas/02-cargas.jpg" alt="Vista previa del listado de cargas" loading="lazy" width="1280" height="780"><figcaption>Listado de cargas con máxima demanda</figcaption></figure>
+      <figure><img src="assets/vistas/03-unifilar.jpg" alt="Diagrama unifilar generado en DXF" loading="lazy"><figcaption>Diagrama unifilar (DXF)</figcaption></figure>
+      <figure><img src="assets/vistas/04-pid.jpg" alt="P&amp;ID esquemático con instrumentos ISA" loading="lazy"><figcaption>P&amp;ID con simbología ISA 5.1</figcaption></figure>
+      <figure><img src="assets/vistas/05-conexionado.jpg" alt="Conexionado de entradas y salidas del PLC" loading="lazy"><figcaption>Conexionado de E/S del tablero de control</figcaption></figure>
+      <figure><img src="assets/vistas/06-documentos.jpg" alt="Lista de documentos con revisiones emitidas" loading="lazy" width="1280" height="780"><figcaption>Documentos y emisión de revisiones</figcaption></figure>
+      <figure><img src="assets/vistas/07-copito.jpg" alt="Copito respondiendo preguntas del proyecto" loading="lazy" width="1280" height="780"><figcaption>Copito responde sobre tus proyectos</figcaption></figure>
+    </div>
+    <button class="car-flecha izq" id="car-izq" aria-label="Imagen anterior"><svg class="icon" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <button class="car-flecha der" id="car-der" aria-label="Imagen siguiente"><svg class="icon" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
+    <div class="car-puntos" id="car-puntos"></div>
   </div>
 </section>
 
@@ -71,7 +74,56 @@
   </div>
 </section>
 
-<footer class="footer">Ingenia · Todo documento generado debe ser revisado y aprobado por un ingeniero competente.</footer>
-<script type="module">import { comprobarVersion } from "./js/actualizar.js"; comprobarVersion();</script>
+<section class="section" id="planes">
+  <h2>Planes</h2>
+  <p class="sub">Precios por cuenta, en dólares, con pago mensual. Pagando el año completo obtienes 2 meses gratis.</p>
+  <div class="planes">
+    <div class="plan">
+      <h3>Prueba</h3>
+      <div class="precio"><b>Gratis</b><span>14 días</span></div>
+      <ul><li>1 proyecto</li><li>Todos los entregables</li><li>Copito con tus datos</li><li>Sin tarjeta</li></ul>
+    </div>
+    <div class="plan destacado">
+      <div class="etq">Recomendado</div>
+      <h3>Profesional</h3>
+      <div class="precio"><b>US$ 29</b><span>/ mes</span></div>
+      <ul><li>1 usuario</li><li>Proyectos ilimitados</li><li>Excel, Word y planos DXF</li><li>Formatos y logo del cliente</li><li>Copito con tus datos</li></ul>
+    </div>
+    <div class="plan">
+      <h3>Equipo</h3>
+      <div class="precio"><b>US$ 79</b><span>/ mes</span></div>
+      <ul><li>Hasta 3 usuarios (US$ 25 por usuario adicional)</li><li>Proyectos compartidos</li><li>Todo lo del plan Profesional</li><li>Copito con IA</li></ul>
+    </div>
+    <div class="plan">
+      <h3>Empresa</h3>
+      <div class="precio"><b>A medida</b><span>&nbsp;</span></div>
+      <ul><li>Usuarios ilimitados</li><li>Formatos, capas y cajetín del cliente configurados</li><li>Capacitación y soporte prioritario</li><li>Factura</li></ul>
+    </div>
+  </div>
+  <p class="nota-planes">El acceso y el pago se harán con tu cuenta de Google desde «Entrar». Los precios no incluyen impuestos.</p>
+</section>
+
+<footer class="footer">
+  <div>© <span id="anio">2026</span> Ingenia. Todos los derechos reservados.</div>
+  <div class="muted">Todo documento generado debe ser revisado y aprobado por un ingeniero competente.</div>
+</footer>
+<script type="module">
+import { comprobarVersion } from "./js/actualizar.js"; comprobarVersion();
+document.getElementById("anio").textContent = new Date().getFullYear();
+/* carrusel: deslizar con el dedo o con las flechas; puntos de posición */
+const pista = document.getElementById("car-pista"), puntos = document.getElementById("car-puntos");
+const n = pista.children.length;
+puntos.innerHTML = Array.from({ length:n }, (_, i)=>`<button aria-label="Imagen ${i+1}"></button>`).join("");
+const actual = ()=>Math.round(pista.scrollLeft / pista.clientWidth);
+const ir = i=>pista.scrollTo({ left: ((i+n)%n) * pista.clientWidth, behavior:"smooth" });
+const marcar = ()=>[...puntos.children].forEach((b, i)=>b.classList.toggle("on", i===actual()));
+pista.addEventListener("scroll", ()=>requestAnimationFrame(marcar), { passive:true });
+document.getElementById("car-izq").onclick = ()=>ir(actual()-1);
+document.getElementById("car-der").onclick = ()=>ir(actual()+1);
+puntos.addEventListener("click", ev=>{ const i = [...puntos.children].indexOf(ev.target); if(i>=0) ir(i); });
+let pausa = false; ["pointerdown","mouseenter","focusin"].forEach(e=>pista.parentElement.addEventListener(e, ()=>{ pausa = true; }));
+setInterval(()=>{ if(!pausa && document.visibilityState==="visible") ir(actual()+1); }, 5000);
+marcar();
+</script>
 </body>
 </html>

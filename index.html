@@ -10,6 +10,7 @@
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 </head>
 <body class="landing">
+<header class="cabecera" id="cabecera">
 <nav class="nav">
   <a class="brand" href="./"><b class="marca">INGEN<span>IA</span></b></a>
   <div class="links">
@@ -20,6 +21,7 @@
     <a class="btn btn-accent" href="app.html"><span>Entrar<span class="hide-sm"> a la plataforma</span></span></a>
   </div>
 </nav>
+</header>
 
 <section class="hero">
   <div>
@@ -103,13 +105,14 @@
   <p class="nota-planes">El acceso y el pago se harán con tu cuenta de Google desde «Entrar». Los precios no incluyen impuestos.</p>
 </section>
 
-<footer class="footer">
-  <div>© <span id="anio">2026</span> Ingenia. Todos los derechos reservados.</div>
-  <div class="muted">Todo documento generado debe ser revisado y aprobado por un ingeniero competente.</div>
-</footer>
+<footer class="footer">© <span id="anio">2026</span> Ingenia. Todos los derechos reservados.</footer>
 <script type="module">
 import { comprobarVersion } from "./js/actualizar.js"; comprobarVersion();
 document.getElementById("anio").textContent = new Date().getFullYear();
+/* encabezado fijo: muestra un borde al bajar */
+const cab = document.getElementById("cabecera");
+const sombra = ()=>cab.classList.toggle("bajado", window.scrollY > 8);
+window.addEventListener("scroll", sombra, { passive:true }); sombra();
 /* carrusel: deslizar con el dedo o con las flechas; puntos de posición */
 const pista = document.getElementById("car-pista"), puntos = document.getElementById("car-puntos");
 const n = pista.children.length;

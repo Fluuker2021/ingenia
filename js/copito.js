@@ -9,6 +9,7 @@ import { entregable, ETAPAS, DISCIPLINAS } from "./catalog.js";
 import { datos, calcularTablero, tableros, tablerosPotencia, instrumentos, expandirTag, cablesFuerza, ipRecomendado, r2 } from "./datos.js";
 import { valoresDiseno } from "./modules/criterios.js";
 import { tablasIO } from "./docs.js";
+import { esOrden, interpretar, describir, aplicar, deshacer, HERRAMIENTA } from "./copito-editar.js";
 
 export const AVATAR = `<img class="cp-img" src="assets/copito.png" alt="" width="160" height="160">`;
 
@@ -138,7 +139,7 @@ function rBuscar(p, q){
   return `Esto es lo que encontré en <b>${esc(p.nombre)}</b>:<ul>${hits.slice(0,8).map(h=>`<li><a href="${h.href}">${esc(h.etq)}</a></li>`).join("")}</ul>`;
 }
 const AYUDA = `Soy <b>Copito</b>, el asistente de tus proyectos. Conozco todo lo que ingresas en Ingenia. Pregúntame, por ejemplo:
-  <ul><li>¿Cuál es la máxima demanda del proyecto?</li><li>¿Qué cable tiene el motor M-101?</li><li>¿Qué cables superan la caída de tensión?</li><li>¿Cuántas señales I/O hay y cuántos módulos?</li><li>¿Qué documentos faltan emitir?</li><li>¿Cuáles son las condiciones del sitio?</li></ul>`;
+  <ul><li>¿Cuál es la máxima demanda del proyecto?</li><li>¿Qué cable tiene el motor M-101?</li><li>¿Qué cables superan la caída de tensión?</li><li>¿Cuántas señales I/O hay y cuántos módulos?</li><li>¿Qué documentos faltan emitir?</li><li>¿Cuáles son las condiciones del sitio?</li></ul>También puedo <b>cambiar datos</b> (te pido confirmación antes):<ul><li>Cambia la potencia de M-101 a 50 HP</li><li>Agrega una bomba de 15 kW con variador</li><li>Pon el arranque de M-102 con variador</li><li>Cambia la altitud a 3500 m</li><li>Elimina el instrumento PIT-101</li><li>Emite todos los documentos para revisión del cliente</li></ul>`;
 
 export function responderLocal(q, ruta){
   const t = norm(q);
@@ -169,14 +170,14 @@ export function responderLocal(q, ruta){
 const IA_KEY = "ingenia.copito.ia";
 const leerIA = () => { try{ return JSON.parse(localStorage.getItem(IA_KEY)) || {}; }catch(e){ return {}; } };
 const guardarIA = c => { try{ localStorage.setItem(IA_KEY, JSON.stringify(c)); }catch(e){} };
-function contexto(){
+function contexto(ruta){
   const ps = S.load().proyectos;
   const out = ps.map(p=>{
     const d = datos(p), v = valoresDiseno(p);
     let io = []; try{ io = tablasIO(p); }catch(e){}
     let cb = []; try{ cb = cablesFuerza(p).map(f=>({ tag:f.tag, desde:f.desde, hasta:f.hasta, seccion_mm2:f.seccion, awg:f.awg, longitud_m:f.longitud, caida_pct:+(+f.dv||0).toFixed(2) })); }catch(e){}
     return {
-      proyecto: p.nombre, cliente: p.cliente, unidad: p.unidad, etapa: etapa(p.etapa), codigo: p.codigo, area: p.area, abierto_en_pantalla: false, id: p.id,
+      proyecto: p.nombre, cliente: p.cliente, unidad: p.unidad, etapa: etapa(p.etapa), codigo: p.codigo, area: p.area, abierto_en_pantalla: !!(ruta && ruta.id===p.id), id: p.id,
       sistema: d.sistema, diseno: v,
       tableros: tableros(p).map(t=>{ const c = t.tipo!=="control" ? calcularTablero(p, t) : null; return { tag:t.tag, nombre:t.nombre, tipo:t.tipo, potencia_instalada_kVA: c ? r2(c.installedKVA,2) : null, maxima_demanda_kVA: c ? r2(c.totalKVA,2) : null, corriente_md_A: c ? r2(c.demandCurrent,1) : null, itm_general_A: c ? c.mainBreaker : null }; }),
       cargas: d.cargas.map(l=>{ const ci = circuitoDe(p, l), itm = itmDe(ci); return { tag:l.tag, descripcion:l.desc, tipo:l.kind, potencia:l.power, unidad:l.powerUnit, arranque:l.starter, tablero:(tableros(p).find(t=>t.id===l.tablero)||{}).tag, calculo: ci && ci.meta, proteccion: itm && `${itm.devtag} ${itm.val}` }; }),
@@ -189,13 +190,39 @@ function contexto(){
   return JSON.stringify(out);
 }
 let historial = [];
-async function responderIA(q, ruta, cfg){
+async function clienteIA(cfg){
   const { default: Anthropic } = await import("../vendor/anthropic-sdk-1.3.0.mjs");
-  const client = new Anthropic({ apiKey: cfg.clave, dangerouslyAllowBrowser: true });
+  return new Anthropic({ apiKey: cfg.clave, dangerouslyAllowBrowser: true });
+}
+const SISTEMA_COPITO = "Eres Copito, el asistente de Ingenia, una plataforma de ingeniería eléctrica e instrumentación. Respondes en español, de forma breve y directa, solo con los datos de los proyectos que se adjuntan en JSON (cargas, cálculo NEC de tableros, cables, instrumentos, señales I/O, documentos). Si un dato no está, dilo y sugiere dónde ingresarlo en Ingenia. Usa listas cortas o tablas en Markdown cuando ayuden. No inventes valores.";
+/* orden libre con IA: Claude propone las operaciones con la herramienta; el usuario las confirma */
+async function proponerIA(q, ruta, cfg){
+  const client = await clienteIA(cfg);
+  const actual = ruta && ruta.id ? (S.proyecto(ruta.id)||{}).nombre : "";
+  const resp = await client.beta.messages.create({
+    model:"claude-opus-5-5", max_tokens:4096,
+    system:[ { type:"text", text: SISTEMA_COPITO + " Cuando el usuario pida agregar, cambiar, eliminar o emitir algo, usa la herramienta proponer_cambios con operaciones concretas (TAG existentes, unidades correctas). Si falta un dato imprescindible, pregúntalo en una frase en lugar de usar la herramienta." },
+             { type:"text", text:"Datos de los proyectos:\n" + contexto(ruta), cache_control:{ type:"ephemeral" } } ],
+    tools:[HERRAMIENTA], messages:[{ role:"user", content:(actual ? `[Proyecto abierto en pantalla: ${actual}]\n` : "") + q }],
+    output_config:{ effort:"low" },
+    betas:["server-side-fallback-2026-07-01"], fallbacks:"default",
+  });
+  if(resp.stop_reason==="refusal") return { texto:"No puedo hacer ese cambio. Prueba reformulándolo." };
+  const uso = resp.content.find(b=>b.type==="tool_use" && b.name==="proponer_cambios");
+  if(uso && uso.input && Array.isArray(uso.input.operaciones)){
+    const permitidas = HERRAMIENTA.input_schema.properties.operaciones.items.properties.op.enum;
+    const ops = uso.input.operaciones.filter(o=>o && permitidas.includes(o.op));
+    const p = (uso.input.proyecto_id && S.proyecto(uso.input.proyecto_id)) || (ruta && ruta.id && S.proyecto(ruta.id)) || null;
+    return { ops, p, resumen: uso.input.resumen||"" };
+  }
+  return { texto: resp.content.filter(b=>b.type==="text").map(b=>b.text).join("\n").trim() };
+}
+async function responderIA(q, ruta, cfg){
+  const client = await clienteIA(cfg);
   const actual = ruta && ruta.id ? (S.proyecto(ruta.id)||{}).nombre : "";
   const system = [
-    { type:"text", text:"Eres Copito, el asistente de Ingenia, una plataforma de ingeniería eléctrica e instrumentación. Respondes en español, de forma breve y directa, solo con los datos de los proyectos que se adjuntan en JSON (cargas, cálculo NEC de tableros, cables, instrumentos, señales I/O, documentos). Si un dato no está, dilo y sugiere dónde ingresarlo en Ingenia. Usa listas cortas o tablas en Markdown cuando ayuden. No inventes valores." },
-    { type:"text", text:"Datos de los proyectos:\n" + contexto(), cache_control:{ type:"ephemeral" } },
+    { type:"text", text: SISTEMA_COPITO },
+    { type:"text", text:"Datos de los proyectos:\n" + contexto(ruta), cache_control:{ type:"ephemeral" } },
   ];
   historial.push({ role:"user", content: (actual ? `[Proyecto abierto en pantalla: ${actual}]\n` : "") + q });
   historial = historial.slice(-12);
@@ -228,8 +255,9 @@ function md(txt){
 
 /* ---------------- interfaz ---------------- */
 const CHAT_KEY = "ingenia.copito.chat";
-const SUGERENCIAS = ["¿Cuál es la máxima demanda?", "¿Qué cables superan la caída de tensión?", "¿Cuántas señales I/O hay?", "¿Qué documentos faltan emitir?"];
-export function iniciarCopito(rutaActual){
+const SUGERENCIAS = ["¿Cuál es la máxima demanda?", "¿Qué cables superan la caída de tensión?", "¿Qué documentos faltan emitir?", "Agrega una bomba de 15 kW con variador"];
+export function iniciarCopito(rutaActual, alCambiar){
+  const pendientes = new Map(), hechos = new Map();
   const raiz = document.createElement("div");
   raiz.innerHTML = `<button class="cp-btn" id="cp-btn" aria-label="Abrir Copito" title="Copito — pregunta sobre tus proyectos">${AVATAR}</button>
     <section class="cp-panel" id="cp-panel" hidden aria-label="Copito">
@@ -253,7 +281,7 @@ export function iniciarCopito(rutaActual){
   const guardar = ()=>{ try{ localStorage.setItem(CHAT_KEY, JSON.stringify(chat.slice(-40))); }catch(e){} };
   const pintar = ()=>{
     msgs.innerHTML = (chat.length ? "" : `<div class="cp-m cp-bot"><span class="cp-av">${AVATAR}</span><div class="cp-bub">${AYUDA}</div></div>`) +
-      chat.map(m=>m.de==="yo" ? `<div class="cp-m cp-yo"><div class="cp-bub">${esc(m.t)}</div></div>` : `<div class="cp-m cp-bot"><span class="cp-av">${AVATAR}</span><div class="cp-bub">${m.h}${m.ia?'<div class="cp-ia">Respuesta con IA</div>':""}</div></div>`).join("");
+      chat.map(m=>m.de==="yo" ? `<div class="cp-m cp-yo"><div class="cp-bub">${esc(m.t)}</div></div>` : `<div class="cp-m cp-bot"><span class="cp-av">${AVATAR}</span><div class="cp-bub">${m.h}${m.prop && pendientes.has(m.prop) ? `<div class="cp-acc"><button class="btn-accent btn-sm" data-aplicar="${m.prop}">Aplicar cambios</button><button class="btn-sm" data-cancelar="${m.prop}">Cancelar</button></div>` : ""}${m.hecho && hechos.has(m.hecho) ? `<div class="cp-acc"><button class="btn-sm" data-deshacer="${m.hecho}">Deshacer</button></div>` : ""}${m.ia?'<div class="cp-ia">Respuesta con IA</div>':""}</div></div>`).join("");
     msgs.scrollTop = msgs.scrollHeight;
     $("#cp-sug").hidden = chat.length > 0;
   };
@@ -268,10 +296,42 @@ export function iniciarCopito(rutaActual){
   $("#cp-cfg").onclick = ()=>{ $("#cp-ajustes").hidden = !$("#cp-ajustes").hidden; };
   $("#cp-borrar").onclick = ()=>{ chat = []; historial = []; guardar(); pintar(); };
   msgs.addEventListener("click", ev=>{ if(ev.target.closest("a.cp-ir, .cp-tabla a, .cp-bub li a") && window.innerWidth < 700) abrir(false); });
+  // propuesta de cambios: se muestra y espera confirmación
+  const proponer = (p, ops, ia, resumen)=>{
+    const id = "c" + Date.now().toString(36);
+    pendientes.set(id, { pid: p.id, ops });
+    chat.push({ de:"bot", prop:id, ia, h:`${resumen ? esc(resumen)+"<br>" : ""}Esto es lo que voy a cambiar en <b>${esc(p.nombre)}</b>:<ul>${ops.map(o=>`<li>${describir(o, p)}</li>`).join("")}</ul>` });
+  };
+  const cerrar = (id, txt)=>{ const m = chat.find(m=>m.prop===id); if(m){ m.h += `<div class="cp-nota">${txt}</div>`; delete m.prop; } };
+  msgs.addEventListener("click", ev=>{
+    const b = ev.target.closest("[data-aplicar],[data-cancelar],[data-deshacer]"); if(!b) return;
+    if(b.dataset.aplicar){ const id = b.dataset.aplicar, pr = pendientes.get(id); pendientes.delete(id); const p = pr && S.proyecto(pr.pid); if(!p) return;
+      const r = aplicar(p, pr.ops); hechos.set(id, { pid: p.id, copia: r.copia }); cerrar(id, "Aplicado.");
+      chat.push({ de:"bot", hecho:id, h:`Listo, cambios aplicados.${r.impacto.length ? `<br>Impacto en el proyecto:<ul>${r.impacto.map(x=>`<li>${x}</li>`).join("")}</ul>` : " No cambia el cálculo de los tableros."}${r.avisos.length ? `<div class="cp-nota">${r.avisos.map(esc).join("<br>")}</div>` : ""}` });
+      if(alCambiar) alCambiar(); }
+    else if(b.dataset.cancelar){ pendientes.delete(b.dataset.cancelar); cerrar(b.dataset.cancelar, "Cancelado: no se cambió nada."); }
+    else if(b.dataset.deshacer){ const h = hechos.get(b.dataset.deshacer); hechos.delete(b.dataset.deshacer); const p = h && S.proyecto(h.pid); if(p){ deshacer(p, h.copia); chat.push({ de:"bot", h:"Cambios deshechos: el proyecto quedó como antes." }); if(alCambiar) alCambiar(); } }
+    guardar(); pintar();
+  });
   const preguntar = async q=>{
     q = q.trim(); if(!q) return;
     chat.push({ de:"yo", t:q }); pintar();
     const ruta = rutaActual();
+    if(esOrden(q)){
+      const { p } = proyectoDe(q, ruta);
+      if(!p){ chat.push({ de:"bot", h:"Primero crea un proyecto; luego puedo cambiar sus datos." }); guardar(); pintar(); return; }
+      const ops = interpretar(q, p);
+      const c = leerIA();
+      if(ops && ops.length) proponer(p, ops, false);
+      else if(c.activo && c.clave){
+        chat.push({ de:"bot", h:`<span class="cp-pensando">Copito está preparando los cambios…</span>` }); pintar();
+        try{ const r = await proponerIA(q, ruta, c); chat.pop();
+          if(r.ops && r.ops.length) proponer(r.p || p, r.ops, true, r.resumen); else chat.push({ de:"bot", h: md(r.texto || "No identifiqué un cambio concreto."), ia:true }); }
+        catch(err){ chat.pop(); chat.push({ de:"bot", h:`No se pudo usar la IA (${esc(err.status===401 ? "clave inválida" : (err.message||"sin conexión"))}).` }); }
+      }
+      else chat.push({ de:"bot", h:`No identifiqué qué cambiar. Prueba, por ejemplo: «Cambia la potencia de M-101 a 50 HP», «Agrega una bomba de 15 kW con variador en TF-001», «Cambia la altitud a 3500 m» o «Elimina el instrumento PIT-101». Con la IA activa (ajustes ⚙) entiendo órdenes más libres.` });
+      guardar(); pintar(); return;
+    }
     const loc = responderLocal(q, ruta);
     const c = leerIA();
     if(c.activo && c.clave && (!loc.ok || /\b(por que|porque|explica|recomienda|recomendacion|compara|deberia|como mejoro|analiza|resume)\b/.test(norm(q)))){

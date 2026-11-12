@@ -472,6 +472,13 @@ td.num.err{color:var(--err); font-weight:600;}
 .plan .precio span{color:var(--text-dim); font-size:13px;}
 .plan ul{margin:0; padding-left:18px; color:var(--acero); font-size:13.5px; line-height:1.8;}
 .nota-planes{margin-top:18px; color:var(--text-dim); font-size:13px;}
-.footer{display:flex; flex-direction:column; gap:4px;}
 @media (max-width:1000px){ .planes{grid-template-columns:repeat(2,minmax(0,1fr));} }
 @media (max-width:600px){ .planes{grid-template-columns:minmax(0,1fr);} .car-flecha{display:none;} }
+
+.cp-acc{display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;}
+
+/* página de inicio: encabezado fijo al bajar */
+.cabecera{position:sticky; top:0; z-index:60; background:rgba(255,255,255,.94); -webkit-backdrop-filter:saturate(1.4) blur(10px); backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid transparent; transition:border-color .15s, box-shadow .15s;}
+.cabecera.bajado{border-bottom-color:var(--border); box-shadow:0 4px 18px -12px rgba(23,25,29,.35);}
+.cabecera .nav{padding-top:14px; padding-bottom:14px;}
+.landing section[id]{scroll-margin-top:84px;}

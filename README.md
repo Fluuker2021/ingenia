@@ -17,6 +17,7 @@ Plataforma web para elaborar ingenierías de **Electricidad e Instrumentación &
 ## Copito (asistente)
 `js/copito.js`, imagen `assets/copito.png`. Botón flotante en la plataforma; responde sobre los proyectos guardados en el navegador:
 - **Motor propio** (sin internet): máxima demanda, cargas, cables y caída de tensión, tableros, instrumentos, señales I/O, documentos y revisiones, condiciones del sitio, detalle por TAG y búsqueda libre.
+- **Cambios desde el chat** (`js/copito-editar.js`): agregar, modificar o eliminar cargas e instrumentos, datos de diseño, del proyecto, del sistema y de tableros, y emitir revisiones. Copito muestra la propuesta, se aplica solo al confirmar, regenera el listado I/O cuando corresponde, informa el impacto (máxima demanda, corriente, ITM general, señales, cables fuera de la caída de tensión) y permite deshacer.
 - **Modo IA opcional** (Claude, `claude-opus-5-5`): se activa en los ajustes de Copito con una clave de API guardada solo en ese navegador; envía la pregunta y los datos de los proyectos a Anthropic. SDK oficial empaquetado en `vendor/anthropic-sdk-1.3.0.mjs` (se carga solo en modo IA). Para producción, la clave debe ir en un servidor intermedio, no en el navegador.
 
 ## Página de inicio

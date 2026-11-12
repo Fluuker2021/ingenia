@@ -10,13 +10,7 @@ import { datos, calcularTablero, tableros, tablerosPotencia, instrumentos, expan
 import { valoresDiseno } from "./modules/criterios.js";
 import { tablasIO } from "./docs.js";
 
-export const AVATAR = `<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="24" fill="#17191D"/>
-  <path d="M24 5.2c.5 2.9 1.2 3.6 4.1 4.1-2.9.5-3.6 1.2-4.1 4.1-.5-2.9-1.2-3.6-4.1-4.1 2.9-.5 3.6-1.2 4.1-4.1z" fill="#F5C518"/>
-  <rect x="9" y="21" width="5" height="11" rx="2.5" fill="#DCE1E6"/><rect x="34" y="21" width="5" height="11" rx="2.5" fill="#DCE1E6"/>
-  <rect x="12" y="15" width="24" height="23" rx="10" fill="#F5F6F8"/>
-  <rect x="15.5" y="20" width="17" height="10" rx="5" fill="#303640"/>
-  <rect x="19" y="23" width="3.2" height="4.4" rx="1.6" fill="#F5C518"/><rect x="25.8" y="23" width="3.2" height="4.4" rx="1.6" fill="#F5C518"/>
-  <path d="M20.5 33.5q3.5 2.2 7 0" stroke="#303640" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`;
+export const AVATAR = `<img class="cp-img" src="assets/copito.png" alt="" width="160" height="160">`;
 
 /* ---------------- utilidades ---------------- */
 const norm = s => String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");

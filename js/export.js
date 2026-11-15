@@ -12,7 +12,9 @@ const thin = { style:"thin", color:{argb:BORDE} };
 const bordes = { top:thin, left:thin, bottom:thin, right:thin };
 const font = (o={}) => Object.assign({ name:"Arial", size:9 }, o);
 
-export function nombreArchivo(doc, ext){ return ((doc.codigo||"documento")+"_Rev"+(doc.rev||"A")).replace(/[^\w\-.]+/g,"_")+"."+ext; }
+/* nombre de archivo legible y seguro: sin tildes (algunos navegadores descartan el nombre) ni caracteres prohibidos */
+export function nombreSeguro(txt){ return String(txt||"").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[\\/:*?"<>|&]+/g,"-").replace(/[^\x20-\x7E]+/g,"").replace(/\s+/g," ").trim(); }
+export function nombreArchivo(doc, ext){ return nombreSeguro((doc.titulo||"documento")+" - Rev "+(doc.rev||"A"))+"."+ext; }
 
 /* ---------------- EXCEL ESTÁNDAR ---------------- */
 export async function excelEstandar(ctx){
@@ -51,9 +53,8 @@ async function caratula(wb, ctx){
   put("B17", (ctx.doc.titulo||"").toUpperCase(), { font:{ bold:true, size:16 } }); ws.mergeCells("B17:L20");
   for(let r=17;r<=20;r++) for(let c=2;c<=12;c++) ws.getCell(r,c).fill = { type:"pattern", pattern:"solid", fgColor:{argb:AZUL_CLARO} };
   borderRange(ws, "B17", "L20");
-  put("B22", "N° DE DOCUMENTO", { font:{ bold:true, size:9 }, fill:GRIS }); ws.mergeCells("B22:D22");
-  put("E22", ctx.doc.codigo||"", { font:{ bold:true, size:12 } }); ws.mergeCells("E22:J22");
-  put("K22", "Rev. "+(ctx.doc.rev||"A"), { font:{ bold:true, size:12 } }); ws.mergeCells("K22:L22");
+  put("B22", "REVISIÓN", { font:{ bold:true, size:9 }, fill:GRIS }); ws.mergeCells("B22:D22");
+  put("E22", "Rev. "+(ctx.doc.rev||"A"), { font:{ bold:true, size:12 } }); ws.mergeCells("E22:L22");
   borderRange(ws, "B22", "L22");
 
   // tabla de revisiones
@@ -91,7 +92,7 @@ function hojaTabla(wb, ctx, nombre, tabla){
   put(2,half+1,"Fecha",{font:{bold:true},fill:GRIS}); put(2,half+2,ctx.doc.fecha||"",{}); if(half+2<last) ws.mergeCells(2,half+2,2,last);
   put(3,1,"Proyecto",{font:{bold:true},fill:GRIS}); put(3,2,ctx.proyecto.nombre||"",{}); ws.mergeCells(3,2,3,half);
   put(3,half+1,"Revisión",{font:{bold:true},fill:GRIS}); put(3,half+2,ctx.doc.rev||"A",{}); if(half+2<last) ws.mergeCells(3,half+2,3,last);
-  put(4,1,"Documento",{font:{bold:true},fill:GRIS}); put(4,2,ctx.doc.codigo||"",{}); ws.mergeCells(4,2,4,half);
+  put(4,1,"Documento",{font:{bold:true},fill:GRIS}); put(4,2,ctx.doc.titulo||"",{}); ws.mergeCells(4,2,4,half);
   put(4,half+1,"Referencia",{font:{bold:true},fill:GRIS}); put(4,half+2,tabla.referencia||ctx.doc.referencia||"—",{}); if(half+2<last) ws.mergeCells(4,half+2,4,last);
   // encabezados
   const hr = 6;
@@ -114,7 +115,7 @@ function hojaTabla(wb, ctx, nombre, tabla){
     cols.forEach((c,i)=>{ const v = t[c.key]; put(r, i+1, v===undefined?"":v, { font:{ bold:true, size:8.5 }, fill:GRIS, al:{ horizontal:(c.num||typeof v==="number")?"right":"left" } }); });
   });
   (tabla.notas||[]).forEach((n,ni)=>{ const r = hr+2+tabla.filas.length+(tabla.totales||[]).length+ni; const cell = ws.getCell(r,1); cell.value = n; cell.font = font({ size:8, italic:true }); ws.mergeCells(r,1,r,last); });
-  ws.headerFooter.oddFooter = "&L"+(ctx.org.nombre||"")+"&C"+(ctx.doc.codigo||"")+" Rev. "+(ctx.doc.rev||"")+"&RPág. &P de &N";
+  ws.headerFooter.oddFooter = "&L"+(ctx.org.nombre||"")+"&C"+(ctx.doc.titulo||"")+" Rev. "+(ctx.doc.rev||"")+"&RPág. &P de &N";
 }
 
 /* ---------------- EXCEL CON PLANTILLA DEL CLIENTE ----------------

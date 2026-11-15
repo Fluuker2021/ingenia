@@ -2,7 +2,7 @@
 import { $, $$, esc, html, ICON, toast, dropzone } from "./ui.js";
 import * as S from "./store.js";
 import { save } from "./store.js";
-import { PARAMETROS_DISENO, valoresDiseno } from "./modules/criterios.js";
+import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { renderEditor } from "./modules/tablas.js";
 import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl, instrumentos, sistemaTag, uidc, APPLICATIONS,
   TIPOS_TABLERO, nuevoTablero, tableros, tablerosPotencia, tablerosControl, tableroPorId, esControl, esFuerza, tf, tc, desdeTxt, aplicarTipicos, REGIMENES,
@@ -13,13 +13,13 @@ import { elementosArreglo, sugerirTableros } from "./cad/planos2.js";
 import { parseDXF, drawPreview } from "./dxf.js";
 
 export const TITULOS = {
-  sistema:"Sistema", parametros:"Sistema eléctrico y condiciones ambientales", cargas:"Cargas por tablero", cargasControl:"Cargas de 120 VAC de los tableros de control",
+  criterios:"Criterios de diseño", cargas:"Cargas por tablero", cargasControl:"Cargas de 120 Vac de los tableros de control",
   tableros:"Tableros del proyecto", instrumentos:"Listado de instrumentos", io:"Lista de entradas y salidas", tablerocontrol:"Configuración de los tableros de control", circuitos:"Circuitos de los tableros de control",
   memoria:"Criterios de la memoria de cálculo", hd:"Datos por instrumento", hdEq:"Datos por tablero", notas:"Notas del documento", cables:"Cables por carga",
   equiposCfg:"Alcance del listado", proceso:"Proceso y recomendación de instrumentos", filosofia:"Filosofía de control", arreglo:"Planta y ubicación de equipos",
 };
 export const AYUDA = {
-  sistema:"Aparece en títulos, cajetín y columna SISTEMA.",
+  criterios:"Valores típicos que usan los cálculos y las memorias. Cámbialos solo si el cliente exige otros.",
   cargas:"Una fila por carga. Los valores en cursiva son típicos: edítalos solo si tienes el dato de placa.",
   instrumentos:"Alimenta la lista I/O, los lazos, la arquitectura y las hojas de datos.",
   io:"Se genera desde instrumentos y cargas. Slot, canal y bornes se asignan solos.",
@@ -49,6 +49,30 @@ function bindObj(el, obj, cambio, num=[]){
 }
 function selectorTablero(lista, actual, attr="data-tsel"){
   return `<div class="row mb-2"><label class="muted">Tablero</label><select ${attr}>${lista.map(t=>`<option value="${t.id}" ${t.id===actual?"selected":""}>${esc(t.tag)} — ${esc(t.nombre)}</option>`).join("")}</select></div>`;
+}
+
+/* campos de diseño (asistente de proyecto y criterios): los numéricos solo aceptan números */
+export function campoDiseno(c, v){
+  const num = (key, val, c)=>`<input type="text" inputmode="decimal" autocomplete="off" data-dis="${key}" data-num="${c.neg?"neg":"pos"}" value="${esc(val??"")}" placeholder="${esc(c.ph||"")}">`;
+  let ctrl;
+  if(c.tipo==="select") ctrl = `<select data-dis="${c.key}">${[...new Set([...c.opciones, v[c.key]].filter(x=>x!=null && x!==""))].map(o=>`<option ${String(v[c.key])===String(o)?"selected":""}>${esc(o)}</option>`).join("")}</select>`;
+  else if(c.tipo==="numero") ctrl = num(c.key, v[c.key], c);
+  else if(c.tipo==="tension") ctrl = `<div class="row nowrap" style="gap:6px">${num(c.key, v[c.key], c)}<select data-dis="${c.unidad}" style="width:86px;flex:none" aria-label="Tipo de tensión">${c.unidades.map(u=>`<option ${v[c.unidad]===u?"selected":""}>${u}</option>`).join("")}</select></div>`;
+  else ctrl = `<input type="text" data-dis="${c.key}" value="${esc(v[c.key]??"")}" placeholder="${esc(c.ph||"")}">`;
+  return campo(c.label, ctrl, c.hint ? esc(c.hint) : "");
+}
+/* enlaza los campos de diseño de un contenedor: limpia lo que no sea número y avisa cada cambio */
+export function enlazarDiseno(root, onCambio){
+  $$("[data-dis]", root).forEach(i=>{
+    if(i.dataset.num) i.addEventListener("input", ()=>{
+      const neg = i.dataset.num==="neg";
+      let x = i.value.replace(",", ".").replace(neg ? /[^\d.\-]/g : /[^\d.]/g, "");
+      if(neg) x = (x.startsWith("-") ? "-" : "") + x.replace(/-/g, "");
+      const k = x.indexOf("."); if(k>=0) x = x.slice(0, k+1) + x.slice(k+1).replace(/\./g, "");
+      if(x!==i.value) i.value = x;
+    });
+    i.addEventListener("change", ()=>onCambio(i.dataset.dis, i.value));
+  });
 }
 
 /* tabla editable genérica */
@@ -84,24 +108,11 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
 
 /* ---------------- editores ---------------- */
 const ED = {
-  sistema(el, p, cambio){
-    const d = datos(p);
-    el.innerHTML = `<div class="grid-3">
-      ${campo("Nombre del sistema", `<input type="text" data-s="nombre" value="${esc(d.sistema.nombre)}" placeholder="Nombre del sistema o equipo">`)}
-      ${campo("TAG del sistema", `<input type="text" class="mono" data-s="tag" value="${esc(d.sistema.tag)}" placeholder="TAG">`)}
-      ${campo("P&ID de referencia", `<input type="text" data-pid value="${esc(p.pidRef||"")}" placeholder="Código del P&amp;ID del cliente">`)}
-    </div><label class="checkbox"><input type="checkbox" data-pref ${d.sistema.prefijo!==false?"checked":""}> Anteponer el TAG del sistema a instrumentos y señales</label>`;
-    $$("[data-s]", el).forEach(i=>i.onchange = ()=>{ d.sistema[i.dataset.s] = i.value.trim(); cambio(); });
-    $("[data-pref]", el).onchange = e=>{ d.sistema.prefijo = e.target.checked; cambio(); };
-    $("[data-pid]", el).onchange = e=>{ p.pidRef = e.target.value.trim(); cambio(); };
-  },
-  parametros(el, p, cambio){
+  criterios(el, p, cambio){
     p.diseno = p.diseno || {}; const v = valoresDiseno(p);
-    const grupo = g=>`<div class="grid-3">${g.campos.map(c=>campo(c.label, c.tipo==="select" ? `<select data-dis="${c.key}">${[...new Set([...c.opciones, v[c.key]].filter(x=>x!=null && x!==""))].map(o=>`<option ${String(v[c.key])===String(o)?"selected":""}>${esc(o)}</option>`).join("")}</select>` : `<input type="${c.tipo}" data-dis="${c.key}" value="${esc(v[c.key])}">`)).join("")}</div>`;
-    // los criterios de dimensionamiento ya traen valores típicos: se muestran plegados
-    el.innerHTML = PARAMETROS_DISENO.map((g,i)=> i<2 ? `<h3 class="ed-sub">${esc(g.grupo)}</h3>${grupo(g)}` : `<details class="more mb-2"><summary>${esc(g.grupo)} <span class="muted" style="font-weight:400">(valores típicos)</span></summary><div class="mt-1">${grupo(g)}</div></details>`).join("") +
-      `<p class="muted" style="font-size:12.5px">Grado de protección de gabinetes: <strong data-ip>${esc(ipRecomendado(v))}</strong></p>`;
-    $$("[data-dis]", el).forEach(i=>i.onchange = ()=>{ p.diseno[i.dataset.dis] = i.value; $("[data-ip]", el).textContent = ipRecomendado(valoresDiseno(p)); cambio(); });
+    const g = PARAMETROS_DISENO.find(x=>/dimensionamiento/i.test(x.grupo));
+    el.innerHTML = `<div class="grid-3">${g.campos.map(c=>campoDiseno(c, v)).join("")}</div>`;
+    enlazarDiseno(el, (k, val)=>{ p.diseno[k] = val; cambio(); });
   },
   tableros(el, p, cambio){
     const d = datos(p);
@@ -134,7 +145,7 @@ const ED = {
     let cur = el.dataset.t && ctl.find(t=>t.id===el.dataset.t) ? el.dataset.t : ctl[0].id;
     const t = ctl.find(x=>x.id===cur);
     el.innerHTML = (ctl.length>1 ? `<div class="row between">${selectorTablero(ctl, cur)}<button class="btn-sm mb-2" data-todos title="Copia controlador, criterios I/O y opciones (no copia TAG ni alimentación)">Aplicar a los ${ctl.length} tableros de control</button></div>` : "") + `<div class="grid-3">
-      ${campo("Alimentación de 120 VAC desde", inp("desde120", t.desde120||"", "text", 'placeholder="Vacío = tablero de Datos generales"'))}
+      ${campo("Alimentación de 120 Vac desde", inp("desde120", t.desde120||"", "text", 'placeholder="Vacío = tablero que lo alimenta"'))}
       ${campo("Controlador", inp("plc", t.plc))}${campo("Modelo de controlador (opcional)", inp("modeloPlc", t.modeloPlc), "Según el fabricante")}${campo("Red externa", inp("redExterna", t.redExterna))}
     </div><div class="row" style="gap:22px;margin-top:6px">
       <label class="checkbox"><input type="checkbox" data-k="switch" ${t.switch?"checked":""}> Switch Ethernet</label>
@@ -144,7 +155,7 @@ const ED = {
     </div>
     <h3 class="ed-sub mt-2">Criterios del listado I/O</h3>
     <div class="grid-3">
-      ${campo("Tensión de entradas digitales", sel("ioDiscreto", t.ioDiscreto, ["120 VAC","24 VDC"]))}
+      ${campo("Tensión de entradas digitales", sel("ioDiscreto", t.ioDiscreto, ["120 Vac","24 Vdc"]))}
       ${campo("Mando de variadores", sel("vfdMando", t.vfdMando, [["cableado","Cableado (listo, marcha, falla, arranque, reset y referencia 4-20 mA)"],["red","Por red (Ethernet/IP)"]]))}
       ${campo("TAG del controlador de limpieza", inp("tagLimpieza", t.tagLimpieza))}
       ${campo("Primer slot de E/S", inp("primerSlot", t.primerSlot, "number"), "Slot 0 = CPU")}
@@ -171,7 +182,7 @@ const ED = {
     const def = tf(p);
     const opsT = pot.map(t=>[t.id, t.tag]);
     d.cargas.forEach(l=>{ if(!pot.some(t=>t.id===l.tablero)) l.tablero = def.id; });
-    const nota = `<div class="ws-note mb-2">Sistema: <strong class="mono">${esc(v.tension)} V · 3F · ${esc(v.frecuencia)} Hz</strong> · control <strong class="mono">${esc(v.tensionControl)} VAC</strong> <a href="#/proyecto/${p.id}/diseno" style="font-size:12px">cambiar</a></div>`;
+    const nota = `<div class="ws-note mb-2">Sistema: <strong class="mono">${esc(v.tension)} Vac · 3F · ${esc(v.frecuencia)} Hz</strong> · control <strong class="mono">${esc(tensionControlTxt(v))}</strong> <a href="#/proyecto/${p.id}/editar/1" style="font-size:12px">cambiar</a></div>`;
     const wrap = document.createElement("div"); el.innerHTML = nota; el.appendChild(wrap);
     wrap._pie = pie => {
       pie.innerHTML = `<div class="stat-row mt-2">${pot.map(t=>{ const c = calcularTablero(p, t); if(!c.circuits.length) return ""; return `<div class="stat"><div class="k">${esc(t.tag)} — PI / MD / I<sub>MD</sub></div><div class="v" style="font-size:15px">${r2(c.installedKVA,1)} kVA · ${r2(c.totalKVA,1)} kVA · ${r2(c.demandCurrent,1)} A</div></div>`; }).join("")}</div>`;
@@ -238,11 +249,11 @@ const ED = {
     $("[data-regen]", el).onclick = ()=>{ if(auto) d.circuitosCtl[t.id] = derivarCircuitosControl(p, t); else delete d.circuitosCtl[t.id]; cambio(); ED.circuitos(el, p, cambio, docId); };
     const box = $("[data-t]", el);
     if(auto){
-      box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Barra</th><th>Circuito</th><th>Descripción</th><th class="num">Protección (A)</th><th>Cable</th><th class="num">Potencia (W)</th></tr></thead><tbody>${filas.map(c=>`<tr><td>${esc(c.barra)}</td><td class="mono">${esc(c.circuito)}</td><td>${esc(c.descripcion)}${c.diferencial?' <span class="chip">ID 30 mA</span>':""}</td><td class="num">${c.proteccion}</td><td class="mono">${esc(c.cable)}</td><td class="num">${c.potencia??""}</td></tr>`).join("")}</tbody></table></div><p class="muted mt-1" style="font-size:12px">Potencias de 120 VAC estimadas (se usan en el listado de cargas estabilizadas); edítalas con los datos del fabricante.</p>`;
+      box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Barra</th><th>Circuito</th><th>Descripción</th><th class="num">Protección (A)</th><th>Cable</th><th class="num">Potencia (W)</th></tr></thead><tbody>${filas.map(c=>`<tr><td>${esc(c.barra)}</td><td class="mono">${esc(c.circuito)}</td><td>${esc(c.descripcion)}${c.diferencial?' <span class="chip">ID 30 mA</span>':""}</td><td class="num">${c.proteccion}</td><td class="mono">${esc(c.cable)}</td><td class="num">${c.potencia??""}</td></tr>`).join("")}</tbody></table></div><p class="muted mt-1" style="font-size:12px">Potencias de 120 Vac estimadas (se usan en el listado de cargas estabilizadas); edítalas con los datos del fabricante.</p>`;
       return;
     }
-    tablaEditable(box, { filas, onChange: cambio, nuevo: ()=>({ barra:"120 VAC", circuito:"C"+(filas.length+1), descripcion:"", proteccion:6, cable:"2C#14AWG+14AWG(T)", potencia:0 }),
-      columnas:[ { k:"barra", t:"Barra", op:["24 VDC","120 VAC","220 VAC"] }, { k:"circuito", t:"Circuito", w:60 }, { k:"descripcion", t:"Descripción", w:240 }, { k:"proteccion", t:"Protección (A)", n:true, w:70 }, { k:"diferencial", t:"ID 30 mA", chk:true }, { k:"cable", t:"Cable", w:160 }, { k:"potencia", t:"Potencia (W)", n:true, w:70 } ] });
+    tablaEditable(box, { filas, onChange: cambio, nuevo: ()=>({ barra:"120 Vac", circuito:"C"+(filas.length+1), descripcion:"", proteccion:6, cable:"2C#14AWG+14AWG(T)", potencia:0 }),
+      columnas:[ { k:"barra", t:"Barra", op:["24 Vdc","120 Vac","220 Vac"] }, { k:"circuito", t:"Circuito", w:60 }, { k:"descripcion", t:"Descripción", w:240 }, { k:"proteccion", t:"Protección (A)", n:true, w:70 }, { k:"diferencial", t:"ID 30 mA", chk:true }, { k:"cable", t:"Cable", w:160 }, { k:"potencia", t:"Potencia (W)", n:true, w:70 } ] });
   },
   instrumentos(el, p, cambio){
     const d = datos(p);
@@ -305,12 +316,12 @@ const ED = {
     const render = async ()=>{
       const ref = pr.referencia ? await S.leerArchivo(pr.referencia) : null;
       el.innerHTML = `${campo("Descripción general del proceso", `<textarea data-k="descripcion" rows="5" placeholder="Describe el proceso: equipos principales, flujo del material, variables a medir y controlar.">${esc(pr.descripcion)}</textarea>`, "Describe equipos, flujo y servicios (aire comprimido, agua, etc.). Se usa para recomendar instrumentos y en la filosofía de control.")}
-        <div class="field"><label>Plano del proceso de referencia (DXF, PDF o imagen)</label>${ref ? `<div class="row"><span>${ICON.file} <strong>${esc(ref.nombre)}</strong> <span class="muted">${(ref.size/1024).toFixed(0)} kB</span></span><button class="btn-sm btn-danger" data-delref>${ICON.trash}</button></div>` : `<div class="dropzone" data-ref><strong>Arrastra el plano de referencia</strong> o haz clic <span class="muted">(.dxf, .pdf, .png, .jpg — los DWG deben guardarse como DXF)</span></div>`}</div>
+        <div class="field"><label>P&amp;ID de referencia (opcional)</label>${ref ? `<div class="row"><span>${ICON.file} <strong>${esc(ref.nombre)}</strong> <span class="muted">${(ref.size/1024).toFixed(0)} kB</span></span><button class="btn-sm btn-danger" data-delref>${ICON.trash}</button></div>` : `<div class="dropzone" data-ref><strong>Arrastra el P&amp;ID del proceso</strong> o haz clic <span class="muted">(PDF; también DXF o imagen)</span></div>`}<span class="hint">Si no tienes un P&amp;ID, se arma con la descripción del proceso.</span></div>
         <h3 class="ed-sub mt-2">Equipos del proceso</h3><div data-eq></div>
         <div class="row mt-2"><button class="btn-primary" data-rec>${ICON.check} Recomendar instrumentos</button><span class="muted" style="font-size:12.5px">Según equipos y descripción. Aprueba los que correspondan.</span></div>
         <div data-recs class="mt-2"></div>`;
       $("[data-k=descripcion]", el).onchange = e=>{ pr.descripcion = e.target.value; cambio(); };
-      const dz = $("[data-ref]", el); if(dz) dropzone(dz, ".dxf,.pdf,.png,.jpg,.jpeg", async file=>{ pr.referencia = await S.guardarArchivo({ tipo:"pid_ref", proyectoId:p.id, nombre:file.name, size:file.size }, file); cambio(); render(); toast("Plano de referencia guardado"); });
+      const dz = $("[data-ref]", el); if(dz) dropzone(dz, ".dxf,.pdf,.png,.jpg,.jpeg", async file=>{ pr.referencia = await S.guardarArchivo({ tipo:"pid_ref", proyectoId:p.id, nombre:file.name, size:file.size }, file); cambio(); render(); toast("P&ID de referencia guardado"); });
       const dl = $("[data-delref]", el); if(dl) dl.onclick = async ()=>{ await S.borrarArchivo(pr.referencia); pr.referencia = null; cambio(); render(); };
       tablaEditable($("[data-eq]", el), { filas: pr.equipos, onChange: cambio, vacio:"Sin equipos. Agrégalos o impórtalos desde el listado de cargas.",
         nuevo: ()=>({ tag:"", tipo:"otro", descripcion:"" }),

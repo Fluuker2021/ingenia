@@ -7,7 +7,7 @@ import * as S from "./store.js";
 import { esc } from "./ui.js";
 import { entregable, ETAPAS, DISCIPLINAS } from "./catalog.js";
 import { datos, calcularTablero, tableros, tablerosPotencia, instrumentos, expandirTag, cablesFuerza, ipRecomendado, r2 } from "./datos.js";
-import { valoresDiseno } from "./modules/criterios.js";
+import { valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { tablasIO } from "./docs.js";
 import { esOrden, interpretar, describir, aplicar, deshacer, HERRAMIENTA } from "./copito-editar.js";
 
@@ -29,7 +29,6 @@ function proyectoDe(q, ruta){
     if(nom && t.includes(nom)) s += 10;
     const pal = nom.split(/[^a-z0-9]+/).filter(w=>w.length>3); const k = pal.filter(w=>t.includes(w)).length;
     if(pal.length && k>=Math.min(2, pal.length)) s += k;
-    if(p.codigo && p.codigo.length>=3 && t.includes(norm(p.codigo))) s += 6;
     if(p.cliente && t.includes(norm(p.cliente))) s += 3;
     if(s>pts){ pts = s; mejor = p; }
   }
@@ -61,7 +60,7 @@ function rResumen(p){
   const d = datos(p), v = valoresDiseno(p), cs = calcs(p);
   const md = cs.reduce((a,x)=>a+(x.c.totalKVA||0), 0);
   return `<b>${esc(p.nombre)}</b><br>${esc(p.cliente||"Sin cliente")}${p.unidad?" · "+esc(p.unidad):""} · ${esc(etapa(p.etapa))}<br>
-    Sistema: ${esc(d.sistema.nombre||"—")}${d.sistema.tag?` (${esc(d.sistema.tag)})`:""} · ${esc(v.tension)} V, ${esc(v.frecuencia)} Hz<br>
+    Sistema a implementar: ${esc(d.sistema.nombre||"—")} · ${esc(v.tension)} Vac, ${esc(v.frecuencia)} Hz<br>
     ${tableros(p).length} tablero(s) · ${d.cargas.length} carga(s) · ${instrumentos(p).length} instrumento(s) · ${p.entregables.length} entregable(s)${md?` · máxima demanda total ${n1(md)} kVA`:""}`;
 }
 function rDemanda(p){
@@ -99,12 +98,12 @@ function rDocumentos(p, pendientes){
   let ids = p.entregables.slice();
   if(pendientes) ids = ids.filter(id=>((p.documentos||{})[id]||{}).estado!=="Emitido");
   if(!ids.length) return pendientes ? `No hay documentos pendientes: todos están emitidos.` : `No hay entregables seleccionados.`;
-  return `${pendientes ? `<b>${ids.length}</b> documento(s) sin emitir` : `<b>${ids.length}</b> documento(s)`} en ${esc(p.nombre)}:` + tabla(["Código","Documento","Rev.","Estado"], ids.map(id=>{ const d = (p.documentos||{})[id]||{}, e = entregable(id)||{}, rv = (d.revisiones||[]).slice(-1)[0]||{}; return [`<span class="cp-mono">${esc(d.codigo||"")}</span>`, `<a href="#/proyecto/${p.id}/doc/${id}">${esc(e.nombre||id)}</a>`, esc(rv.rev||d.rev||"A"), esc(d.estado||"")]; })) + ir(`#/proyecto/${p.id}/documentos`, "Ir a documentos");
+  return `${pendientes ? `<b>${ids.length}</b> documento(s) sin emitir` : `<b>${ids.length}</b> documento(s)`} en ${esc(p.nombre)}:` + tabla(["Documento","Rev.","Estado"], ids.map(id=>{ const d = (p.documentos||{})[id]||{}, e = entregable(id)||{}, rv = (d.revisiones||[]).slice(-1)[0]||{}; return [`<a href="#/proyecto/${p.id}/doc/${id}">${esc(e.nombre||id)}</a>`, esc(rv.rev||d.rev||"A"), esc(d.estado||"")]; })) + ir(`#/proyecto/${p.id}/documentos`, "Ir a documentos");
 }
 function rSitio(p){
   const v = valoresDiseno(p);
-  const f = [["Tensión de fuerza", `${v.tension} V, ${v.frecuencia} Hz`],["Tensión de control", `${v.tensionControl} VAC`],["Instrumentación", `${v.tensionInstr} VDC`],["Cortocircuito", `${v.icc} kA`],["Puesta a tierra", v.puestaTierra],["Altitud", `${v.altitud} m s.n.m.`],["Temperatura", `${v.tempMin} a ${v.tempMax} °C (diseño ${v.tempDiseno} °C)`],["Instalación", v.ambiente],["Ambiente", v.contaminacion],["Área clasificada", v.areaClasificada],["Grado de protección", ipRecomendado(v)],["Norma", v.norma]];
-  return `Datos de diseño de <b>${esc(p.nombre)}</b>:` + tabla(["Parámetro","Valor"], f.map(([a,b])=>[esc(a), esc(b||"—")])) + ir(`#/proyecto/${p.id}/diseno`, "Editar datos generales");
+  const f = [["Tensión de fuerza", `${v.tension} Vac, ${v.frecuencia} Hz`],["Tensión de control", tensionControlTxt(v)],["Instrumentación", `${v.tensionInstr} Vdc`],["Cortocircuito", `${v.icc} kA`],["Altitud", `${v.altitud} m s.n.m.`],["Temperatura", `${v.tempMin} a ${v.tempMax} °C (la máxima es la de diseño)`],["Instalación", v.ambiente],["Ambiente", v.contaminacion],["Área clasificada", v.areaClasificada],["Grado de protección", ipRecomendado(v)],["Norma", v.norma]];
+  return `Datos de diseño de <b>${esc(p.nombre)}</b>:` + tabla(["Parámetro","Valor"], f.map(([a,b])=>[esc(a), esc(b||"—")])) + ir(`#/proyecto/${p.id}/editar/1`, "Editar sistema eléctrico y sitio");
 }
 function rTag(p, e, q){
   const d = datos(p);
@@ -177,14 +176,14 @@ function contexto(ruta){
     let io = []; try{ io = tablasIO(p); }catch(e){}
     let cb = []; try{ cb = cablesFuerza(p).map(f=>({ tag:f.tag, desde:f.desde, hasta:f.hasta, seccion_mm2:f.seccion, awg:f.awg, longitud_m:f.longitud, caida_pct:+(+f.dv||0).toFixed(2) })); }catch(e){}
     return {
-      proyecto: p.nombre, cliente: p.cliente, unidad: p.unidad, etapa: etapa(p.etapa), codigo: p.codigo, area: p.area, abierto_en_pantalla: !!(ruta && ruta.id===p.id), id: p.id,
+      proyecto: p.nombre, cliente: p.cliente, unidad: p.unidad, etapa: etapa(p.etapa), abierto_en_pantalla: !!(ruta && ruta.id===p.id), id: p.id,
       sistema: d.sistema, diseno: v,
       tableros: tableros(p).map(t=>{ const c = t.tipo!=="control" ? calcularTablero(p, t) : null; return { tag:t.tag, nombre:t.nombre, tipo:t.tipo, potencia_instalada_kVA: c ? r2(c.installedKVA,2) : null, maxima_demanda_kVA: c ? r2(c.totalKVA,2) : null, corriente_md_A: c ? r2(c.demandCurrent,1) : null, itm_general_A: c ? c.mainBreaker : null }; }),
       cargas: d.cargas.map(l=>{ const ci = circuitoDe(p, l), itm = itmDe(ci); return { tag:l.tag, descripcion:l.desc, tipo:l.kind, potencia:l.power, unidad:l.powerUnit, arranque:l.starter, tablero:(tableros(p).find(t=>t.id===l.tablero)||{}).tag, calculo: ci && ci.meta, proteccion: itm && `${itm.devtag} ${itm.val}` }; }),
       cables: cb, instrumentos: instrumentos(p),
       io_resumen: io.resumen || [], io: (io.io||[]).slice(0, 400).map(f=>({ tag:f.tag, tipo:f.tipo, senal:f.senal, descripcion:f.descripcion, tablero:f.tablero, slot:f.slot, ch:f.ch, bornes:f.terminales })),
       proceso: { descripcion: d.proceso.descripcion, equipos: d.proceso.equipos },
-      documentos: p.entregables.map(id=>{ const doc = (p.documentos||{})[id]||{}; return { documento:(entregable(id)||{}).nombre, codigo:doc.codigo, estado:doc.estado, revisiones:doc.revisiones }; }),
+      documentos: p.entregables.map(id=>{ const doc = (p.documentos||{})[id]||{}; return { documento:(entregable(id)||{}).nombre, estado:doc.estado, revisiones:doc.revisiones }; }),
     };
   });
   return JSON.stringify(out);

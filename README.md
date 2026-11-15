@@ -5,6 +5,17 @@ Plataforma web para elaborar ingenierías de **Electricidad e Instrumentación &
 - Sitio estático (GitHub Pages): `index.html` (presentación) · `app.html` (plataforma).
 - Datos en el navegador (localStorage + IndexedDB para logos y plantillas). Sin servidor.
 
+## Flujo de un proyecto
+1. **Nuevo proyecto** (asistente de 4 pasos):
+   - *Proyecto*: nombre, cliente final, unidad minera / planta, sistema a implementar, etapa, disciplinas, logo del cliente y P&ID de referencia (PDF, opcional).
+   - *Sitio y sistema eléctrico*: tensión de fuerza (Vac) y de control (número + Vac / Vdc) se escriben y solo aceptan números; frecuencia 50 / 60 Hz; tensión de instrumentación (Vdc); cortocircuito y condiciones del sitio. La temperatura máxima es la temperatura de diseño.
+   - *Tableros*: tipo, cantidad, TAG y alimentación.
+   - *Documentos*: se marcan los documentos que se elaborarán.
+2. Menú del proyecto: **Resumen · Datos generales · Documentos · Formatos del cliente**. Datos generales guarda los tableros en detalle y los criterios de diseño; lo ingresado al crear el proyecto se cambia con *Editar*.
+3. Cada documento se trabaja en su propio entorno. Los documentos **no llevan codificación**: se identifican por su nombre y se descargan como «Proyecto - Documento - Rev X».
+- Las unidades de tensión se escriben siempre como **Vac / Vdc**; los datos guardados con «VAC / VDC» se convierten al abrir la plataforma.
+- La vista previa de los documentos usa los colores de INGENIA (grafito y amarillo).
+
 ## Identidad visual
 - Paleta: grafito `#17191D`, gris acero `#303640`, amarillo eléctrico `#F5C518` (acento), gris claro `#DCE1E6`, blanco.
 - Tipografía (alojada en `assets/fonts`, licencia OFL): Montserrat Bold/SemiBold (títulos), Inter Regular/Medium (texto, botones y menús), Roboto Medium (datos técnicos: códigos, TAG, valores).

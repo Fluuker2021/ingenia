@@ -5,10 +5,10 @@ import { $, $$, esc, html, ICON, toast, modal, confirmar, dropzone, leerComoArra
 import * as X from "./export.js";
 import { parseDXF, drawPreview, parseCTB, boundsOf } from "./dxf.js";
 import { ESQUEMAS, renderEditor, tablasParaExportar } from "./modules/tablas.js";
-import { PARAMETROS_DISENO, valoresDiseno, seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
+import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { screenDocumento, descargarDoc, nextRev } from "./workspace.js";
 import { generable, defDoc, DOCS, docInfo } from "./docs.js";
-import { renderEditores } from "./editores.js";
+import { renderEditores, campoDiseno, enlazarDiseno } from "./editores.js";
 import { datos, nuevoTablero, TIPOS_TABLERO, ipRecomendado, tableros, instrumentos } from "./datos.js";
 import { VERSION } from "./version.js";
 import { comprobarVersion } from "./actualizar.js";
@@ -22,19 +22,25 @@ const disciplinaNombre = id => (DISCIPLINAS[id]||{}).nombre || id;
 /* ================= enrutador ================= */
 const PTABS = [
   ["resumen","Resumen",0,'<svg class="icon" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/></svg>'],
-  ["entregables","Entregables",1],
-  ["diseno","Datos generales",2],
-  ["documentos","Documentos",3],
+  ["diseno","Datos generales",1],
+  ["documentos","Documentos",2],
   ["plantillas","Formatos del cliente",0,'<svg class="icon" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v4h4"/></svg>'],
 ];
 function route(){
   const h = location.hash.replace(/^#\/?/, "");
-  const [seg, id, tab, docId, sub] = h.split("/");
+  let [seg, id, tab, docId, sub] = h.split("/");
+  // «editar/N» abre el asistente del proyecto en el paso N; «entregables» (enlace antiguo) abre la selección de documentos
+  let editar = null;
+  if(seg==="proyecto" && id && (tab==="editar" || tab==="entregables")){
+    editar = tab==="editar" ? Math.max(0, Math.min(3, parseInt(docId)||0)) : 3;
+    tab = tab==="editar" ? "resumen" : "documentos";
+    history.replaceState(null, "", `#/proyecto/${id}/${tab}`);
+  }
   menuLateral(seg||"proyectos", id, tab);
   window.scrollTo(0,0);
   if(!seg || seg==="proyectos") return screenProyectos();
   if(seg==="proyecto" && id && tab==="doc" && docId){ const p = S.proyecto(id); if(!p){ location.hash="#/proyectos"; return; } return screenDocumento(main, state, p, docId, sub||"datos", topbar); }
-  if(seg==="proyecto" && id) return screenProyecto(id, tab||"resumen");
+  if(seg==="proyecto" && id){ screenProyecto(id, tab||"resumen"); const p = editar!=null && S.proyecto(id); if(p) modalProyecto(p, editar); return; }
   if(seg==="catalogo") return screenCatalogo(id);
   if(seg==="organizacion") return screenOrganizacion();
   if(seg==="respaldo") return screenRespaldo();
@@ -115,96 +121,102 @@ function screenProyectos(){
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos"}], title:"Proyectos",
     actions: ps.length ? `<button class="btn-accent" id="nuevo">${ICON.plus} Nuevo proyecto</button>` : "" }) +
     (ps.length ? `<div class="card-grid">${ps.map(p=>{
-      const n = p.entregables.length; const listos = p.entregables.filter(id=>{ const e=entregable(id); return e && e.estado!=="planificado"; }).length;
+      const n = p.entregables.length;
       const emit = p.entregables.filter(id=>((p.documentos||{})[id]||{}).estado==="Emitido").length;
       return `<div class="card clickable" data-open="${p.id}"><div class="card-body">
-        <div class="row between"><span class="chip">${esc(p.codigo||"Sin código")}</span><span class="badge badge-neutral">${esc(etapaNombre(p.etapa))}</span></div>
+        <div class="row between"><span class="muted" style="font-size:12px">${esc(p.disciplinas.map(d=>(DISCIPLINAS[d]||{}).corto||d).join(" · "))}</span><span class="badge badge-neutral">${esc(etapaNombre(p.etapa))}</span></div>
         <h3 style="margin:12px 0 4px">${esc(p.nombre)}</h3>
         <div class="muted" style="font-size:12.5px">${esc(p.cliente||"—")}${p.unidad?" · "+esc(p.unidad):""}</div>
-        <div class="row between mt-2" style="font-size:12px"><span class="muted">${n} entregables · ${listos} generables</span><span class="mono">${emit}/${n} emitidos</span></div>
+        <div class="row between mt-2" style="font-size:12px"><span class="muted">${n} documentos</span><span class="mono">${emit}/${n} emitidos</span></div>
         <div class="progress mt-1"><span style="width:${n?Math.round(100*emit/n):0}%"></span></div>
       </div></div>`; }).join("")}</div>`
-    : `<div class="empty"><p><strong>Aún no hay proyectos.</strong></p><p>Empieza con cliente, tensión y tableros; el resto se completa en cada documento.</p><button class="btn-accent" id="nuevo2">${ICON.plus} Nuevo proyecto</button></div>`);
+    : `<div class="empty"><p><strong>Aún no hay proyectos.</strong></p><p>Ingresa los datos del proyecto, el sistema eléctrico, los tableros y los documentos a elaborar; luego trabajas cada documento.</p><button class="btn-accent" id="nuevo2">${ICON.plus} Nuevo proyecto</button></div>`);
   $$("#nuevo,#nuevo2").forEach(b=>b.onclick = ()=>modalProyecto());
   $$("[data-open]").forEach(c=>c.onclick = ()=>location.hash = "#/proyecto/"+c.dataset.open);
 }
 
-/* entregables generables por defecto para las disciplinas y la etapa del proyecto */
+/* documentos propuestos por defecto para las disciplinas y la etapa del proyecto */
 const entregablesPorDefecto = (disc, etapa) => CATALOGO.filter(e=>disc.includes(e.disciplina) && e.etapas.includes(etapa) && e.estado!=="planificado").map(e=>e.id);
-const PATRON_DEF = "{PROY}-{AREA}-{DISC}-{TIPO}-{SEQ}";
+const ordenCatalogo = ids => CATALOGO.filter(e=>ids.includes(e.id)).map(e=>e.id);
 
-function modalProyecto(p){
+/* asistente del proyecto: 1 proyecto · 2 sitio y sistema eléctrico · 3 tableros · 4 documentos a elaborar.
+   pasoIni abre directamente un paso (p. ej. 3 para agregar o quitar documentos). */
+function modalProyecto(p, pasoIni=0){
   const isNew = !p;
-  p = p || { nombre:"", cliente:"", unidad:"", codigo:"", area:"", etapa:"detalle", descripcion:"", codPatron: state.org.codPatron || PATRON_DEF, seqDigitos:3, disciplinas:["ELE","INS"] };
+  p = p || { nombre:"", cliente:"", unidad:"", etapa:"detalle", disciplinas:["ELE","INS"] };
   let dis = Object.assign({}, valoresDiseno(p));
-  const sis = isNew ? { nombre:"", tag:"" } : Object.assign({}, datos(p).sistema);
+  const sis = isNew ? { nombre:"" } : Object.assign({}, datos(p).sistema);
   // tableros: copia editable (al crear: 1 de fuerza + 1 de control)
   let tbs = isNew ? [nuevoTablero("fuerza",1), nuevoTablero("control",1)] : datos(p).tableros.map(t=>Object.assign({}, t));
-  let logoFile = null, paso = 0, base = null;
+  let logoFile = null, pidFile = null, pidQuitar = false, paso = pasoIni, base = null;
+  // documentos: null = propuesta automática según disciplinas y etapa (hasta que el usuario la cambie)
+  let sel = isNew ? null : new Set(p.entregables);
   const otros = isNew ? state.proyectos : [];
-  const pasos = ["Proyecto","Sitio y sistema eléctrico","Tableros"];
+  const pasos = ["Proyecto","Sitio y sistema eléctrico","Tableros","Documentos"];
+  const ULT = pasos.length-1;
   const grupos = PARAMETROS_DISENO.slice(0,2);
-  const campoDis = c => `<div class="field"><label>${esc(c.label)}</label>${c.tipo==="select" ? `<select data-dis="${c.key}">${[...new Set([...(c.opciones), dis[c.key]].filter(x=>x!=null && x!==""))].map(o=>`<option ${String(dis[c.key])===String(o)?"selected":""}>${esc(o)}</option>`).join("")}</select>` : `<input type="${c.tipo}" data-dis="${c.key}" value="${esc(dis[c.key]??"")}">`}</div>`;
+  const okTxt = isNew ? "Crear proyecto" : "Guardar";
   modal({ title: isNew ? "Nuevo proyecto" : "Editar proyecto", width:880, persistente:true, body: html`
     <div class="stepper">${pasos.map((t,i)=>`<button data-paso="${i}"><span class="n">${i+1}</span><span class="t">${t}</span></button>`).join("")}</div>
     <div data-panel="0">
-      ${otros.length ? `<div class="field"><label>Partir de</label><select id="f-base"><option value="">Proyecto en blanco</option>${otros.map(o=>`<option value="${o.id}">${esc(o.nombre)}</option>`).join("")}</select><span class="hint">Copia cliente, codificación, condiciones del sitio, logo, formatos y entregables.</span></div>` : ""}
+      ${otros.length ? `<div class="field"><label>Partir de</label><select id="f-base"><option value="">Proyecto en blanco</option>${otros.map(o=>`<option value="${o.id}">${esc(o.nombre)}</option>`).join("")}</select><span class="hint">Copia cliente, condiciones del sitio, logo, formatos y la selección de documentos.</span></div>` : ""}
       <div class="grid-2">
         <div class="field" style="grid-column:1/-1"><label>Nombre del proyecto *</label><input id="f-nombre" type="text" value="${esc(p.nombre)}" placeholder="Nombre del proyecto"></div>
         <div class="field"><label>Cliente final</label><input id="f-cliente" type="text" value="${esc(p.cliente)}" placeholder="Razón social del cliente"></div>
-        <div class="field"><label>Unidad / planta</label><input id="f-unidad" type="text" value="${esc(p.unidad)}" placeholder="Unidad, planta o sede"></div>
-        <div class="field"><label>Sistema / equipo principal</label><input id="f-snom" type="text" value="${esc(sis.nombre)}" placeholder="Sistema o equipo principal"></div>
-        <div class="field"><label>TAG del sistema</label><input id="f-stag" type="text" value="${esc(sis.tag)}" placeholder="TAG"></div>
-      </div>
-      <div class="grid-3">
-        <div class="field"><label>Código de proyecto</label><input id="f-codigo" type="text" value="${esc(p.codigo)}" placeholder="Código del cliente"></div>
-        <div class="field"><label>Área</label><input id="f-area" type="text" value="${esc(p.area)}" placeholder="Área"></div>
+        <div class="field"><label>Unidad Minera / Planta</label><input id="f-unidad" type="text" value="${esc(p.unidad)}" placeholder="Unidad minera, planta o sede"></div>
+        <div class="field"><label>Sistema a implementar</label><input id="f-snom" type="text" value="${esc(sis.nombre)}" placeholder="Ej: Colector de polvo"></div>
         <div class="field"><label>Etapa</label><select id="f-etapa">${ETAPAS.map(e=>`<option value="${e.id}" ${p.etapa===e.id?"selected":""}>${e.nombre}</option>`).join("")}</select></div>
-      </div>
-      <div class="grid-2">
         <div class="field"><label>Disciplinas</label><div class="row" style="padding-top:6px;gap:18px"><label class="checkbox"><input type="checkbox" id="f-ele" ${p.disciplinas.includes("ELE")?"checked":""}> Electricidad</label><label class="checkbox"><input type="checkbox" id="f-ins" ${p.disciplinas.includes("INS")?"checked":""}> Instrumentación &amp; Control</label></div></div>
         <div class="field"><label>Logo del cliente</label><div class="row" style="flex-wrap:nowrap"><div class="dropzone" id="f-logo" style="flex:1;padding:9px">Arrastra o elige <span class="muted">(JPG / PNG)</span></div><div id="f-logo-prev"></div></div></div>
+        <div class="field" style="grid-column:1/-1"><label>P&amp;ID de referencia <span class="muted" style="font-weight:400">(opcional)</span></label><div class="row" style="flex-wrap:nowrap"><div class="dropzone" id="f-pid" style="flex:1;padding:9px">Arrastra o elige el P&amp;ID del proceso <span class="muted">(PDF)</span></div><div id="f-pid-prev"></div></div><span class="hint">Si no tienes un P&amp;ID, se generará a partir de la descripción del proceso en el documento «Diagrama P&amp;ID».</span></div>
       </div>
-      <details class="more"><summary>Más opciones</summary><div class="mt-1">
-        <div class="field"><label>Codificación de documentos</label><input id="f-patron" class="mono" type="text" value="${esc(p.codPatron)}"><span class="hint"><span class="mono">{PROY} {AREA} {DISC} {TIPO} {SEQ}</span> → <span class="mono" id="f-pat-ej"></span></span></div>
-        <div class="field"><label>Alcance (opcional)</label><textarea id="f-desc" placeholder="Se usa en memorias y filosofía de control.">${esc(p.descripcion||"")}</textarea></div>
-      </div></details>
     </div>
-    <div data-panel="1" hidden>
-      ${grupos.map(g=>`<h3 class="ed-sub">${esc(g.grupo)}</h3><div class="grid-3">${g.campos.map(campoDis).join("")}</div>`).join("")}
-      <div class="notice accent">Grado de protección de gabinetes: <strong id="f-ip"></strong></div>
-    </div>
-    <div data-panel="2" hidden><div id="f-tbs"></div></div>`,
-    footer:`<button data-close>Cancelar</button><span class="grow"></span><button id="f-prev" title="Anterior">${ICON.back}<span class="lbl"> Anterior</span></button><button id="f-next" class="btn-primary">Siguiente</button><button class="btn-accent" id="f-ok">${isNew?"Crear proyecto":"Guardar"}</button>`,
+    <div data-panel="1" hidden><div id="f-dis"></div><div class="notice accent">Grado de protección de gabinetes: <strong id="f-ip"></strong></div></div>
+    <div data-panel="2" hidden><div id="f-tbs"></div></div>
+    <div data-panel="3" hidden><div id="f-docs"></div></div>`,
+    footer:`<button data-close>Cancelar</button><span class="grow"></span><button id="f-prev" title="Anterior">${ICON.back}<span class="lbl"> Anterior</span></button><button id="f-next" class="btn-primary">Siguiente</button><button class="btn-accent" id="f-ok">${okTxt}</button>`,
     onMount:(root, close)=>{
-      const ver = ()=>{ $$("[data-panel]", root).forEach(el=>el.hidden = +el.dataset.panel!==paso); $$("[data-paso]", root).forEach(b=>{ b.classList.toggle("active", +b.dataset.paso===paso); b.classList.toggle("done", +b.dataset.paso<paso); }); $("#f-prev",root).style.display = paso ? "" : "none"; $("#f-next",root).style.display = paso<2 ? "" : "none"; $("#f-ok",root).style.display = (paso===2 || !isNew) ? "" : "none"; };
+      const ver = ()=>{ $$("[data-panel]", root).forEach(el=>el.hidden = +el.dataset.panel!==paso); $$("[data-paso]", root).forEach(b=>{ b.classList.toggle("active", +b.dataset.paso===paso); b.classList.toggle("done", +b.dataset.paso<paso); }); $("#f-prev",root).style.display = paso ? "" : "none"; $("#f-next",root).style.display = paso<ULT ? "" : "none"; $("#f-ok",root).style.display = (paso===ULT || !isNew) ? "" : "none"; if(paso===ULT) renderDocs(); };
       const nombreOk = ()=>{ if($("#f-nombre",root).value.trim()) return true; paso = 0; ver(); $("#f-nombre",root).focus(); toast("Indica el nombre del proyecto", true); return false; };
       $$("[data-paso]", root).forEach(b=>b.onclick = ()=>{ if(+b.dataset.paso>0 && !nombreOk()) return; paso = +b.dataset.paso; ver(); });
       $("#f-prev",root).onclick = ()=>{ paso = Math.max(0,paso-1); ver(); };
-      $("#f-next",root).onclick = ()=>{ if(!nombreOk()) return; paso = Math.min(2,paso+1); ver(); };
+      $("#f-next",root).onclick = ()=>{ if(!nombreOk()) return; paso = Math.min(ULT,paso+1); ver(); };
       // logo del cliente
       const prev = $("#f-logo-prev", root);
       const verLogo = url => { prev.innerHTML = url ? `<img src="${url}" alt="logo del cliente" style="max-height:40px;max-width:120px;border:1px solid var(--border);padding:3px;border-radius:5px;background:#fff">` : `<span class="badge badge-neutral">Sin logo</span>`; };
       const logoDe = async q => { if(q && q.plantillas && q.plantillas.logo_cliente){ const f = await S.leerArchivo(q.plantillas.logo_cliente); if(f){ verLogo(await S.blobToDataURL(f.blob)); return; } } verLogo(null); };
       logoDe(isNew ? null : p);
       dropzone($("#f-logo", root), "image/png,image/jpeg,.jpg,.jpeg,.png", async file=>{ if(!/image\/(png|jpe?g)/.test(file.type)){ toast("El logo debe ser JPEG o PNG", true); return; } logoFile = file; verLogo(await leerComoDataURL(file)); });
-      // vista previa del código de documento con los datos ingresados
-      const patEj = ()=>{ $("#f-pat-ej",root).textContent = S.codigoDocumento({ codPatron:$("#f-patron",root).value||PATRON_DEF, codigo:$("#f-codigo",root).value||"PROY", area:$("#f-area",root).value||"0000", seqDigitos:3 }, { disciplina:"ELE", doc:"LIS" }, 1); };
-      ["#f-patron","#f-codigo","#f-area"].forEach(k=>$(k,root).addEventListener("input", patEj)); patEj();
-      // diseño
+      // P&ID de referencia (PDF, opcional)
+      const pidPrev = $("#f-pid-prev", root);
+      const verPid = async ()=>{
+        let nombre = pidFile ? pidFile.name : null;
+        if(!nombre && !pidQuitar && !isNew && datos(p).proceso.referencia){ const f = await S.leerArchivo(datos(p).proceso.referencia); nombre = f ? f.nombre : null; }
+        pidPrev.innerHTML = nombre ? `<span class="row nowrap" style="gap:4px"><span class="badge badge-ok" title="${esc(nombre)}">${ICON.check} ${esc(nombre.length>24 ? nombre.slice(0,22)+"…" : nombre)}</span><button class="btn-ghost btn-sm" id="f-pid-del" title="Quitar P&amp;ID">${ICON.trash}</button></span>` : `<span class="badge badge-neutral">Sin P&amp;ID</span>`;
+        const del = $("#f-pid-del", root); if(del) del.onclick = ()=>{ pidFile = null; pidQuitar = true; verPid(); };
+      };
+      verPid();
+      dropzone($("#f-pid", root), ".pdf,application/pdf", file=>{ if(file.type!=="application/pdf" && !/\.pdf$/i.test(file.name)){ toast("El P&ID de referencia debe ser un PDF", true); return; } pidFile = file; pidQuitar = false; verPid(); });
+      // sitio y sistema eléctrico: tensiones numéricas, tensión de control en Vac o Vdc
       const ip = ()=>{ $("#f-ip",root).textContent = ipRecomendado(dis); };
-      $$("[data-dis]", root).forEach(i=>i.onchange = ()=>{ dis[i.dataset.dis] = i.value; ip(); }); ip();
+      const renderDis = ()=>{
+        const box = $("#f-dis", root);
+        box.innerHTML = grupos.map(g=>`<h3 class="ed-sub">${esc(g.grupo)}</h3><div class="grid-3">${g.campos.map(c=>campoDiseno(c, dis)).join("")}</div>`).join("");
+        enlazarDiseno(box, (k, v)=>{ dis[k] = v; ip(); });
+        ip();
+      };
+      renderDis();
       // partir de un proyecto existente
       const bs = $("#f-base", root);
       if(bs) bs.onchange = ()=>{
         base = bs.value ? S.proyecto(bs.value) : null;
-        const q = base || { cliente:"", unidad:"", codigo:"", area:"", etapa:"detalle", codPatron: state.org.codPatron || PATRON_DEF, disciplinas:["ELE","INS"] };
-        [["f-cliente","cliente"],["f-unidad","unidad"],["f-codigo","codigo"],["f-area","area"],["f-etapa","etapa"],["f-patron","codPatron"]].forEach(([el,k])=>{ $("#"+el,root).value = q[k]||""; });
+        const q = base || { cliente:"", unidad:"", etapa:"detalle", disciplinas:["ELE","INS"] };
+        [["f-cliente","cliente"],["f-unidad","unidad"],["f-etapa","etapa"]].forEach(([el,k])=>{ $("#"+el,root).value = q[k]||""; });
         $("#f-ele",root).checked = q.disciplinas.includes("ELE"); $("#f-ins",root).checked = q.disciplinas.includes("INS");
         dis = Object.assign({}, valoresDiseno(base || {}));
-        $$("[data-dis]", root).forEach(i=>{ const v = dis[i.dataset.dis]; if(i.tagName==="SELECT" && v!=null && ![...i.options].some(o=>o.value===String(v))) i.add(new Option(v, v)); i.value = v ?? ""; }); ip();
+        sel = base ? new Set(base.entregables) : null;
+        renderDis();
         if(!logoFile) logoDe(base);
-        patEj();
       };
       // tableros
       const tbBox = $("#f-tbs", root);
@@ -229,34 +241,51 @@ function modalProyecto(p){
         $$("tr[data-i] [data-c]", tbBox).forEach(el=>el.onchange = ()=>{ const t = tbs[+el.closest("tr").dataset.i]; t[el.dataset.c] = el.value.trim(); if(el.dataset.c==="desde") renderTb(); });
       };
       renderTb();
+      // documentos a elaborar
+      const docsBox = $("#f-docs", root);
+      const discSel = ()=>[ $("#f-ele",root).checked?"ELE":null, $("#f-ins",root).checked?"INS":null ].filter(Boolean);
+      const seleccion = ()=> sel || new Set(entregablesPorDefecto(discSel(), $("#f-etapa",root).value));
+      function renderDocs(){
+        const disc = discSel(), etapa = $("#f-etapa",root).value, s = seleccion();
+        const lista = CATALOGO.filter(e=>disc.includes(e.disciplina) && (e.etapas.includes(etapa) || s.has(e.id)));
+        const n = lista.filter(e=>s.has(e.id)).length;
+        docsBox.innerHTML = `<div class="notice accent mb-2 wz-guia"><strong>Marca los documentos que se elaborarán en este proyecto</strong> y luego presiona «${okTxt}». Después trabajarás cada uno desde <strong>Documentos</strong>.</div>
+          <div class="row between mb-1"><span class="muted" style="font-size:12.5px">${n} seleccionado(s) · ${esc(etapaNombre(etapa))}</span><div class="row"><button class="btn-sm" data-dsel="disp">Marcar disponibles</button><button class="btn-sm" data-dsel="none">Quitar todos</button></div></div>
+          ${disc.map(d=>{ const items = lista.filter(e=>e.disciplina===d); if(!items.length) return ""; return `<h3 class="disc-title">${disciplinaNombre(d)}</h3>${items.map(e=>`<label class="deliv wz-doc ${s.has(e.id)?"selected":""}"><input type="checkbox" data-doc="${e.id}" ${s.has(e.id)?"checked":""}><div><div class="title">${esc(e.nombre)} ${badgeEstado(e.estado)} <span class="badge badge-neutral">${esc(TIPOS[e.tipo])}</span></div><div class="desc">${esc(e.finalidad)}</div></div></label>`).join("")}`; }).join("") || `<div class="empty">Marca al menos una disciplina en el paso 1.</div>`}`;
+        $$("[data-doc]", docsBox).forEach(c=>c.onchange = ()=>{ sel = new Set(seleccion()); c.checked ? sel.add(c.dataset.doc) : sel.delete(c.dataset.doc); renderDocs(); });
+        $$("[data-dsel]", docsBox).forEach(b=>b.onclick = ()=>{ sel = new Set(seleccion()); lista.forEach(e=>{ if(b.dataset.dsel==="none") sel.delete(e.id); else if(e.estado!=="planificado") sel.add(e.id); }); renderDocs(); });
+      }
       ver();
       $("#f-ok", root).onclick = async ()=>{
         if(!nombreOk()) return;
         if(!tbs.length){ paso = 2; ver(); toast("Define al menos un tablero", true); return; }
         const tags = tbs.map(t=>t.tag); if(tags.some(t=>!t) || new Set(tags).size!==tags.length){ paso = 2; ver(); toast("Cada tablero debe tener un TAG único", true); return; }
-        const data = { nombre:$("#f-nombre",root).value.trim(), cliente:$("#f-cliente",root).value.trim(), unidad:$("#f-unidad",root).value.trim(), etapa:$("#f-etapa",root).value, codigo:$("#f-codigo",root).value.trim(), area:$("#f-area",root).value.trim(), codPatron:$("#f-patron",root).value.trim()||PATRON_DEF, descripcion:$("#f-desc",root).value.trim(),
+        const data = { nombre:$("#f-nombre",root).value.trim(), cliente:$("#f-cliente",root).value.trim(), unidad:$("#f-unidad",root).value.trim(), etapa:$("#f-etapa",root).value,
           disciplinas:[ $("#f-ele",root).checked?"ELE":null, $("#f-ins",root).checked?"INS":null ].filter(Boolean) };
         if(!data.disciplinas.length){ paso = 0; ver(); toast("Marca al menos una disciplina", true); return; }
+        const ents = ordenCatalogo([...seleccion()].filter(id=>{ const e = entregable(id); return e && !e.interno && data.disciplinas.includes(e.disciplina); }));
+        if(!ents.length){ paso = ULT; ver(); toast("Marca al menos un documento", true); return; }
         const target = isNew ? S.nuevoProyecto(data) : Object.assign(p, data);
         target.diseno = Object.assign(target.diseno||{}, dis);
-        state.org.codPatron = data.codPatron;  // se propone en el siguiente proyecto
         const d = datos(target);
-        d.sistema.nombre = $("#f-snom",root).value.trim(); d.sistema.tag = $("#f-stag",root).value.trim();
+        d.sistema.nombre = $("#f-snom",root).value.trim();
         // reasignar cargas / instrumentos de tableros eliminados
         const ids = new Set(tbs.map(t=>t.id));
         d.tableros = tbs;
         d.cargas.forEach(l=>{ if(l.tablero && !ids.has(l.tablero)) l.tablero = ""; });
         target.plantillas = target.plantillas || {};
         if(isNew && base){
-          // copia del proyecto de origen: formatos del cliente, criterios y selección de entregables
+          // copia del proyecto de origen: formatos del cliente y criterios
           for(const [k, fid] of Object.entries(base.plantillas||{})){ if(!fid || (k==="logo_cliente" && logoFile)) continue; const f = await S.leerArchivo(fid); if(f){ const { id:_i, blob, creado, ...meta } = f; target.plantillas[k] = await S.guardarArchivo(Object.assign(meta, { proyectoId:target.id }), blob); } }
           target.plantillaModo = base.plantillaModo; target.hojaPlano = base.hojaPlano;
           const db = datos(base); d.cablesCfg = Object.assign({}, db.cablesCfg); d.memoria = Object.assign({}, db.memoria);
-          target.entregables = base.entregables.filter(x=>{ const e = entregable(x); return e && data.disciplinas.includes(e.disciplina); });
-        } else if(isNew) target.entregables = entregablesPorDefecto(data.disciplinas, data.etapa);
+        }
+        target.entregables = ents;
         if(logoFile){ if(target.plantillas.logo_cliente) await S.borrarArchivo(target.plantillas.logo_cliente); target.plantillas.logo_cliente = await S.guardarArchivo({ tipo:"logo_cliente", proyectoId:target.id, nombre:logoFile.name, size:logoFile.size, info:{ tipo:logoFile.type } }, logoFile); }
+        if((pidQuitar || pidFile) && d.proceso.referencia){ await S.borrarArchivo(d.proceso.referencia); d.proceso.referencia = null; }
+        if(pidFile) d.proceso.referencia = await S.guardarArchivo({ tipo:"pid_ref", proyectoId:target.id, nombre:pidFile.name, size:pidFile.size }, pidFile);
         S.sincronizarDocumentos(target, ENTREGABLES); S.save(); close();
-        if(isNew){ toast(`${target.entregables.length} entregables preseleccionados — quita los que no apliquen`); location.hash = "#/proyecto/"+target.id+"/entregables"; } else route();
+        if(isNew){ toast(`Proyecto creado con ${ents.length} documentos: abre cada uno para ingresar sus datos`, false, 4500); location.hash = "#/proyecto/"+target.id+"/documentos"; } else route();
       };
     } });
 }
@@ -268,14 +297,14 @@ function screenProyecto(id, tab){
   const antes = p.entregables.length; p.entregables = p.entregables.filter(x=>{ const e = entregable(x); return e && !e.interno; }); if(p.entregables.length!==antes) S.sincronizarDocumentos(p, ENTREGABLES);
   const sec = (PTABS.find(t=>t[0]===tab)||PTABS[0])[1];
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos", href:"#/proyectos"},{label:p.nombre, href:`#/proyecto/${p.id}/resumen`},{label:sec}], title:p.nombre,
-    sub:`<span class="chip">${esc(p.codigo||"Sin código")}</span><span>${esc(p.cliente||"—")}${p.unidad?" · "+esc(p.unidad):""}</span><span class="badge badge-neutral">${esc(etapaNombre(p.etapa))}</span>`,
+    sub:`<span>${esc(p.cliente||"—")}${p.unidad?" · "+esc(p.unidad):""}</span><span class="badge badge-neutral">${esc(etapaNombre(p.etapa))}</span>`,
     actions:`<button id="editar">${ICON.edit} Editar</button><button class="btn-danger" id="borrar" title="Eliminar proyecto">${ICON.trash}</button>` }) +
     `<div class="tabs proj-tabs">${PTABS.map(t=>`<button data-tab="${t[0]}" class="${t[0]===tab?"active":""}">${t[2]?t[2]+". ":""}${t[1]}</button>`).join("")}</div><div id="tab-body"></div>`;
   $("#editar").onclick = ()=>modalProyecto(p);
   $("#borrar").onclick = async ()=>{ if(await confirmar("Eliminar proyecto", `Se eliminará «${p.nombre}» con todos sus datos.`, "Eliminar")){ S.eliminarProyecto(p.id); location.hash="#/proyectos"; } };
   $$("[data-tab]").forEach(b=>b.onclick = ()=>location.hash = `#/proyecto/${p.id}/${b.dataset.tab}`);
   const body = $("#tab-body");
-  ({ resumen: tabResumen, entregables: tabEntregables, diseno: tabDiseno, documentos: tabDocumentos, plantillas: tabPlantillas }[tab] || tabResumen)(body, p);
+  ({ resumen: tabResumen, diseno: tabDiseno, documentos: tabDocumentos, plantillas: tabPlantillas }[tab] || tabResumen)(body, p);
 }
 
 function tabResumen(body, p){
@@ -287,7 +316,7 @@ function tabResumen(body, p){
   const paso = (ok, t, det, href, accion) => `<li class="${ok?"ok":""}"><span class="dot">${ok?ICON.check:""}</span><div><div class="t">${t}</div><div class="d">${det}</div></div><a class="btn btn-sm" href="${href}">${accion}</a></li>`;
   body.innerHTML = html`
     <div class="stat-row">
-      <div class="stat"><div class="k">Entregables</div><div class="v">${sel.length}</div></div>
+      <div class="stat"><div class="k">Documentos</div><div class="v">${sel.length}</div></div>
       <div class="stat hl"><div class="k">Generables</div><div class="v">${porEstado("listo")+porEstado("parcial")}</div></div>
       <div class="stat"><div class="k">Emitidos</div><div class="v">${emit}</div></div>
       <div class="stat"><div class="k">Tableros</div><div class="v">${tbs.length}</div></div>
@@ -296,64 +325,33 @@ function tabResumen(body, p){
     </div>
     <div class="grid-2">
       <div class="card"><div class="card-head"><h2>Avance</h2></div><div class="card-body" style="padding-top:4px;padding-bottom:4px"><ul class="checklist">
-        ${paso(sel.length>0, "1. Entregables", `${sel.length} seleccionados`, `#/proyecto/${p.id}/entregables`, "Revisar")}
-        ${paso(!!(d.sistema.nombre && tbs.length), "2. Datos generales", `${esc(v.tension)} V · ${esc(v.frecuencia)} Hz · ${tbs.length} tablero(s)${d.sistema.tag?" · "+esc(d.sistema.tag):""}`, `#/proyecto/${p.id}/diseno`, "Revisar")}
-        ${paso(d.cargas.length>0 || nInst>0, "3. Datos por documento", `${d.cargas.length} cargas · ${nInst} instrumentos`, `#/proyecto/${p.id}/documentos`, "Abrir")}
-        ${paso(sel.length>0 && emit===sel.length, "4. Emisión", `${emit} de ${sel.length} documentos emitidos`, `#/proyecto/${p.id}/documentos`, "Emitir")}
+        ${paso(!!(d.sistema.nombre && tbs.length), "1. Datos generales", `${esc(v.tension)} Vac · ${esc(v.frecuencia)} Hz · control ${esc(tensionControlTxt(v))} · ${tbs.length} tablero(s)`, `#/proyecto/${p.id}/diseno`, "Revisar")}
+        ${paso(d.cargas.length>0 || nInst>0, "2. Datos por documento", `${sel.length} documentos · ${d.cargas.length} cargas · ${nInst} instrumentos`, `#/proyecto/${p.id}/documentos`, "Abrir")}
+        ${paso(sel.length>0 && emit===sel.length, "3. Emisión", `${emit} de ${sel.length} documentos emitidos`, `#/proyecto/${p.id}/documentos`, "Emitir")}
         ${paso(logo, "Logo y formatos del cliente", logo ? "Logo cargado" : "Sin logo del cliente", `#/proyecto/${p.id}/plantillas`, logo?"Ver":"Cargar")}
       </ul></div></div>
       <div class="card"><div class="card-head"><h2>Datos del proyecto</h2><button class="btn-sm" id="r-editar">${ICON.edit} Editar</button></div><div class="card-body"><dl class="kv">
-        <dt>Cliente</dt><dd>${esc(p.cliente||"—")}</dd><dt>Unidad</dt><dd>${esc(p.unidad||"—")}</dd>
-        <dt>Sistema</dt><dd>${esc(d.sistema.nombre||"—")}${d.sistema.tag?` <span class="chip">${esc(d.sistema.tag)}</span>`:""}</dd>
+        <dt>Cliente</dt><dd>${esc(p.cliente||"—")}</dd><dt>Unidad Minera / Planta</dt><dd>${esc(p.unidad||"—")}</dd>
+        <dt>Sistema a implementar</dt><dd>${esc(d.sistema.nombre||"—")}</dd>
         <dt>Disciplinas</dt><dd>${p.disciplinas.map(disciplinaNombre).join(", ")}</dd>
-        <dt>Codificación</dt><dd class="mono">${esc(S.codigoDocumento(p, { disciplina:"ELE", doc:"LIS" }, 1))}</dd>
+        <dt>P&amp;ID de referencia</dt><dd id="r-pid">${d.proceso.referencia ? "…" : "—"}</dd>
         <dt>Tableros</dt><dd>${tbs.map(t=>`<span class="chip">${esc(t.tag)}</span>`).join(" ")||"—"}</dd>
         <dt>Creado</dt><dd>${fmtFecha(p.creado)}</dd></dl></div></div>
     </div>`;
   $("#r-editar").onclick = ()=>modalProyecto(p);
+  if(d.proceso.referencia) S.leerArchivo(d.proceso.referencia).then(f=>{ const el = $("#r-pid"); if(el) el.textContent = f ? f.nombre : "—"; });
 }
 const badgeEstado = e => `<span class="badge ${e==="listo"?"badge-ok":e==="parcial"?"badge-warn":"badge-neutral"}">${ESTADOS[e].label}</span>`;
 
-/* ---------- entregables ---------- */
-function tabEntregables(body, p){
-  let filtroDisc = "todas", filtroEtapa = p.etapa, soloDisponibles = false;
-  const render = ()=>{
-    const lista = CATALOGO.filter(e=> (filtroDisc==="todas" ? p.disciplinas.includes(e.disciplina) : e.disciplina===filtroDisc) && e.etapas.includes(filtroEtapa) && (!soloDisponibles || e.estado!=="planificado"));
-    body.innerHTML = html`
-      <div class="row between mb-2">
-        <div class="row">
-          <select id="fd" style="width:auto"><option value="todas">Todas las disciplinas</option>${p.disciplinas.map(d=>`<option value="${d}" ${filtroDisc===d?"selected":""}>${disciplinaNombre(d)}</option>`).join("")}</select>
-          <select id="fe" style="width:auto">${ETAPAS.map(e=>`<option value="${e.id}" ${filtroEtapa===e.id?"selected":""}>${e.nombre}</option>`).join("")}</select>
-          <label class="checkbox"><input type="checkbox" id="fs" ${soloDisponibles?"checked":""}> Solo generables</label>
-        </div>
-        <div class="row"><span class="muted">${p.entregables.length} seleccionados</span><button class="btn-sm" id="sel-disp">Marcar generables</button><button class="btn-sm" id="sel-none">Quitar todos</button><a class="btn btn-sm btn-primary" href="#/proyecto/${p.id}/diseno">Siguiente: datos generales →</a></div>
-      </div>
-      ${["ELE","INS"].map(d=>{ const items = lista.filter(e=>e.disciplina===d); if(!items.length) return ""; return `<h3 class="disc-title">${disciplinaNombre(d)}</h3>${items.map(e=>delivHTML(e, p.entregables.includes(e.id), p)).join("")}`; }).join("") || `<div class="empty">Ningún entregable coincide con el filtro.</div>`}`;
-    $("#fd").onchange = e=>{ filtroDisc = e.target.value; render(); };
-    $("#fe").onchange = e=>{ filtroEtapa = e.target.value; render(); };
-    $("#fs").onchange = e=>{ soloDisponibles = e.target.checked; render(); };
-    $("#sel-disp").onclick = ()=>{ lista.filter(e=>e.estado!=="planificado").forEach(e=>{ if(!p.entregables.includes(e.id)) p.entregables.push(e.id); }); S.sincronizarDocumentos(p, ENTREGABLES); render(); };
-    $("#sel-none").onclick = ()=>{ p.entregables = []; S.sincronizarDocumentos(p, ENTREGABLES); render(); };
-    $$("[data-toggle]", body).forEach(cb=>cb.onchange = ()=>{ const id = cb.dataset.toggle; if(cb.checked){ if(!p.entregables.includes(id)) p.entregables.push(id); } else p.entregables = p.entregables.filter(x=>x!==id); S.sincronizarDocumentos(p, ENTREGABLES); render(); });
-  };
-  render();
-}
-function delivHTML(e, selected, p){
-  const d = p.documentos[e.id];
-  return `<div class="deliv ${selected?"selected":""}">
-    <label class="checkbox" style="padding-top:2px"><input type="checkbox" data-toggle="${e.id}" ${selected?"checked":""}></label>
-    <div><div class="title">${esc(e.nombre)} ${badgeEstado(e.estado)} <span class="badge badge-neutral">${esc(TIPOS[e.tipo])}</span></div>
-      <div class="desc">${esc(e.finalidad)}</div>
-      <details><summary>Datos de entrada y salida</summary><ul>${e.entradas.map(x=>`<li>${esc(x)}</li>`).join("")}</ul><div class="mt-1"><strong>Salida:</strong> ${esc(e.salida)}</div></details></div>
-    <div class="right">${d&&selected?`<span class="chip">${esc(d.codigo)}</span>`:""}<span class="muted" style="font-size:11.5px">${e.etapas.map(x=>etapaNombre(x).replace("Ingeniería ","")).join(" · ")}</span></div>
-  </div>`;
-}
-
-/* ---------- datos generales ---------- */
+/* ---------- datos generales ----------
+   El proyecto, el sistema eléctrico y el sitio se ingresan al crear el proyecto (botón Editar para cambiarlos);
+   aquí quedan los tableros en detalle y los criterios de diseño con valores típicos. */
 function tabDiseno(body, p){
-  body.innerHTML = `<p class="ws-note">Comunes a todos los documentos. Los datos propios de cada documento se ingresan al abrirlo.</p><div id="eds-gen"></div>
+  const v = valoresDiseno(p);
+  body.innerHTML = `<div class="notice mb-2 dg-resumen"><span>Sistema eléctrico y sitio (definidos al crear el proyecto): <strong class="mono">${esc(v.tension)} Vac · ${esc(v.frecuencia)} Hz · control ${esc(tensionControlTxt(v))}</strong>${v.altitud?` · ${esc(v.altitud)} m s.n.m.`:""}</span><button class="btn-sm" id="dg-editar">${ICON.edit} Editar</button></div><div id="eds-gen"></div>
     <div class="row mt-2" style="justify-content:flex-end"><a class="btn btn-primary" href="#/proyecto/${p.id}/documentos">Siguiente: documentos →</a></div>`;
-  renderEditores($("#eds-gen", body), p, ["sistema","parametros","tableros"], null, ()=>{});
+  $("#dg-editar").onclick = ()=>modalProyecto(p, 1);
+  renderEditores($("#eds-gen", body), p, ["tableros","criterios"], null, ()=>{});
 }
 
 /* ---------- documentos, emisión y descargas ---------- */
@@ -366,24 +364,24 @@ function tabDocumentos(body, p){
     ${!state.org.nombre ? `<div class="notice accent mb-2">Completa <a href="#/organizacion">tu organización</a> (nombre, logo y firmas) una sola vez: se usa en todas las carátulas y cajetines.</div>` : ""}
     <div class="row between mb-2">
       <div class="row"><button class="btn-accent btn-sm" id="emitir">${ICON.check} Emitir revisión</button><span class="muted" id="n-sel" style="font-size:12.5px"></span></div>
-      <button class="btn-sm" id="dl-registro">${ICON.open} Lista de documentos</button>
+      <div class="row"><button class="btn-sm" id="docs-sel">${ICON.edit} Agregar o quitar documentos</button><button class="btn-sm" id="dl-registro">${ICON.open} Lista de documentos</button></div>
     </div>
-    ${sel.length ? `<div class="table-wrap"><table class="docs-table"><thead><tr><th><input type="checkbox" id="chk-all" checked title="Marcar todos"><span class="m-only">Marcar todos</span></th><th>Código</th><th>Entregable</th><th>Revisión vigente</th><th>Estado</th><th></th></tr></thead><tbody>
+    ${sel.length ? `<div class="table-wrap"><table class="docs-table"><thead><tr><th><input type="checkbox" id="chk-all" checked title="Marcar todos"><span class="m-only">Marcar todos</span></th><th>Documento</th><th>Revisión vigente</th><th>Estado</th><th></th></tr></thead><tbody>
       ${sel.map(e=>{ const d = p.documentos[e.id]; const rv = (d.revisiones && d.revisiones.length) ? d.revisiones[d.revisiones.length-1] : { rev:d.rev, fecha:d.fecha, descripcion:d.emitido };
         return `<tr data-id="${e.id}">
         <td><input type="checkbox" data-chk checked></td>
-        <td class="mono" style="white-space:nowrap">${esc(d.codigo)}</td>
         <td><div style="font-weight:500">${generable(e.id)?`<a href="#/proyecto/${p.id}/doc/${e.id}">${esc(e.nombre)}</a>`:esc(e.nombre)}</div><div class="muted" style="font-size:12px">${esc(DISCIPLINAS[e.disciplina].corto)} · ${esc(TIPOS[e.tipo])}</div></td>
         <td style="white-space:nowrap"><span class="mono">Rev. ${esc(rv.rev||"A")}</span> · <span class="mono">${esc(fmtFecha(rv.fecha))}</span><div class="muted" style="font-size:12px">${esc(String(rv.descripcion||"").replace(/^Emitido para /,"Para ")||"—")}</div></td>
         <td><select data-f="estado" style="min-width:130px">${["Por elaborar","En elaboración","Para revisión","Aprobado","Emitido"].map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select></td>
         <td style="white-space:nowrap">${accionesDoc(e, p)}</td></tr>`; }).join("")}
-      </tbody></table></div>` : `<div class="empty">No hay entregables seleccionados. <a href="#/proyecto/${p.id}/entregables">Selecciónalos aquí.</a></div>`}`;
+      </tbody></table></div>` : `<div class="empty"><p>No hay documentos seleccionados.</p><button class="btn-accent" id="docs-sel2">Seleccionar documentos</button></div>`}`;
   const cuenta = ()=>{ const n = $("#n-sel"); if(n) n.textContent = `${marcados.size} de ${sel.length} marcados`; const b = $("#emitir"); if(b) b.disabled = !marcados.size; };
   $$("[data-chk]", body).forEach(c=>c.onchange = ()=>{ const id = c.closest("tr").dataset.id; c.checked ? marcados.add(id) : marcados.delete(id); const all = $("#chk-all"); if(all) all.checked = marcados.size===sel.length; cuenta(); });
   const all = $("#chk-all"); if(all) all.onchange = ()=>{ $$("[data-chk]", body).forEach(c=>{ c.checked = all.checked; const id = c.closest("tr").dataset.id; all.checked ? marcados.add(id) : marcados.delete(id); }); cuenta(); };
   cuenta();
   $$("tr[data-id] [data-f]", body).forEach(el=>el.onchange = ()=>{ const d = p.documentos[el.closest("tr").dataset.id]; d[el.dataset.f] = el.value; S.save(); });
   $("#emitir").onclick = ()=>modalEmitir(p, [...marcados], ()=>tabDocumentos(body, p));
+  $$("#docs-sel,#docs-sel2").forEach(b=>b.onclick = ()=>modalProyecto(p, 3));
   $("#dl-registro").onclick = ()=>{ location.hash = `#/proyecto/${p.id}/doc/gen-registro/vista`; };
   $$("[data-dl]", body).forEach(b=>b.onclick = ()=>descargarDoc(state, p, b.dataset.dl, b));
 }
@@ -445,8 +443,8 @@ function tabPlantillas(body, p){
       </div></div>
       <div id="slots" class="mt-2"></div>
       <details class="card mt-2"><summary class="card-head" style="cursor:pointer"><h2>Marcadores disponibles</h2><span class="muted" style="font-size:12.5px">Para preparar formatos del cliente</span></summary><div class="card-body" style="font-size:13px">
-        <p><strong>Excel</strong> (celdas): <span class="tokens">${["{{proyecto}}","{{cliente}}","{{unidad}}","{{etapa}}","{{codigo}}","{{titulo}}","{{rev}}","{{fecha}}","{{org}}","{{disciplina}}","{{emitido}}","{{elaboro}}","{{reviso}}","{{aprobo}}","{{rev1.rev}} {{rev1.fecha}} {{rev1.descripcion}} …","{{tabla:cargas}} + {{col:tag}} {{col:descripcion}} …","{{tabla:cables}}","{{tabla:equipos}}","{{tabla:instrumentos}}","{{tabla:io}}","{{tabla:documentos}}"].map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p>
-        <p class="mt-2"><strong>Word</strong> (texto): <span class="tokens">${["{proyecto}","{cliente}","{codigo}","{titulo}","{rev}","{fecha}","{org}","{#revisiones}{rev} {fecha} {descripcion} {elaboro} {reviso} {aprobo}{/revisiones}","{#secciones}{titulo} {texto} {#items}{.}{/items}{/secciones}","{#circuitos}…{/circuitos} (memoria de cálculo)"].map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p>
+        <p><strong>Excel</strong> (celdas): <span class="tokens">${["{{proyecto}}","{{cliente}}","{{unidad}}","{{etapa}}","{{titulo}}","{{rev}}","{{fecha}}","{{org}}","{{disciplina}}","{{emitido}}","{{elaboro}}","{{reviso}}","{{aprobo}}","{{rev1.rev}} {{rev1.fecha}} {{rev1.descripcion}} …","{{tabla:cargas}} + {{col:tag}} {{col:descripcion}} …","{{tabla:cables}}","{{tabla:equipos}}","{{tabla:instrumentos}}","{{tabla:io}}","{{tabla:documentos}}"].map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p>
+        <p class="mt-2"><strong>Word</strong> (texto): <span class="tokens">${["{proyecto}","{cliente}","{titulo}","{rev}","{fecha}","{org}","{#revisiones}{rev} {fecha} {descripcion} {elaboro} {reviso} {aprobo}{/revisiones}","{#secciones}{titulo} {texto} {#items}{.}{/items}{/secciones}","{#circuitos}…{/circuitos} (memoria de cálculo)"].map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p>
         <p class="mt-2"><strong>DXF cajetín</strong> (textos): <span class="tokens">${["{{PLANO}}","{{TITULO}}","{{TITULO2}}","{{PROYECTO}}","{{CLIENTE}}","{{REV}}","{{FECHA}}","{{ESCALA}}","{{DIBUJO}}","{{REVISO}}","{{APROBO}}","{{HOJA}}","{{EMPRESA}}"].map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p>
         <p class="muted mt-2">DWG: guárdalo como DXF desde AutoCAD.</p>
       </div></details>`;
@@ -502,7 +500,7 @@ function screenCatalogo(disc){
   const discs = ["ELE","INS"].includes(disc) ? [disc] : ["ELE","INS"];
   main.innerHTML = topbar({ crumbs:[{label:"Catálogo de entregables", href:"#/catalogo"}].concat(discs.length===1 ? [{label:disciplinaNombre(disc)}] : []), title: discs.length===1 ? disciplinaNombre(disc) : "Catálogo de entregables" }) +
     `<div class="stat-row"><div class="stat hl"><div class="k">Entregables</div><div class="v">${CATALOGO.length}</div></div><div class="stat"><div class="k">Electricidad</div><div class="v">${CATALOGO.filter(e=>e.disciplina==="ELE").length}</div></div><div class="stat"><div class="k">Instrumentación y control</div><div class="v">${CATALOGO.filter(e=>e.disciplina==="INS").length}</div></div><div class="stat"><div class="k">Planos</div><div class="v">${CATALOGO.filter(e=>e.tipo==="plano").length}</div></div></div>` +
-    discs.map(d=>`<h3 class="disc-title">${disciplinaNombre(d)}</h3>${CATALOGO.filter(e=>e.disciplina===d).map(e=>`<div class="deliv"><div class="mono muted" style="padding-top:2px">${e.n}</div><div><div class="title">${esc(e.nombre)} ${badgeEstado(e.estado)} <span class="badge badge-neutral">${esc(TIPOS[e.tipo])}</span></div><div class="desc">${esc(e.finalidad)}</div><details><summary>Datos de entrada y salida</summary><ul>${e.entradas.map(x=>`<li>${esc(x)}</li>`).join("")}</ul><div class="mt-1"><strong>Salida:</strong> ${esc(e.salida)}</div></details></div><div class="right"><span class="chip">${e.doc}</span><span class="muted" style="font-size:11.5px">${e.etapas.map(x=>etapaNombre(x).replace("Ingeniería ","")).join(" · ")}</span></div></div>`).join("")}`).join("");
+    discs.map(d=>`<h3 class="disc-title">${disciplinaNombre(d)}</h3>${CATALOGO.filter(e=>e.disciplina===d).map(e=>`<div class="deliv"><div class="mono muted" style="padding-top:2px">${e.n}</div><div><div class="title">${esc(e.nombre)} ${badgeEstado(e.estado)} <span class="badge badge-neutral">${esc(TIPOS[e.tipo])}</span></div><div class="desc">${esc(e.finalidad)}</div><details><summary>Datos de entrada y salida</summary><ul>${e.entradas.map(x=>`<li>${esc(x)}</li>`).join("")}</ul><div class="mt-1"><strong>Salida:</strong> ${esc(e.salida)}</div></details></div><div class="right"><span class="muted" style="font-size:11.5px">${e.etapas.map(x=>etapaNombre(x).replace("Ingeniería ","")).join(" · ")}</span></div></div>`).join("")}`).join("");
 }
 
 /* ================= organización ================= */
@@ -562,7 +560,7 @@ function screenEstandares(){
     ${filas.map(({id,e,d})=>`<tr><td>${esc(e?e.nombre:id)}</td><td>${{xlsx:"Excel",docx:"Word",dxf:"DXF A1"}[d.formato]}</td><td class="muted">${esc(d.ref)}</td><td>${d.plantilla && !d.estandar ? `<a class="btn btn-sm" href="assets/plantillas/${esc(d.plantilla)}" download>${ICON.download} Plantilla</a>` : ""}</td></tr>`).join("")}
     </tbody></table></div>
     <div class="grid-2 mt-2">
-      <div class="card"><div class="card-head"><h2>Excel</h2></div><div class="card-body"><p>Celdas <span class="chip">{{proyecto}}</span> <span class="chip">{{codigo}}</span> <span class="chip">{{rev}}</span>… y fila modelo <span class="chip">{{tabla:NOMBRE}}</span> + <span class="chip">{{col:clave}}</span>. Fórmulas y totales se extienden solos.</p></div></div>
+      <div class="card"><div class="card-head"><h2>Excel</h2></div><div class="card-body"><p>Celdas <span class="chip">{{proyecto}}</span> <span class="chip">{{titulo}}</span> <span class="chip">{{rev}}</span>… y fila modelo <span class="chip">{{tabla:NOMBRE}}</span> + <span class="chip">{{col:clave}}</span>. Fórmulas y totales se extienden solos.</p></div></div>
       <div class="card" style="margin-top:0"><div class="card-head"><h2>Planos (DXF)</h2></div><div class="card-body"><p>DXF R12, lámina A1 (841 × 594 mm), capas G-, I-, E- con sus colores para imprimir con tu CTB.</p></div></div>
     </div>`;
 }

@@ -3,7 +3,7 @@
 import { entregable, DISCIPLINAS } from "./catalog.js";
 import * as S from "./store.js";
 import { esc } from "./ui.js";
-import { valoresDiseno, seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
+import { valoresDiseno, tensionControlTxt, tensionEstabilizada, tempDiseno, seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { procesarFilas, resumenIO, ESQUEMAS } from "./modules/tablas.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, circuitosControl, instrumentos, expandirTag, tipoInstrumento, esAnalogico, sistemaTag, sistemaNombre, r2, parametrosG,
   tableros, tablerosControl, tableroPorId, tf, tc, desdeTxt, esControl, esPotencia, TIPOS_TABLERO, ipRecomendado, cablesFuerza, CLASES_CABLE, CANALIZACIONES } from "./datos.js";
@@ -26,14 +26,15 @@ export function docInfo(p, id){
   if(!d.revisiones || !d.revisiones.length) d.revisiones = [{ rev: d.rev||"A", fecha: d.fecha||new Date().toISOString().slice(0,10), descripcion: d.emitido||"Emitido para revisión interna" }];
   const last = d.revisiones[d.revisiones.length-1];
   d.rev = last.rev; d.fecha = last.fecha; d.emitido = last.descripcion;
-  const out = Object.assign({ titulo:(e.nombre||"").toUpperCase() }, d);
+  // los documentos se identifican por su nombre: no se usa codificación
+  const out = Object.assign({ titulo:(e.nombre||"").toUpperCase() }, d, { codigo:"" });
   // planos: si el usuario no definió referencias, se proponen desde los documentos relacionados del proyecto
   if(!Array.isArray(d.referencias) && REL_PLANOS[id]) out.referencias = referenciasSugeridas(p, id);
   return out;
 }
 const REL_PLANOS = { "ele-multifilar":["ele-unifilar","ele-cargas"], "ele-mecanico":["ele-unifilar","ele-multifilar"], "ele-arreglo":["ele-equipos","ele-unifilar"], "ins-pid":["ins-instrumentos"], "ins-multifilar-tc":["ins-io","ins-unifilar-tc"], "ins-mecanico-tc":["ins-unifilar-tc","ins-multifilar-tc"], "ins-arreglo":["ins-instrumentos","ins-pid"], "ins-lazo":["ins-io","ins-instrumentos","ins-multifilar-tc"], "ins-arquitectura":["ins-io","ins-instrumentos"], "ins-unifilar-tc":["ins-multifilar-tc","ins-instrumentos"], "ele-unifilar":["ele-cargas","ele-mc"], "ins-bloques":["ele-unifilar","ins-unifilar-tc"] };
 export function referenciasSugeridas(p, id){
-  const refs = (REL_PLANOS[id]||[]).filter(r=>p.documentos[r]).slice(0,5).map(r=>({ codigo:p.documentos[r].codigo, titulo:(p.documentos[r].titulo||entregable(r).nombre).toUpperCase() }));
+  const refs = (REL_PLANOS[id]||[]).filter(r=>p.documentos[r]).slice(0,5).map(r=>({ codigo:"", titulo:(p.documentos[r].titulo||entregable(r).nombre).toUpperCase() }));
   if(p.pidRef && refs.length<5) refs.unshift({ codigo:p.pidRef, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN" });
   return refs;
 }
@@ -41,17 +42,18 @@ const DISC_TXT = { ELE:"ELECTRICIDAD", INS:"INSTRUMENTACIÓN Y CONTROL", GEN:"EL
 const ETAPA_TXT = { conceptual:"INGENIERÍA CONCEPTUAL", basica:"INGENIERÍA BÁSICA", detalle:"INGENIERÍA DE DETALLE" };
 function fmtFecha(f){ const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (f||""); }
 export function tituloDoc(p, id){ const di = docInfo(p, id); const st = sistemaTag(p); const t = (di.titulo||"").toUpperCase(); return st && !t.includes(st) ? `${t} - TAG: ${st}` : t; }
-export function codigoDe(p, id){ return (p.documentos[id]||{}).codigo || ""; }
+/* referencia a otro documento del proyecto: su nombre (vacío si no forma parte del proyecto) */
+export function refDoc(p, id){ return p.documentos[id] && entregable(id) ? entregable(id).nombre : ""; }
 
 export function escalares(p, id, org){
   const e = entregable(id), di = docInfo(p, id), v = valoresDiseno(p);
   const s = {
     cliente: p.cliente||"", proyecto: p.nombre||"", etapa: ETAPA_TXT[p.etapa]||"", disciplina: DISC_TXT[e.disciplina]||"", titulo: tituloDoc(p, id),
-    codigo: di.codigo||"", rev: di.rev||"A", fecha: fmtFecha(di.fecha), unidad_etiqueta: p.unidad ? "UNIDAD" : "", unidad: (p.unidad||"").toUpperCase(),
+    codigo: "", rev: di.rev||"A", fecha: fmtFecha(di.fecha), unidad_etiqueta: p.unidad ? "UNIDAD" : "", unidad: (p.unidad||"").toUpperCase(),
     org: org.nombre||"", org_corto: (org.nombreCorto||org.nombre||"").toUpperCase(), referencia: p.pidRef||"", emitido: di.emitido||"",
     elaboro: di.elaboro||org.elaboraPor||"", reviso: di.reviso||org.revisaPor||"", aprobo: di.aprobo||org.apruebaPor||"",
-    sistema: sistemaNombre(p), tag_sistema: sistemaTag(p), tension: v.tension, tension_control: `${v.tensionControl} VAC`,
-    numero_proyecto: p.codigo||"", cliente_corto: (p.cliente||"").toUpperCase(), oc_texto: p.ordenCompra ? "N° OC: "+p.ordenCompra : "",
+    sistema: sistemaNombre(p), tag_sistema: sistemaTag(p), tension: v.tension, tension_control: tensionControlTxt(v),
+    numero_proyecto: "", cliente_corto: (p.cliente||"").toUpperCase(), oc_texto: p.ordenCompra ? "N° OC: "+p.ordenCompra : "",
   };
   const corta = t => String(t||"").replace(/^Emitido para /i, "Para ");
   for(let i=0;i<8;i++){ const r = di.revisiones[i]; ["rev","fecha","descripcion","elaboro","reviso","aprobo"].forEach(k=>{ s[`rev${i+1}.${k}`] = r ? (k==="fecha" ? fmtFecha(r.fecha) : k==="descripcion" ? corta(r.descripcion) : (r[k] ?? (k==="elaboro"?s.elaboro:k==="reviso"?s.reviso:k==="aprobo"?s.aprobo:""))) : ""; }); }
@@ -73,13 +75,13 @@ export function tablasCargas(p, t){
     if(c.esGeneral) return { tag:l.tag||"-", descripcion:l.desc||"Carga general", hp:"-", kw: r2(c.powerKWelec,3), fp:c.fp, eff:1, fu:c.fu, fs:c.fs, kv: g.voltage/1000, fases:c.fases, _in: r2(c.installedCurrent,2), _si: r2(c.installedKVA,3), _md: r2(c.installedKVA*c.fu*c.fs,3) };
     return { tag:l.tag||"-", descripcion:l.desc||"Alimentador", hp:"-", kw: r2(c.installedKVA*0.85,2), fp:0.85, eff:1, fu:c.fu, fs:c.fs, kv:g.voltage/1000, fases:3, _in: r2(c.installedCurrent,2), _si: r2(c.installedKVA,2), _md: r2(c.installedKVA*c.fu*c.fs,2) };
   });
-  // cargas estabilizadas de 120 VAC: tableros de control alimentados desde este tablero (o el principal si es el primero)
+  // cargas estabilizadas de 120 Vac: tableros de control alimentados desde este tablero (o el principal si es el primero)
   const ctl = tablerosControl(p).filter(x=> x.tipo==="fuerzacontrol" ? x.id===calc.tablero.id : (x.desde ? x.desde===calc.tablero.id : calc.tablero.id===tf(p).id));
-  // lista de cargas estabilizadas (120 VAC) agrupada como en el formato de referencia: fuente 24 VDC, entradas
+  // lista de cargas estabilizadas (120 Vac) agrupada como en el formato de referencia: fuente 24 Vdc, entradas
   // digitales, salidas digitales e instrumentos (FDP típicos 0,90 / 0,95 / 0,95 / 0,87)
   const grupos = new Map();
-  for(const c of ctl.flatMap(x=>circuitosControl(p, x)).filter(c=>c.barra==="120 VAC" && +c.potencia>0)){
-    const k = /fuente/i.test(c.descripcion) ? ["Fuente de 24 VDC",0.9] : /entradas digitales/i.test(c.descripcion) ? ["Entradas digitales",0.95] : /salidas digitales/i.test(c.descripcion) ? ["Salidas digitales",0.95] : /controlador de limpieza/i.test(c.descripcion) ? ["Controlador de limpieza",0.9] : ["Instrumentos",0.87];
+  for(const c of ctl.flatMap(x=>circuitosControl(p, x)).filter(c=>c.barra==="120 Vac" && +c.potencia>0)){
+    const k = /fuente/i.test(c.descripcion) ? ["Fuente de 24 Vdc",0.9] : /entradas digitales/i.test(c.descripcion) ? ["Entradas digitales",0.95] : /salidas digitales/i.test(c.descripcion) ? ["Salidas digitales",0.95] : /controlador de limpieza/i.test(c.descripcion) ? ["Controlador de limpieza",0.9] : ["Instrumentos",0.87];
     const gk = grupos.get(k[0]) || { descripcion:k[0], fp:k[1], w:0 }; gk.w += +c.potencia||0; grupos.set(k[0], gk);
   }
   const cc = [...grupos.values()].map((x,i)=>({ n:i+1, descripcion:x.descripcion, fp:x.fp, fu:1, fs:1, kw: r2(x.w/1000,3) }));
@@ -87,7 +89,7 @@ export function tablasCargas(p, t){
 }
 
 export function tablasIO(p){
-  const filas = procesarFilas("ins-io", datos(p)["ins-io"]||[], p).map(f=>Object.assign({}, f, { rango: (f.rangoMin!=null && f.rangoMin!=="" ? f.rangoMin+" - "+(f.rangoMax??"")+" "+(f.unidad||"") : "-").trim(), lazo: f.lazo || (f.origen==="instrumento" ? codigoDe(p,"ins-lazo") : f.origen==="reserva" ? "-" : ""), pid: f.pid || (f.origen==="reserva" ? "-" : (p.pidRef || codigoDe(p,"ins-pid") || "")) }));
+  const filas = procesarFilas("ins-io", datos(p)["ins-io"]||[], p).map(f=>Object.assign({}, f, { rango: (f.rangoMin!=null && f.rangoMin!=="" ? f.rangoMin+" - "+(f.rangoMax??"")+" "+(f.unidad||"") : "-").trim(), lazo: f.lazo || (f.origen==="instrumento" ? refDoc(p,"ins-lazo") : f.origen==="reserva" ? "-" : ""), pid: f.pid || (f.origen==="reserva" ? "-" : (p.pidRef || refDoc(p,"ins-pid") || "")) }));
   const res = resumenIO(filas, +valoresDiseno(p).reservaIO||0, p);
   return { io: filas, resumen: res };
 }
@@ -105,8 +107,6 @@ export async function camposHD(p, inst){
     "rango calibrado": inst.rango, "unidades": inst.unidad,
   };
   auto["ambiente"] = [v.ambiente, v.contaminacion && v.contaminacion!=="Normal" ? v.contaminacion.toLowerCase() : ""].filter(Boolean).join(", ");
-  auto["humedad promedio"] = v.humedad; auto["humedad relativa"] = v.humedad;
-  auto["zona sísmica (nte e.030)"] = v.sismo; auto["zona sísmica"] = v.sismo;
   auto["tag"] = prefijoTag(p)+inst.tag;
   // condiciones del sitio y del proceso, marca, modelo y código son propios de cada proyecto: nunca se
   // arrastran desde la hoja de referencia (quedan vacíos hasta que el usuario los complete)
@@ -176,8 +176,8 @@ export function datosMemoria(p){
   const nombres = calcs.map(c=>`${(c.tablero.nombre||"").toLowerCase()} ${c.tablero.tag}`).join(", ");
   return {
     introduccion: mem.intro || p.descripcion || `El presente documento corresponde al proyecto ${p.nombre||""}${p.cliente?" para "+p.cliente:""}. Comprende la determinación de la máxima demanda, el dimensionamiento de conductores de baja tensión y la selección de protecciones de: ${nombres || "los tableros del proyecto"}.`,
-    sistema: sistemaNombre(p), tension: g.voltage, frecuencia: g.freq, tension_control: g.ctrlVoltage, altitud: v.altitud, temp_diseno: v.tempDiseno, cable_referencia: `${clase.nombre} — ${clase.ref}`, canalizacion: mem.canalizacion,
-    caida_ramal: v.caidaTension, caida_alim: v.caidaAlimentador, codigo_md: codigoDe(p, "ele-md") || "del proyecto",
+    sistema: sistemaNombre(p), tension: g.voltage, frecuencia: g.freq, tension_control: tensionControlTxt(v), altitud: v.altitud, temp_diseno: tempDiseno(v), cable_referencia: `${clase.nombre} — ${clase.ref}`, canalizacion: mem.canalizacion,
+    caida_ramal: v.caidaTension, caida_alim: v.caidaAlimentador, codigo_md: refDoc(p, "ele-md") ? "«"+refDoc(p, "ele-md")+"»" : "del proyecto",
     tableros:tablerosM, cables, protecciones: prot, anexo_md: anexoMD, anexo_cables: anexoC, anexo_prot: anexoP,
     pi_total: r2(raiz.reduce((a,c)=>a+c.installedKVA,0),2), md_total: r2(raiz.reduce((a,c)=>a+c.totalKVA,0),2), i_md_total: r2(raiz.reduce((a,c)=>a+c.demandCurrent,0),2),
     itm_general: raiz.map(c=>`${c.tablero.tag}: 3x${c.mainBreaker} A`).join(" · "),
@@ -194,14 +194,14 @@ export function camposHDEq(p, t){
   sec("IDENTIFICACIÓN");
   f("Tag", "", t.tag); f("Descripción", "", t.nombre); f("Tipo de tablero", "", TIPOS_TABLERO[t.tipo].nombre); f("Sistema", "", [sistemaNombre(p), sistemaTag(p)].filter(Boolean).join(" ")); f("Alimentado desde", "", desdeTxt(p, t)); f("Cantidad", "und", 1);
   sec("CONDICIONES DEL SITIO");
-  f("Ubicación del proyecto", "", v.ubicacion); f("Altitud", "m s.n.m.", v.altitud); f("Temperatura ambiente", "°C", `${v.tempMin} a ${v.tempMax}`); f("Temperatura de diseño", "°C", v.tempDiseno); f("Humedad relativa máxima", "%", v.humedad);
-  f("Instalación", "", v.ambiente); f("Contaminación", "", v.contaminacion); f("Área clasificada", "", v.areaClasificada); f("Zona sísmica", "", v.sismo);
+  f("Ubicación del proyecto", "", v.ubicacion); f("Altitud", "m s.n.m.", v.altitud); f("Temperatura ambiente", "°C", `${v.tempMin} a ${v.tempMax}`);
+  f("Instalación", "", v.ambiente); f("Contaminación", "", v.contaminacion); f("Área clasificada", "", v.areaClasificada);
   const ip = ipRecomendado(v);
   if(esPotencia(t)){
     const c = calcularTablero(p, t);
     sec("CARACTERÍSTICAS ELÉCTRICAS");
-    f("Tensión nominal", "V", g.voltage); f("Número de fases / hilos", "", "3F + T"); f("Frecuencia", "Hz", g.freq); f("Tensión de control", "VAC", g.ctrlVoltage);
-    f("Nivel de cortocircuito (capacidad mínima de interrupción)", "kA", g.faultLevel); f("Sistema de puesta a tierra", "", v.puestaTierra);
+    f("Tensión nominal", "Vac", g.voltage); f("Número de fases / hilos", "", "3F + T"); f("Frecuencia", "Hz", g.freq); f("Tensión de control", v.tensionControlTipo, v.tensionControl);
+    f("Nivel de cortocircuito (capacidad mínima de interrupción)", "kA", g.faultLevel);
     f("Interruptor general", "A", c.mainBreaker ? "3x"+c.mainBreaker : ""); f("Corriente nominal de barras (mínima)", "A", c.mainBreaker || "");
     f("Potencia instalada", "kVA", r2(c.installedKVA,2)); f("Máxima demanda", "kVA", r2(c.totalKVA,2)); f("Corriente de máxima demanda", "A", r2(c.demandCurrent,2));
     const mc = c.mainCond; f("Acometida (conductor por fase)", "", mc && mc.cable ? `${(mc.sets||1)>1 ? mc.sets+" x " : ""}3#${mc.cable[0]} (Cu)` : "");
@@ -224,12 +224,12 @@ export function camposHDEq(p, t){
     const io = (d["ins-io"]||[]).filter(x=>x.tablero===t.tag);
     const ct = k => io.filter(x=>x.tipo===k).length;
     sec("CONTROL Y COMUNICACIONES");
-    f("Tensión de alimentación de control", "VAC", `${v.tensionControl} (1F + N + T)`); f("Tensión de instrumentación", "VDC", v.tensionInstr);
+    f("Tensión de alimentación de control", v.tensionControlTipo, v.tensionControlTipo==="Vdc" ? v.tensionControl : `${v.tensionControl} (1F + N + T)`); f("Tensión de instrumentación", "Vdc", v.tensionInstr);
     f("Controlador", "", [t.plc, t.modeloPlc].filter(Boolean).join(" — ")); f("Pantalla HMI", "", t.hmi ? "Sí" : "No"); f("Switch Ethernet", "", t.switch ? "Sí" : "No"); f("Router IIoT", "", t.router ? "Sí" : "No");
     f("Entradas / salidas (AI / AO / DI / DO)", "", io.length ? `${ct("AI")} / ${ct("AO")} / ${ct("DI")} / ${ct("DO")}` : ""); f("Reserva de canales I/O", "%", v.reservaIO); f("Red externa", "", t.redExterna);
     if(!esPotencia(t)){ sec("CARACTERÍSTICAS CONSTRUCTIVAS"); f("Grado de protección", "", ip); f("Material", "", /4X/.test(ip) ? "Acero inoxidable AISI 304 / 316" : "Plancha de acero laminado en frío, pintura electrostática"); f("Montaje", "", "Adosado a pared / estructura"); f("Norma de fabricación", "", "UL 508A (paneles de control industrial)"); }
     sec("CIRCUITOS DE CONTROL");
-    for(const c of circs) f(`${c.barra} ${c.circuito} — ${c.descripcion}`, "A", `${c.barra==="24 VDC" ? "Fusible" : "ITM 2P"} ${c.proteccion} A${c.diferencial?" + ID 30 mA":""}${c.potencia?" · "+c.potencia+" W":""}`);
+    for(const c of circs) f(`${c.barra} ${c.circuito} — ${c.descripcion}`, "A", `${c.barra==="24 Vdc" ? "Fusible" : "ITM 2P"} ${c.proteccion} A${c.diferencial?" + ID 30 mA":""}${c.potencia?" · "+c.potencia+" W":""}`);
   }
   return { titulo:`HOJA DE DATOS - ${(t.nombre||"").toUpperCase()} ${t.tag}`, filas };
 }
@@ -246,7 +246,7 @@ export const DOCS = {
   "ele-multifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["cargas"] },
   "ele-mecanico": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros"] },
   "ele-arreglo": { formato:"dxf", ref:"Lámina A1 sobre la planta del cliente", editores:["arreglo"] },
-  "ins-pid": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["sistema","proceso"] },
+  "ins-pid": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["proceso"] },
   "ins-instrumentos": { formato:"xlsx", plantilla:"xlsx/lista_instrumentos.xlsx", man:"lista_instrumentos", ref:"Listado de instrumentos: carátula + listado", editores:["instrumentos","notas"] },
   "ins-hd": { formato:"xlsx", plantilla:"xlsx/hoja_datos_instrumentos.xlsx", man:"hoja_datos_instrumentos", ref:"Hoja de datos: carátula + índice + una hoja por instrumento", editores:["hd"] },
   "ins-io": { formato:"xlsx", plantilla:"xlsx/lista_io.xlsx", man:"lista_io", ref:"Listado I/O con resumen de señales y módulos", editores:["tablerocontrol","io","notas"] },
@@ -276,22 +276,22 @@ export async function payloadExcel(p, id, org){
     const calcs = calcularTodos(p);
     const lista = calcs.length ? calcs.map(c=>c.tablero) : [tf(p)];
     const notas = notasDe(p, base, [
-      `La tensión estabilizada de ${v.tensionControl} VAC será suministrada por el cliente / tablero de distribución indicado.`,
-      `Los equipos alimentados mediante tensión estabilizada de ${v.tensionControl} VAC se encuentran instalados en el tablero de control asociado.`,
+      `La tensión estabilizada de ${tensionEstabilizada(v)} será suministrada por el cliente / tablero de distribución indicado.`,
+      `Los equipos alimentados mediante tensión estabilizada de ${tensionEstabilizada(v)} se encuentran instalados en el tablero de control asociado.`,
       "Corrientes calculadas a partir de la potencia instalada (S = P / (η·cos φ)); la máxima demanda aplica FU y FS por carga." ]);
     const instancias = lista.map((t, k)=>{
       const tb = tablasCargas(p, t);
       return { nombre: lista.length>1 ? nombreHoja("LISTADO "+t.tag) : "LISTADO", scal:{ tablero_titulo: `${sistemaNombre(p) ? sistemaNombre(p)+" - " : ""}${t.nombre||"Tablero"} ${t.tag||""}`.toUpperCase() }, tablas:{ cargas: tb.cargas, cargas_control: tb.cargas_control, notas } };
     });
-    Object.assign(scal, { tensiones: `${v.tension}/${v.tensionControl} VAC`, kv: (+v.tension||460)/1000 });
+    Object.assign(scal, { tension_control: tensionEstabilizada(v), tensiones: v.tensionControlTipo==="Vdc" ? `${v.tension} Vac / ${v.tensionControl} Vdc` : `${v.tension}/${v.tensionControl} Vac`, kv: (+v.tension||460)/1000 });
     return { scal, tablas:{}, clonar:{ hoja:"LISTADO", instancias } };
   }
   if(base==="ele-cables"){
     const filas = []; let item = 0, last = null;
-    const pidRef = p.pidRef || codigoDe(p, "ins-pid");
+    const pidRef = p.pidRef || refDoc(p, "ins-pid");
     for(const c of cablesFuerza(p)){
-      if(c._t!==last){ last = c._t; filas.push({ __var:"seccion", texto: `${(sistemaNombre(p)||"").toUpperCase()}${sistemaNombre(p)?" - ":""}ELECTRICIDAD - ${(c._t.nombre||"").toUpperCase()} ${v.tension} VAC ${c._t.tag}` }); }
-      const r = { item: ++item, tag:c.tag, tipo:c.tipo, voltaje:c.voltaje, conductores:c.conductores, seccion:c.seccion, desde:c.desde, hasta:c.hasta, plano: codigoDe(p, "ele-arreglo") || "", pid: pidRef||"", notas:"" };
+      if(c._t!==last){ last = c._t; filas.push({ __var:"seccion", texto: `${(sistemaNombre(p)||"").toUpperCase()}${sistemaNombre(p)?" - ":""}ELECTRICIDAD - ${(c._t.nombre||"").toUpperCase()} ${v.tension} Vac ${c._t.tag}` }); }
+      const r = { item: ++item, tag:c.tag, tipo:c.tipo, voltaje:c.voltaje, conductores:c.conductores, seccion:c.seccion, desde:c.desde, hasta:c.hasta, plano: refDoc(p, "ele-arreglo"), pid: pidRef||"", notas:"" };
       for(const [k] of CANALIZACIONES) r[k] = 0;
       r[c.canalizacion in r ? c.canalizacion : "otros"] = c.longitudTotal;
       filas.push(r);
@@ -299,7 +299,7 @@ export async function payloadExcel(p, id, org){
     return { scal, tablas:{ cables: filas, notas: notasDe(p, base, [ `Longitudes estimadas con ${d.cablesCfg.reserva}% de reserva; las longitudes finales se confirman con el plano de rutas / arreglo general.`, `Calidad de cable: ${(CLASES_CABLE[d.cablesCfg.clase]||CLASES_CABLE.lszh).nombre} (${(CLASES_CABLE[d.cablesCfg.clase]||CLASES_CABLE.lszh).norma}).` ]).map(n=>({ texto: n.n+" "+n.texto })) } };
   }
   if(base==="ele-equipos"){
-    const filas = equiposElectricos(p).map(f=>Object.assign({}, f, { plano: f.plano || codigoDe(p, f._doc) }));
+    const filas = equiposElectricos(p).map(f=>Object.assign({}, f, { plano: f.plano || refDoc(p, f._doc) }));
     return { scal, tablas:{ equipos: filas, notas: notasDe(p, base, []) } };
   }
   if(base==="ele-hd"){
@@ -310,7 +310,7 @@ export async function payloadExcel(p, id, org){
   if(base==="ins-instrumentos"){
     const st = sistemaTag(p), sist = (sistemaNombre(p)||"").toUpperCase()+(st?"\n"+st:"");
     const pre = prefijoTag(p);
-    const filas = instrumentos(p).map(i=>Object.assign({}, i, { tag: conPref(pre, i.tag), sistema: i.sistema || sist, hojaDatos: i.hojaDatos || codigoDe(p, "ins-hd") }));
+    const filas = instrumentos(p).map(i=>Object.assign({}, i, { tag: conPref(pre, i.tag), sistema: i.sistema || sist, hojaDatos: i.hojaDatos || refDoc(p, "ins-hd") }));
     return { scal, tablas:{ instrumentos: filas, notas: notasDe(p, base, []) } };
   }
   if(base==="ins-io"){

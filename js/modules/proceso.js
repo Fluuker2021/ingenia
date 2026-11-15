@@ -19,9 +19,9 @@ export const EQUIPOS_PROCESO = [
   { v:"otro", label:"Otro", claves:null },
 ];
 
-const A = (tipo, descripcion, servicio, rango, unidad, alimentacion="24 VDC / Loop Powered") => ({ tipo, descripcion, servicio, tipoSenal:"Analógica", senal:"4 - 20 mA", alimentacion, rango, unidad });
-const D = (tipo, descripcion, servicio, alimentacion="120 VAC") => ({ tipo, descripcion, servicio, tipoSenal:"Discreta", senal:"Contacto seco / Relé", alimentacion });
-const O = (tipo, descripcion, servicio) => ({ tipo, descripcion, servicio, tipoSenal:"Discreta", senal:"N. A.", alimentacion:"120 VAC" });
+const A = (tipo, descripcion, servicio, rango, unidad, alimentacion="24 Vdc / Loop Powered") => ({ tipo, descripcion, servicio, tipoSenal:"Analógica", senal:"4 - 20 mA", alimentacion, rango, unidad });
+const D = (tipo, descripcion, servicio, alimentacion="120 Vac") => ({ tipo, descripcion, servicio, tipoSenal:"Discreta", senal:"Contacto seco / Relé", alimentacion });
+const O = (tipo, descripcion, servicio) => ({ tipo, descripcion, servicio, tipoSenal:"Discreta", senal:"N. A.", alimentacion:"120 Vac" });
 
 const REGLAS = {
   colector: [

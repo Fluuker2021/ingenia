@@ -6,7 +6,7 @@ import { dibujarLamina, PASO_HOJAS } from "./formato.js";
 import { funcionISA, datos, calcularTablero, calcularTodos, circuitosControl, instrumentos, esAnalogico, esSalida, expandirTag, tipoInstrumento, sistemaTag, sistemaNombre,
   tableros, tablerosPotencia, tablerosControl, tableroDeInstrumento, tableroPorId, tf, tc, desdeTxt, esControl, esFuerza } from "../datos.js";
 import { procesarFilas } from "../modules/tablas.js";
-import { valoresDiseno } from "../modules/criterios.js";
+import { valoresDiseno, tensionControlTxt, controlEnDC } from "../modules/criterios.js";
 import { GENERADORES2 } from "./planos2.js";
 
 /* ---------- utilidades de dibujo ---------- */
@@ -50,7 +50,7 @@ export function unifilarFuerza({ p, valsDe, cliente }){
   lista.forEach((calc, i)=>{
     const t = calc.tablero;
     let area = null;
-    buildUnifilarDXF(calc, { doc, titulo:`${(t.nombre||"TABLERO").toUpperCase()} ${t.tag}`, subtitulo:`${calc.g.voltage} VAC, 3F+T, ${calc.g.freq} Hz · Icc ${calc.g.faultLevel} kA`, acometida:"VIENE DE "+desdeTxt(p, t).toUpperCase(),
+    buildUnifilarDXF(calc, { doc, titulo:`${(t.nombre||"TABLERO").toUpperCase()} ${t.tag}`, subtitulo:`${calc.g.voltage} Vac, 3F+T, ${calc.g.freq} Hz · Icc ${calc.g.faultLevel} kA`, acometida:"VIENE DE "+desdeTxt(p, t).toUpperCase(),
       dibujarFormato: d => (area = dibujarLamina(d, i*PASO_HOJAS, 0, valsDe(i, lista.length, { TITULO2: `${(t.nombre||"").toUpperCase()} ${t.tag}` }), cliente)) });
     // accesorios del tablero (SPD, relé de supervisión de fases, luces piloto), como en el unifilar de referencia
     const acc = t.accesorios || {};
@@ -77,14 +77,14 @@ export function unifilarControl({ p, valsDe, cliente }){
   return { dxf: doc.toDXF(), hojas: total };
 }
 function nHojasControl(circs){
-  const grupos = ["24 VDC", "120 VAC", "220 VAC"].map(b=>circs.filter(c=>c.barra===b)).filter(g=>g.length);
+  const grupos = ["24 Vdc", "120 Vac", "220 Vac"].map(b=>circs.filter(c=>c.barra===b)).filter(g=>g.length);
   const total = grupos.reduce((a,g)=>a+g.length, 0) + (grupos.length-1)*1.4;
   return Math.max(1, Math.ceil(total / 30));
 }
 function unifilarControlTablero(doc, p, tc, valsDe, cliente, offset){
   const d = datos(p), v = valoresDiseno(p);
   const circs = circuitosControl(p, tc);
-  const grupos = ["24 VDC", "120 VAC", "220 VAC"].map(b=>({ barra:b, c: circs.filter(c=>c.barra===b) })).filter(g=>g.c.length);
+  const grupos = ["24 Vdc", "120 Vac", "220 Vac"].map(b=>({ barra:b, c: circs.filter(c=>c.barra===b) })).filter(g=>g.c.length);
   const total = grupos.reduce((a,g)=>a+g.c.length, 0) + (grupos.length-1)*1.4;
   const maxPorHoja = 30;
   const nH = Math.max(1, Math.ceil(total / maxPorHoja));
@@ -110,22 +110,22 @@ function unifilarControlTablero(doc, p, tc, valsDe, cliente, offset){
     for(const g of gs){
       const w = g.c.length * pitch;
       const xc = x + w/2;
-      const layer = g.barra==="24 VDC" ? "I-FZA-DC" : "I-FZA-AC";
+      const layer = g.barra==="24 Vdc" ? "I-FZA-DC" : "I-FZA-AC";
       // alimentación del grupo
       let rot = "", desde = "";
-      if(g.barra==="120 VAC"){ rot = `L,N ${v.tensionControl||120} VAC, 1F+N+T, ${v.frecuencia} Hz`; desde = "VIENE DE "+(tc.desde120 || desdeTxt(p, tc)).toUpperCase(); }
-      else if(g.barra==="220 VAC"){ rot = `R,S 220 VAC, 1F+T, ${v.frecuencia} Hz`; const tfu = tc.tipo==="fuerzacontrol" ? tc : (tableroPorId(p, tc.desde) || tf(p)); desde = "VIENE DEL TABLERO "+(tfu.tag||""); }
-      else { rot = "+/- 24 VDC"; desde = "FUENTE DE 24 VDC (CIRCUITO 120 VAC)"; }
-      if(g.barra==="24 VDC"){
+      if(g.barra==="120 Vac"){ rot = `L,N ${controlEnDC(v) ? 120 : (v.tensionControl||120)} Vac, 1F+N+T, ${v.frecuencia} Hz`; desde = "VIENE DE "+(tc.desde120 || desdeTxt(p, tc)).toUpperCase(); }
+      else if(g.barra==="220 Vac"){ rot = `R,S 220 Vac, 1F+T, ${v.frecuencia} Hz`; const tfu = tc.tipo==="fuerzacontrol" ? tc : (tableroPorId(p, tc.desde) || tf(p)); desde = "VIENE DEL TABLERO "+(tfu.tag||""); }
+      else { rot = "+/- 24 Vdc"; desde = "FUENTE DE 24 Vdc (CIRCUITO 120 Vac)"; }
+      if(g.barra==="24 Vdc"){
         R(doc, xc-9, busY+42, 18, 14, "I-SIM"); T(doc, xc, busY+50.5, 3, "~", "I-SIM", { halign:1 }); T(doc, xc, busY+44.5, 3, "=", "I-SIM", { halign:1 });
-        T(doc, xc+12, busY+50, 2.4, "FUENTE 24 VDC", "G-TEXT"); L(doc, xc, busY+42, xc, busY, layer);
+        T(doc, xc+12, busY+50, 2.4, "FUENTE 24 Vdc", "G-TEXT"); L(doc, xc, busY+42, xc, busY, layer);
         L(doc, xc, busY+56, xc, topY-26, "I-FZA-AC"); T(doc, xc+3, topY-30, 2.2, desde, "G-TEXT", { n:44 });
       } else {
         R(doc, xc-22, topY-14, 44, 12, "G-VARIOS"); Tw(doc, xc-20.5, topY-5, 2.0, desde, 40, "G-TEXT");
         doc.polyline([[xc-15,topY-14],[xc,topY-20],[xc+15,topY-14]], "G-VARIOS");
         L(doc, xc, topY-20, xc, busY, layer);
-        symBreaker(doc, xc, busY+34, 9, 2); T(doc, xc+8, busY+35, 2.4, "Q-"+g.barra.replace(/\s/g,"")+" 2x"+(g.barra==="120 VAC"?16:10)+"A", "G-TEXT");
-        T(doc, xc+3, busY+18, 2.0, g.barra==="120 VAC" ? "2C#12AWG+12AWG(T) 0.6/1kV" : "2C#12AWG+12AWG(T) 0.6/1kV", "G-TEXT");
+        symBreaker(doc, xc, busY+34, 9, 2); T(doc, xc+8, busY+35, 2.4, "Q-"+g.barra.replace(/\s/g,"")+" 2x"+(g.barra==="120 Vac"?16:10)+"A", "G-TEXT");
+        T(doc, xc+3, busY+18, 2.0, g.barra==="120 Vac" ? "2C#12AWG+12AWG(T) 0.6/1kV" : "2C#12AWG+12AWG(T) 0.6/1kV", "G-TEXT");
       }
       L(doc, x+2, busY, x+w-2, busY, layer);
       T(doc, x+2, busY+3, 2.4, rot+(g.cont?" (CONT.)":""), "G-TEXT", { n:50 });
@@ -133,7 +133,7 @@ function unifilarControlTablero(doc, p, tc, valsDe, cliente, offset){
         const bx = x + pitch*(i+0.5);
         L(doc, bx, busY, bx, busY-14, layer);
         T(doc, bx, busY+8, 2.6, c.circuito, "G-TEXT", { halign:1 });
-        if(g.barra==="24 VDC"){ symFuse(doc, bx, busY-21, 7, 1); T(doc, bx+3, busY-26, 1.9, c.proteccion+"A", "G-TEXT"); }
+        if(g.barra==="24 Vdc"){ symFuse(doc, bx, busY-21, 7, 1); T(doc, bx+3, busY-26, 1.9, c.proteccion+"A", "G-TEXT"); }
         else { symBreaker(doc, bx, busY-21, 8, 2); T(doc, bx+2.5, busY-28.5, 1.9, "2x"+c.proteccion+"A", "G-TEXT"); if(c.diferencial){ T(doc, bx+2.5, busY-31.6, 1.9, "ID 30mA", "G-TEXT"); } }
         L(doc, bx, busY-28, bx, busY-212, layer);
         T(doc, bx-1.6, busY-200, 2.0, c.cable+" 0.6/1kV", "G-TEXT", { rot:90, n:40 });
@@ -153,11 +153,11 @@ function unifilarControlTablero(doc, p, tc, valsDe, cliente, offset){
     tablaLeyenda(doc, lx, ly, 150, [
       { texto:"INTERRUPTOR TERMOMAGNÉTICO (ITM)", sim:(x,y)=>symBreaker(doc,x,y,6,2) }, { texto:"INTERRUPTOR DIFERENCIAL (ID 30 mA)", sim:(x,y)=>{ symBreaker(doc,x,y,6,2); T(doc,x+3,y-1,1.6,"ID","G-TEXT"); } },
       { texto:"PORTAFUSIBLE", sim:(x,y)=>symFuse(doc,x,y,5,1) },
-      { texto:"FUENTE 24 VDC", sim:(x,y)=>{ R(doc,x-4,y-3,8,6,"I-SIM"); T(doc,x-1.2,y-1,1.8,"~","I-SIM"); } }, { texto:"POZO A TIERRA", sim:(x,y)=>symGroundSmall(doc,x,y+2,5) },
-      { layer:"I-FZA-AC", texto:"CIRCUITO DE CORRIENTE ALTERNA" }, { layer:"I-FZA-DC", texto:"CIRCUITO DE 24 VDC" }, { layer:"I-TIERRA", texto:"CONDUCTOR DE TIERRA" },
+      { texto:"FUENTE 24 Vdc", sim:(x,y)=>{ R(doc,x-4,y-3,8,6,"I-SIM"); T(doc,x-1.2,y-1,1.8,"~","I-SIM"); } }, { texto:"POZO A TIERRA", sim:(x,y)=>symGroundSmall(doc,x,y+2,5) },
+      { layer:"I-FZA-AC", texto:"CIRCUITO DE CORRIENTE ALTERNA" }, { layer:"I-FZA-DC", texto:"CIRCUITO DE 24 Vdc" }, { layer:"I-TIERRA", texto:"CONDUCTOR DE TIERRA" },
     ], "LEYENDA");
     const notas = (d.notas["ins-unifilar-tc"] && d.notas["ins-unifilar-tc"].length) ? d.notas["ins-unifilar-tc"] : [
-      `LA ACOMETIDA PARA EL TABLERO DE CONTROL ${tc.tag||""} ES DE ${v.tensionControl||120} VAC, 1F+N+T, ${v.frecuencia} Hz.`,
+      `LA ACOMETIDA PARA EL TABLERO DE CONTROL ${tc.tag||""} ES DE ${controlEnDC(v) ? 120 : (v.tensionControl||120)} Vac, 1F+N+T, ${v.frecuencia} Hz.`,
       `TODOS LOS EQUIPOS ESTÁN DISEÑADOS PARA TRABAJAR A ${v.altitud} m s.n.m.`,
       "LAS PROTECCIONES Y SECCIONES INDICADAS SON PRELIMINARES; VERIFICAR CON LA LISTA DE EQUIPOS FINAL." ];
     let ny = A.y0 + 52;
@@ -240,9 +240,9 @@ export function lazos({ p, valsDe, cliente }){
       const spec = lz.analog ? "1-1Pr#16AWG+SH" : (lz.salida ? "1-3C#14AWG+T" : "1-5C#14AWG+T");
       T(doc, (x1+x2)/2 - 25, yc+11, 2.1, cableTag, "G-TEXT"); T(doc, (x1+x2)/2 - 25, yc+8.6, 1.9, spec, "G-TEXT");
       // borneras y alimentación en tablero
-      const pw = lz.analog ? (ac ? lz.i.alimentacion : "24 VDC") : (/24/.test(lz.i.alimentacion||"") ? "24 VDC" : (lz.i.alimentacion||"120 VAC"));
+      const pw = lz.analog ? (ac ? lz.i.alimentacion : "24 Vdc") : (/24/.test(lz.i.alimentacion||"") ? "24 Vdc" : (lz.i.alimentacion||"120 Vac"));
       T(doc, x3+2, yc+8.6, 2.0, pw, "G-TEXT");
-      T(doc, x3+2, yb+0.6, 2.0, lz.analog && !ac ? "0 VDC" : "PE", "G-TEXT");
+      T(doc, x3+2, yb+0.6, 2.0, lz.analog && !ac ? "0 Vdc" : "PE", "G-TEXT");
       // señal al controlador
       const ys = yc + 8 - dy;
       L(doc, x3, ys, xPLC-8, ys, capaS);
@@ -259,7 +259,7 @@ export function lazos({ p, valsDe, cliente }){
     // leyenda de conexión y notas
     const lx = A.x0 + W*0.45, ly = A.y0 + 54;
     tablaLeyenda(doc, lx, ly, 120, [
-      { layer:"I-FZA-AC", texto:"Línea de fuerza 120 VAC" }, { layer:"I-FZA-DC", texto:"Línea de fuerza 24 VDC" }, { layer:"I-TIERRA", texto:"Línea de tierra" },
+      { layer:"I-FZA-AC", texto:"Línea de fuerza 120 Vac" }, { layer:"I-FZA-DC", texto:"Línea de fuerza 24 Vdc" }, { layer:"I-TIERRA", texto:"Línea de tierra" },
       { layer:"I-CONTROL", texto:"Línea de control" }, { layer:"I-SE-ANALO", texto:"Línea de instrumentación" }, { layer:"I-DAT", texto:"Límite de data y comunicación" } ], "LEYENDA DE CONEXIÓN");
     T(doc, A.x0+4, A.y0+52, 2.4, "NOTAS:", "G-TEXT");
     Tw(doc, A.x0+4, A.y0+47, 2.0, "1. ES RESPONSABILIDAD DEL USUARIO DE ESTE PLANO ASEGURARSE DE USAR LA ÚLTIMA REVISIÓN DE LA LISTA DE E/S Y DEL LISTADO DE INSTRUMENTOS.", 80, "G-TEXT");
@@ -343,7 +343,7 @@ function arquitecturaTablero(doc, A, p, tc){
       const x = xs0 + k*pitch;
       const capa = dv.analog ? "I-SE-ANALO" : "I-FZA-AC";
       L(doc, x, yBus, x, y+8, capa);
-      T(doc, x+1.2, yBus-4, 1.8, dv.analog ? "4-20 mA" : (dv.i.alimentacion||"120 VAC").replace(/\s*\/.*$/,""), "G-TEXT");
+      T(doc, x+1.2, yBus-4, 1.8, dv.analog ? "4-20 mA" : (dv.i.alimentacion||"120 Vac").replace(/\s*\/.*$/,""), "G-TEXT");
       if(dv.salida){ doc.polyline([[x-5,y+8],[x+5,y],[x+5,y+8],[x-5,y],[x-5,y+8]], "I-SIM"); R(doc, x-3, y+8, 6, 4, "I-SIM"); }
       else { doc.circle(x, y+2, 6, "I-SIM"); T(doc, x, y+0.8, 2.0, tipoInstrumento(dv.tag), "I-SIM", { halign:1 }); }
       Tw(doc, x-pitch/2+1.5, y-8, 1.8, (dv.i.descripcion||"").toUpperCase(), Math.max(10, Math.floor(pitch/1.25)), "G-TEXT");
@@ -358,7 +358,7 @@ function arquitecturaTablero(doc, A, p, tc){
     bus.forEach(b=>{ L(doc, xd, py0, xd, b.y, b.analog ? "I-SE-ANALO" : "I-FZA-AC"); L(doc, Math.min(xd, b.x0), b.y, Math.max(xd, b.x1), b.y, b.analog ? "I-SE-ANALO" : "I-FZA-AC"); });
   }
   tablaLeyenda(doc, A.x1-140, A.y1-30, 132, [
-    { layer:"I-SE-ANALO", texto:"Cable de instrumentación (4-20 mA)" }, { layer:"I-FZA-AC", texto:"Cable de control (120 VAC)" },
+    { layer:"I-SE-ANALO", texto:"Cable de instrumentación (4-20 mA)" }, { layer:"I-FZA-AC", texto:"Cable de control (120 Vac)" },
     { layer:"I-PROTOCOL", texto:"Cable de red Ethernet (Ethernet/IP)" }, { layer:"I-FO", texto:"Fibra óptica monomodo" } ], "LEYENDA");
 }
 
@@ -397,7 +397,7 @@ export function bloques({ p, valsDe, cliente }){
     let x0, x1;
     if(hijos.length){ x0 = Math.min(...hijos.map(c=>c.x)); x1 = Math.max(...hijos.map(c=>c.x+c.w)); } else { x0 = x; x1 = x + 70; x += 70 + gap; }
     posD.set(D.id, { x0, x1 });
-    caja(x0, yTD, x1-x0, 30, `${(D.nombre||"TABLERO DE DISTRIBUCIÓN").toUpperCase()} ${D.tag}`, `${v.tension} VAC`);
+    caja(x0, yTD, x1-x0, 30, `${(D.nombre||"TABLERO DE DISTRIBUCIÓN").toUpperCase()} ${D.tag}`, `${v.tension} Vac`);
     const cd = calcs.get(D);
     for(const h of hijos){
       const xc = h.x + h.w/2;
@@ -412,7 +412,7 @@ export function bloques({ p, valsDe, cliente }){
   const raices = tableros(p).filter(t=>t.tipo!=="control" && !(t.desde && tableroPorId(p, t.desde)));
   const fuentes = [...new Set(raices.map(t=>desdeTxt(p, t)))];
   const xr0 = A.x0 + 6, xr1 = Math.max(x - gap, A.x0 + 200);
-  caja(xr0, ySrc, xr1 - xr0, 26, ("ALIMENTACIÓN: "+(fuentes.join(" / ")||"EXISTENTE")).toUpperCase(), `${v.tension} VAC, 3F, ${v.frecuencia} Hz`, "G-VARIOS");
+  caja(xr0, ySrc, xr1 - xr0, 26, ("ALIMENTACIÓN: "+(fuentes.join(" / ")||"EXISTENTE")).toUpperCase(), `${v.tension} Vac, 3F, ${v.frecuencia} Hz`, "G-VARIOS");
   for(const r of raices){
     let xc, ytop;
     if(r.tipo==="distribucion"){ const pd = posD.get(r.id); xc = (pd.x0+pd.x1)/2; ytop = yTD+30; }
@@ -448,10 +448,10 @@ export function bloques({ p, valsDe, cliente }){
     // alimentación de los tableros de control desde su tablero de fuerza
     if(t.tipo==="control"){
       const src = cols.find(o=>o.t.id===t.desde) || cols.find(o=>esFuerza(o.t));
-      if(src){ const y = yTF+15, xa = src.x+src.w, xb = c.x; if(xb>xa){ L(doc, xa, y, xb, y, "E-CONTROL"); T(doc, xa+2, y+1.5, 1.8, `${v.tensionControl} VAC`, "G-TEXT"); } else { L(doc, src.x+src.w-8, yTF+36, src.x+src.w-8, yTF+44, "E-CONTROL"); L(doc, src.x+src.w-8, yTF+44, c.x+8, yTF+44, "E-CONTROL"); L(doc, c.x+8, yTF+44, c.x+8, yTF+36, "E-CONTROL"); } }
+      if(src){ const y = yTF+15, xa = src.x+src.w, xb = c.x; if(xb>xa){ L(doc, xa, y, xb, y, "E-CONTROL"); T(doc, xa+2, y+1.5, 1.8, tensionControlTxt(v), "G-TEXT"); } else { L(doc, src.x+src.w-8, yTF+36, src.x+src.w-8, yTF+44, "E-CONTROL"); L(doc, src.x+src.w-8, yTF+44, c.x+8, yTF+44, "E-CONTROL"); L(doc, c.x+8, yTF+44, c.x+8, yTF+36, "E-CONTROL"); } }
     }
   }
-  tablaLeyenda(doc, A.x1-150, A.y0+120, 140, [ { layer:"E-FZA", texto:`Cable de fuerza baja tensión (${v.tension} VAC)` }, { layer:"E-CONTROL", texto:`Cable de control, alimentación (${v.tensionControl} VAC)` } ], "LEYENDA");
+  tablaLeyenda(doc, A.x1-150, A.y0+120, 140, [ { layer:"E-FZA", texto:`Cable de fuerza baja tensión (${v.tension} Vac)` }, { layer:"E-CONTROL", texto:`Cable de control, alimentación (${tensionControlTxt(v)})` } ], "LEYENDA");
   return { dxf: doc.toDXF(), hojas:1 };
 }
 

@@ -31,26 +31,26 @@ const ARRANQUE = [[/variador|vfd|vdf|frecuencia variable/, "vfd"], [/arrancador 
 const arranqueDe = t => (ARRANQUE.find(([re])=>re.test(t))||[])[1];
 const APLIC = [[/bomba/, "bomba-centrifuga"], [/ventilador axial|extractor axial/, "ventilador-axial"], [/ventilador|extractor/, "ventilador-centrifugo"], [/faja|transportador|conveyor/, "faja-transportadora"], [/valvula rotativa|rotativa/, "valvula-rotativa"], [/compresor/, "compresor-piston"], [/molino/, "molino"], [/chancadora|trituradora/, "chancadora"], [/agitador|mezclador/, "agitador"]];
 const NOMBRE_APLIC = { "bomba-centrifuga":"Bomba", "ventilador-centrifugo":"Ventilador", "ventilador-axial":"Ventilador axial", "faja-transportadora":"Faja transportadora", "valvula-rotativa":"Válvula rotativa", "compresor-piston":"Compresor", "molino":"Molino", "chancadora":"Chancadora", "agitador":"Agitador" };
-const CAMPO = { ubicacion:"ubicación", servicio:"servicio", descripcion:"descripción", marca:"marca", modelo:"modelo", alimentacion:"alimentación", rango:"rango", senal:"señal", nombre:"nombre", cliente:"cliente", unidad:"unidad", codigo:"código", area:"área", etapa:"etapa" };
+const CAMPO = { ubicacion:"ubicación", servicio:"servicio", descripcion:"descripción", marca:"marca", modelo:"modelo", alimentacion:"alimentación", rango:"rango", senal:"señal", nombre:"nombre", cliente:"cliente", unidad:"unidad minera / planta", etapa:"etapa" };
 const LBL_ARR = { dol:"directo", vfd:"variador", ss:"arrancador suave" };
 const VARIABLE = { P:"presión", PD:"presión diferencial", F:"flujo", L:"nivel", T:"temperatura", A:"análisis", Z:"posición", S:"velocidad", V:"vibración", W:"peso", D:"densidad", H:"manual" };
 const DISENO = [
-  [/tension de control|voltaje de control/, "tensionControl", "Tensión de control", "VAC"],
-  [/tension de instrumentacion/, "tensionInstr", "Tensión de instrumentación", "VDC"],
+  [/tension de control|voltaje de control/, "tensionControl", "Tensión de control", ""],
+  [/tension de instrumentacion/, "tensionInstr", "Tensión de instrumentación", "Vdc"],
   [/caida de tension.*alimentador/, "caidaAlimentador", "Caída de tensión en alimentadores", "%"],
   [/caida de tension/, "caidaTension", "Caída de tensión admisible", "%"],
-  [/tension|voltaje/, "tension", "Tensión de fuerza", "V"],
+  [/tension|voltaje/, "tension", "Tensión de fuerza", "Vac"],
   [/frecuencia/, "frecuencia", "Frecuencia", "Hz"],
   [/altitud|altura/, "altitud", "Altitud", "m s.n.m."],
   [/temperatura (maxima|max)/, "tempMax", "Temperatura máxima", "°C"],
   [/temperatura (minima|min)/, "tempMin", "Temperatura mínima", "°C"],
-  [/temperatura( ambiente)? de diseno|temperatura/, "tempDiseno", "Temperatura de diseño", "°C"],
+  [/temperatura( ambiente)? de diseno|temperatura/, "tempMax", "Temperatura máxima (de diseño)", "°C"],
   [/cortocircuito|\bicc\b/, "icc", "Nivel de cortocircuito", "kA"],
-  [/humedad/, "humedad", "Humedad relativa", "%"],
   [/reserva (de )?(canales )?i\/?o|reserva de senales/, "reservaIO", "Reserva de canales I/O", "%"],
 ];
 const NOMBRE_DISENO = Object.fromEntries(DISENO.map(([, k, n, u])=>[k, [n, u]]));
 NOMBRE_DISENO.ubicacion = ["Ubicación del proyecto", ""];
+NOMBRE_DISENO.tensionControlTipo = ["Tipo de tensión de control", ""];
 const MOTIVOS = [[/interna/, "Emitido para revisión interna"], [/cliente/, "Emitido para revisión del cliente"], [/aprobacion/, "Emitido para aprobación"], [/construccion/, "Emitido para construcción"], [/conforme a obra|as built/, "Conforme a obra"]];
 
 const VERBO = /\b(cambia|cambiar|cambie|cambiale|modifica|modificar|pon|ponle|poner|actualiza|actualizar|ajusta|ajustar|establece|asigna|agrega|agregar|anade|anadir|incluye|incluir|crea|crear|elimina|eliminar|borra|borrar|quita|quitar|emite|emitir|renombra|sube|baja|aumenta|reduce|haz|hacer|duplica|reemplaza|sustituye|mueve|configura|define|fija)\b/;
@@ -139,14 +139,16 @@ export function interpretar(q, p){
   // sistema
   if(/sistema/.test(t) && /tag|nombre/.test(t)){ const v = textoTras(M, "tag del sistema|nombre del sistema|sistema"); if(v) return [{ op:"sistema.editar", campos: /tag/.test(t) ? { tag: v.toUpperCase() } : { nombre: v } }]; }
   // datos del proyecto
-  for(const [re, k] of [["cliente", "cliente"], ["unidad|planta", "unidad"], ["nombre del proyecto|titulo del proyecto", "nombre"], ["codigo del proyecto", "codigo"], ["\\barea\\b", "area"]]){
+  for(const [re, k] of [["cliente", "cliente"], ["unidad minera|unidad|planta", "unidad"], ["nombre del proyecto|titulo del proyecto", "nombre"]]){
     if(new RegExp(re).test(t)){ const v = textoTras(M, re); if(v) return [{ op:"proyecto.editar", campos: { [k]: v } }]; }
   }
   if(/etapa/.test(t)){ const e = ETAPAS.find(e=>t.includes(e.id) || t.includes(e.nombre.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace("ingenieria ",""))); if(e) return [{ op:"proyecto.editar", campos: { etapa: e.id } }]; }
   // datos de diseño
   if(/ubicacion del proyecto|region|distrito/.test(t)){ const v = textoTras(M, "ubicacion del proyecto|region|distrito"); if(v) return [{ op:"diseno.editar", campos:{ ubicacion: v } }]; }
   for(const [re, k] of DISENO){
-    if(re.test(t)){ const m = t.slice(t.search(re)).match(/(\d+(?:[.,]\d+)?)/); if(m) return [{ op:"diseno.editar", campos: { [k]: num(m[1]) } }]; }
+    if(re.test(t)){ const m = t.slice(t.search(re)).match(/(\d+(?:[.,]\d+)?)/); if(m){ const campos = { [k]: num(m[1]) };
+      if(k==="tensionControl"){ const tipo = /\bvdc\b|\bdc\b|continua/.test(t) ? "Vdc" : /\bvac\b|\bac\b|alterna/.test(t) ? "Vac" : ""; if(tipo) campos.tensionControlTipo = tipo; }
+      return [{ op:"diseno.editar", campos }]; } }
   }
   return null;
 }
@@ -188,9 +190,9 @@ export function describir(op, p){
 }
 function senalDe(tag){
   const L = tipoInstrumento(tag);
-  if(/^(XV|SV|FV|PV|LV|TV|HV|XY|SY)$/.test(L)) return { tipoSenal:"Discreta", senal:"N. A.", alimentacion:"120 VAC" };
-  if(/T$/.test(L)) return { tipoSenal:"Analógica", senal:"4 - 20 mA", alimentacion:"24 VDC / Loop Powered" };
-  return { tipoSenal:"Discreta", senal:"Contacto seco", alimentacion:"120 VAC" };
+  if(/^(XV|SV|FV|PV|LV|TV|HV|XY|SY)$/.test(L)) return { tipoSenal:"Discreta", senal:"N. A.", alimentacion:"120 Vac" };
+  if(/T$/.test(L)) return { tipoSenal:"Analógica", senal:"4 - 20 mA", alimentacion:"24 Vdc / Loop Powered" };
+  return { tipoSenal:"Discreta", senal:"Contacto seco", alimentacion:"120 Vac" };
 }
 
 /* ---------- aplicar, impacto y deshacer ---------- */
@@ -239,12 +241,11 @@ export function aplicar(p, ops){
     } else if(op.op==="sistema.editar"){
       if(c.nombre!=null) d.sistema.nombre = c.nombre; if(c.tag!=null) d.sistema.tag = c.tag;
     } else if(op.op==="proyecto.editar"){
-      for(const k of ["nombre","cliente","unidad","codigo","area"]) if(c[k]!=null && c[k]!=="") p[k] = c[k];
+      for(const k of ["nombre","cliente","unidad"]) if(c[k]!=null && c[k]!=="") p[k] = c[k];
       if(c.etapa && ETAPAS.some(e=>e.id===c.etapa)) p.etapa = c.etapa;
-      if(c.codigo!=null || c.area!=null) S.sincronizarDocumentos(p, ENTREGABLES);
     } else if(op.op==="diseno.editar"){
       p.diseno = p.diseno || {};
-      for(const [k, v] of Object.entries(c)) if(NOMBRE_DISENO[k] && v!=null && v!=="") p.diseno[k] = String(v);
+      for(const [k, v] of Object.entries(c)) if(NOMBRE_DISENO[k] && v!=null && v!=="" && (k!=="tensionControlTipo" || v==="Vac" || v==="Vdc")) p.diseno[k] = String(v);
     } else if(op.op==="documentos.emitir"){
       const o = S.load().org, firmas = { elaboro:o.elaboraPor||"", reviso:o.revisaPor||"", aprobo:o.apruebaPor||"" };
       const hoy = new Date().toISOString().slice(0,10), rev = String(op.rev||"").toUpperCase();
@@ -293,7 +294,7 @@ export const HERRAMIENTA = {
       tablero: { type:"string", description:"TAG del tablero" }, aplicacion: { type:"string", enum:["bomba-centrifuga","ventilador-centrifugo","ventilador-axial","faja-transportadora","valvula-rotativa","compresor-piston","molino","chancadora","agitador","otro"] },
       servicio: { type:"string" }, ubicacion: { type:"string" }, cantidad: { type:"number" },
       motivo: { type:"string", enum:["Emitido para revisión interna","Emitido para revisión del cliente","Emitido para aprobación","Emitido para construcción","Conforme a obra"] }, rev: { type:"string" },
-      campos: { type:"object", description:"Campos a cambiar. carga.editar: potencia, unidad, arranque, longitud_cable (m), tablero, descripcion, fp, eficiencia, fu, fs. instrumento.editar: descripcion, servicio, ubicacion, marca, modelo, alimentacion, rango, senal. tablero.editar: nombre, tag. sistema.editar: nombre, tag. proyecto.editar: nombre, cliente, unidad, codigo, area, etapa (conceptual/basica/detalle). diseno.editar: tension, frecuencia, tensionControl, tensionInstr, icc, altitud, tempMin, tempMax, tempDiseno, humedad, ubicacion, caidaTension, caidaAlimentador, reservaIO." },
+      campos: { type:"object", description:"Campos a cambiar. carga.editar: potencia, unidad, arranque, longitud_cable (m), tablero, descripcion, fp, eficiencia, fu, fs. instrumento.editar: descripcion, servicio, ubicacion, marca, modelo, alimentacion, rango, senal. tablero.editar: nombre, tag. sistema.editar: nombre, tag. proyecto.editar: nombre, cliente, unidad (unidad minera / planta), etapa (conceptual/basica/detalle). diseno.editar: tension (Vac), frecuencia, tensionControl, tensionControlTipo (Vac o Vdc), tensionInstr (Vdc), icc, altitud, tempMin, tempMax (es la temperatura de diseño), ubicacion, caidaTension, caidaAlimentador, reservaIO." },
     }, required:["op"] } },
   }, required:["resumen","operaciones"] },
 };

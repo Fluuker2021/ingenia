@@ -136,7 +136,7 @@ export function multifilarFuerza({ p, valsDe, cliente }){
   paginas.forEach((pg, h)=>{
     const A = As[h], t = pg.calc.tablero, g = pg.calc.g;
     const yB = A.y1 - 40, fases = ["L1","L2","L3"];
-    T(doc, A.x0+4, A.y1-14, 3.2, `${(t.nombre||"TABLERO").toUpperCase()} ${t.tag} — ${g.voltage} VAC, 3F+PE, ${g.freq} Hz`, "G-TEXT", { n:90 });
+    T(doc, A.x0+4, A.y1-14, 3.2, `${(t.nombre||"TABLERO").toUpperCase()} ${t.tag} — ${g.voltage} Vac, 3F+PE, ${g.freq} Hz`, "G-TEXT", { n:90 });
     // acometida e interruptor general (primera hoja del tablero)
     const xIni = A.x0 + 70, paso = Math.min(90, Math.max(54, (A.x1 - A.x0 - 110) / Math.max(1, pg.cs.length))), xFin = xIni + paso*pg.cs.length;
     fases.forEach((f, k)=>{ L(doc, A.x0+30, yB - k*5, xFin, yB - k*5, "E-FZA-BT-PRI"); T(doc, xFin+3, yB - k*5 - 1, 2.2, f, "G-TEXT"); });
@@ -333,7 +333,7 @@ export function mecanicoControl({ p, valsDe, cliente }){
   ctls.forEach((t, h)=>{
     const propias = filas.filter(f=>(f.tablero||"")===t.tag && f.slot!=="" && f.slot!=null);
     const slots = [...new Set(propias.map(f=>f.slot))].sort((a,b)=>a-b);
-    const comps = [{ comp:"Interruptor principal de control", devtag:"Q1", val:"2x16A" }, { comp:"Fuente de alimentación 24 VDC", devtag:"PS1", val:"10 A" },
+    const comps = [{ comp:"Interruptor principal de control", devtag:"Q1", val:"2x16A" }, { comp:"Fuente de alimentación 24 Vdc", devtag:"PS1", val:"10 A" },
       { comp:"PLC — CPU", devtag:t.plc||"CPU", val:t.modeloPlc||"", ancho:70 }];
     slots.forEach(s=>{ const tipo = (propias.find(f=>f.slot===s)||{}).tipo||""; comps.push({ comp:`Módulo ${tipo} (slot ${s})`, devtag:"SLOT "+s, val:tipo, ancho:35 }); });
     if(t.switch) comps.push({ comp:"Switch Ethernet", devtag:"SW1", val:"" });

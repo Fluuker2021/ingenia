@@ -219,7 +219,6 @@ details.more > summary::-webkit-details-marker{display:none;}
   .docs-table tbody tr:last-child{border-bottom:none;}
   .docs-table tbody td{border:none; padding:2px 0; white-space:normal !important;}
   .docs-table tbody td:first-child{position:absolute; left:12px; top:14px; padding:0;}
-  .docs-table tbody td:nth-child(2){font-size:12px; color:var(--text-dim);}
   .docs-table tbody td select{width:100%; min-width:0 !important; margin:6px 0 4px;}
   .docs-table tbody tr:hover td{background:transparent;}
 }
@@ -366,7 +365,7 @@ canvas.preview{width:100%; border:1px solid var(--border); border-radius:var(--r
 .progress > span{display:block; height:100%; background:var(--amarillo);}
 
 /* tabla de documentos */
-.docs-table th:nth-child(3){min-width:260px;}
+.docs-table th:nth-child(2){min-width:260px;}
 .docs-table td{vertical-align:middle;}
 .docs-table a:not(.btn){text-decoration:none; font-weight:500;}
 .docs-table a:not(.btn):hover{text-decoration:underline; text-decoration-color:var(--amarillo);}
@@ -380,21 +379,30 @@ canvas.preview{width:100%; border:1px solid var(--border); border-radius:var(--r
 .ed-table select{padding:5px 6px; font-size:12.5px;}
 .ed-table td{padding:4px 6px;}
 .sec-row td{background:var(--gris-50); font-weight:600; font-size:12px; color:var(--grafito);}
-/* vista previa tipo hoja de cálculo (imita los colores de la plantilla Excel) */
-.xl-sheet{background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:14px;}
-.xl-title{background:#1F4E79; color:#fff; font-weight:700; text-align:center; padding:7px; font-size:13px; letter-spacing:.03em; border-radius:4px 4px 0 0;}
-.xl-band{font-weight:700; text-align:center; margin:12px 0 6px; font-size:12.5px; color:var(--grafito);}
+/* vista previa de documentos con los colores de INGENIA: grafito (negro) y amarillo eléctrico */
+.xl-sheet{background:#fff; border:1px solid var(--border); border-top:4px solid var(--grafito); border-radius:var(--radius); padding:14px;}
+.xl-title{background:var(--grafito); color:#fff; font-family:var(--font-title); font-weight:700; text-align:center; padding:8px; font-size:13px; letter-spacing:.06em; border-radius:4px 4px 0 0; border-bottom:3px solid var(--amarillo);}
+.xl-band{font-weight:700; text-align:center; margin:12px 0 6px; font-size:12.5px; color:var(--grafito); letter-spacing:.03em;}
 .xl-head{width:100%; border-collapse:collapse; margin:0 0 12px; font-size:12px;}
-.xl-head th{background:var(--gris-100); text-align:left; width:90px; padding:4px 8px; border:1px solid var(--border); font-weight:600;}
+.xl-head th{background:var(--grafito-800); color:#fff; text-align:left; width:90px; padding:4px 8px; border:1px solid var(--grafito-800); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:.03em;}
 .xl-head td{padding:4px 8px; border:1px solid var(--border);}
 .xl-table{font-size:12px;}
-.xl-table thead th{background:#1F4E79; color:#fff; font-size:11px; text-transform:uppercase; letter-spacing:.02em; white-space:normal; vertical-align:middle;}
+.xl-table thead th{background:var(--grafito); color:#fff; font-size:11px; text-transform:uppercase; letter-spacing:.02em; white-space:normal; vertical-align:middle; border-bottom:3px solid var(--amarillo);}
 .xl-table td.num{text-align:right; font-variant-numeric:tabular-nums;}
-.xl-total td{background:var(--gris-100); font-weight:700;}
-.xl-sec td{background:#DCE6F2; font-weight:700; font-size:11.5px;}
-.doc-prev{background:#fff; border:1px solid var(--border); border-radius:var(--radius); padding:22px 26px; max-width:1100px;}
-.doc-cover{border-bottom:1px solid var(--border); margin-bottom:16px; padding-bottom:12px;}
-.doc-cover h2{font-size:17px; margin:4px 0;}
+.xl-total td{background:var(--grafito); color:#fff; font-weight:700; border-top:2px solid var(--amarillo);}
+.xl-sec td{background:var(--amarillo-100); color:var(--grafito); font-weight:700; font-size:11.5px;}
+.xl-sheet .stat{border-top:3px solid var(--grafito);}
+.doc-prev{background:#fff; border:1px solid var(--border); border-top:4px solid var(--grafito); border-radius:var(--radius); padding:22px 26px; max-width:1100px;}
+.doc-prev h3.ed-sub{color:var(--grafito); border-left:3px solid var(--amarillo); padding-left:8px;}
+.doc-cover{background:var(--grafito); color:#fff; border-bottom:3px solid var(--amarillo); border-radius:var(--radius); margin:-8px -10px 18px; padding:14px 18px;}
+.doc-cover .muted{color:#C9CED6;}
+.doc-cover h2{font-size:17px; margin:4px 0; color:#fff;}
+/* asistente del proyecto: selección de documentos y campos con unidad */
+.row.nowrap{flex-wrap:nowrap;}
+.row.nowrap > input{flex:1; min-width:0;}
+.wz-doc{grid-template-columns:auto minmax(0,1fr); cursor:pointer;}
+.wz-doc input{width:16px; height:16px; margin-top:3px; accent-color:var(--grafito);}
+.dg-resumen{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
 .plano-view{background:#fff; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;}
 .plano-view canvas{display:block; width:100%; cursor:grab;}
 

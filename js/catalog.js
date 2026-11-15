@@ -104,7 +104,7 @@ export const ENTREGABLES = [
     salida:"DXF" },
   { id:"ins-unifilar-tc", n:16, disciplina:"INS", tipo:"plano", doc:"DI", etapas:["basica","detalle"], estado:"listo",
     nombre:"Diagrama unifilar del tablero de control",
-    finalidad:"Alimentación, distribución y protecciones de cada tablero de control (24 VDC, 120 VAC, 220 VAC).",
+    finalidad:"Alimentación, distribución y protecciones de cada tablero de control (24 Vdc, 120 Vac, 220 Vac).",
     entradas:["Instrumentos asignados al tablero (automático)","Configuración del tablero (PLC, HMI, switch…)"],
     salida:"DXF (una lámina por tablero)" },
   { id:"ins-multifilar-tc", n:17, disciplina:"INS", tipo:"plano", doc:"DI", etapas:["detalle"], estado:"listo",

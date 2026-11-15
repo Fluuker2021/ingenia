@@ -26,8 +26,8 @@ export function valoresCajetin({ p, ent, docInfo, org, titulo, titulo2, hoja, es
   const revs = (docInfo.revisiones && docInfo.revisiones.length) ? docInfo.revisiones : [{ rev:docInfo.rev||"A", fecha:docInfo.fecha||"", descripcion:docInfo.emitido||"Emitido para revisión interna" }];
   const fecha = fmt(docInfo.fecha);
   const v = {
-    PLANO: docInfo.codigo||"", TITULO: titulo||"", TITULO2: titulo2||"", PROYECTO: p.nombre||"", CLIENTE: p.cliente||"", UNIDAD: p.unidad||"", AREA: p.areaNombre || (p.area ? "ÁREA "+p.area : ""),
-    DISCIPLINA: disciplina||"", NUM_PROYECTO: p.codigo||"", REV: docInfo.rev||"A", FECHA: fecha, ESCALA: escala||"S/E",
+    PLANO: docInfo.codigo||"", TITULO: titulo||"", TITULO2: titulo2||"", PROYECTO: p.nombre||"", CLIENTE: p.cliente||"", UNIDAD: p.unidad||"", AREA: "",
+    DISCIPLINA: disciplina||"", NUM_PROYECTO: "", REV: docInfo.rev||"A", FECHA: fecha, ESCALA: escala||"S/E",
     DIBUJO: docInfo.dibujo || org.dibujaPor || org.elaboraPor || "", DISENO: docInfo.elaboro || org.elaboraPor || "", REVISO: docInfo.reviso || org.revisaPor || "", APROBO: docInfo.aprobo || org.apruebaPor || "",
     HOJA: hoja||"1 DE 1", EMPRESA: (org.nombreCorto || org.nombre || "").toUpperCase(),
   };

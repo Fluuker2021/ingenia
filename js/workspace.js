@@ -5,7 +5,7 @@ import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, dropzone, leerComoArrayBuffer, kb, fmtFecha } from "./ui.js";
 import * as X from "./export.js";
 import { rellenarExcel, marcadoresExcel } from "./xlsx-engine.js";
-import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, dxfBytes, manifiesto, tablasEstandar, codigoDe, tituloDoc, descargable } from "./docs.js";
+import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, dxfBytes, manifiesto, tablasEstandar, refDoc, tituloDoc, descargable } from "./docs.js";
 import { renderEditores } from "./editores.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, instrumentos, r2, sistemaTag, tableros, tf, cablesFuerza, CANALIZACIONES } from "./datos.js";
 import { aciCercano } from "./cad/formato.js";
@@ -20,7 +20,7 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
   if(!e || !def){ location.hash = `#/proyecto/${p.id}/documentos`; return; }
   S.sincronizarDocumentos(p, ENTREGABLES);
   if(!p.documentos[id]){
-    if(e.interno){ p.documentos[id] = { rev:"A", fecha:new Date().toISOString().slice(0,10), estado:"Por elaborar", titulo:e.nombre.toUpperCase(), codigo:S.codigoDocumento(p, e, 1) }; S.save(); }
+    if(e.interno){ p.documentos[id] = { rev:"A", fecha:new Date().toISOString().slice(0,10), estado:"Por elaborar", titulo:e.nombre.toUpperCase() }; S.save(); }
     else { p.entregables.push(id); S.sincronizarDocumentos(p, ENTREGABLES); }
   }
   const di = docInfo(p, id);
@@ -29,7 +29,7 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
   const tabs = def.formato==="proceso" ? [["datos","1. Datos de entrada"],["vista","2. Resumen"],["cajetin","3. Cajetín y revisiones"]] : [["datos","1. Datos de entrada"],["vista","2. Vista previa"],["cajetin","3. Cajetín y revisiones"],["plantilla","Plantilla"]];
   tab = tabs.some(t=>t[0]===tab) ? tab : "datos";
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos", href:"#/proyectos"},{label:p.nombre, href:`#/proyecto/${p.id}/documentos`},{label:e.nombre}], title:e.nombre,
-    sub:`<span class="chip">${esc(di.codigo||"")}</span><span class="mono">Rev. ${esc(di.rev||"A")}</span><span>${esc(DISCIPLINAS[e.disciplina].nombre)} · ${esc(FMT[def.formato])}</span>${def.formato==="proceso" ? "" : usaCliente ? `<span class="badge badge-blue" title="${esc(tpl.nombre)}">Formato del cliente</span>` : `<span class="badge badge-neutral" title="${esc(def.ref)}">Formato estándar</span>`}`,
+    sub:`<span class="mono">Rev. ${esc(di.rev||"A")}</span><span>${esc(DISCIPLINAS[e.disciplina].nombre)} · ${esc(FMT[def.formato])}</span>${def.formato==="proceso" ? "" : usaCliente ? `<span class="badge badge-blue" title="${esc(tpl.nombre)}">Formato del cliente</span>` : `<span class="badge badge-neutral" title="${esc(def.ref)}">Formato estándar</span>`}`,
     actions:`<a class="btn" href="#/proyecto/${p.id}/documentos">${ICON.back} Documentos</a>${descargable(id) ? `<button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button>` : ""}` }) +
     `<div class="tabs">${tabs.map(t=>`<button data-wtab="${t[0]}" class="${t[0]===tab?"active":""}">${t[1]}</button>`).join("")}</div><div id="ws-body"></div>`;
   $$("[data-wtab]").forEach(b=>b.onclick = ()=>location.hash = `#/proyecto/${p.id}/doc/${id}/${b.dataset.wtab}`);
@@ -61,13 +61,13 @@ async function tabVista(body, state, p, id, def){
     if(base==="ele-hd") return vistaHDEq(body, p, id);
     if(base==="ele-md") return vistaMemoria(body, p, id, "md");
     if(def.secciones) return vistaTexto(body, p, id, def);
-    if(base==="ele-equipos") return vistaTabla(body, p, id, "LISTADO DE EQUIPOS ELÉCTRICOS", [["ÍTEM","#"],["SISTEMA","sistema"],["CANT.","cant"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["MARCA","marca"],["MODELO","modelo"],["VOLTAJE / FRECUENCIA / FASE","tension"],["PLANO DE REFERENCIA","plano"]], equiposElectricos(p).map(f=>Object.assign({}, f, { plano: f.plano || codigoDe(p, f._doc) })));
-    if(base==="ins-instrumentos") return vistaTabla(body, p, id, "LISTADO DE INSTRUMENTOS", [["ÍTEM","#"],["SISTEMA","sistema"],["CANT.","cant"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["MARCA","marca"],["MODELO","modelo"],["TIPO DE SEÑAL","tipoSenal"],["SEÑAL DE SALIDA","senal"],["ALIMENTACIÓN","alimentacion"],["UBICACIÓN","ubicacion"],["HOJA DE DATOS","hojaDatos"]], instrumentos(p).map(i=>Object.assign({}, i, { sistema: i.sistema || (datos(p).sistema.nombre||"").toUpperCase(), hojaDatos: i.hojaDatos || codigoDe(p,"ins-hd") })));
+    if(base==="ele-equipos") return vistaTabla(body, p, id, "LISTADO DE EQUIPOS ELÉCTRICOS", [["ÍTEM","#"],["SISTEMA","sistema"],["CANT.","cant"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["MARCA","marca"],["MODELO","modelo"],["VOLTAJE / FRECUENCIA / FASE","tension"],["PLANO DE REFERENCIA","plano"]], equiposElectricos(p).map(f=>Object.assign({}, f, { plano: f.plano || refDoc(p, f._doc) })));
+    if(base==="ins-instrumentos") return vistaTabla(body, p, id, "LISTADO DE INSTRUMENTOS", [["ÍTEM","#"],["SISTEMA","sistema"],["CANT.","cant"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["MARCA","marca"],["MODELO","modelo"],["TIPO DE SEÑAL","tipoSenal"],["SEÑAL DE SALIDA","senal"],["ALIMENTACIÓN","alimentacion"],["UBICACIÓN","ubicacion"],["HOJA DE DATOS","hojaDatos"]], instrumentos(p).map(i=>Object.assign({}, i, { sistema: i.sistema || (datos(p).sistema.nombre||"").toUpperCase(), hojaDatos: i.hojaDatos || refDoc(p,"ins-hd") })));
     if(base==="ins-io"){ const t = tablasIO(p); return vistaTabla(body, p, id, "LISTADO DE ENTRADAS Y SALIDAS (I/O)", [["ÍTEM","#"],["TAG","tag"],["TIPO E/S","tipo"],["SEÑAL","senal"],["DESCRIPCIÓN","descripcion"],["VOLTAJE / PROTOCOLO","voltaje"],["RANGO","rango"],["ALIMENTACIÓN","alimentacion"],["CONTROLADOR","tablero"],["SLOT","slot"],["CANAL","ch"],["BORNES","terminales"]], t.io,
       `<h3 class="ed-sub mt-2">Resumen de señales y módulos</h3>${tablaHTML([["TIPO","tipo"],["USADOS","usados"],["RESERVA","reserva"],["REQUERIDOS","requeridos"],["CANALES/MÓDULO","cpm"],["MÓDULOS","modulos"],["CAPACIDAD","capacidad"]], t.resumen)}`); }
     if(base==="ins-hd") return vistaHD(body, p, id);
     if(base==="ele-mc") return vistaMemoria(body, p, id);
-    if(def.estandar){ const t = id==="gen-registro" ? null : tablasEstandar(p, id); if(!t){ body.innerHTML = `<div class="notice">La lista de documentos se arma con los entregables seleccionados y sus códigos, revisiones y fechas (pestaña Documentos del proyecto).</div>`; return; } const [k, tb] = Object.entries(t)[0]; return vistaTabla(body, p, id, tb.titulo.toUpperCase(), tb.columnas.map(c=>[c.titulo, c.key]), tb.filas); }
+    if(def.estandar){ const t = id==="gen-registro" ? null : tablasEstandar(p, id); if(!t){ body.innerHTML = `<div class="notice">La lista de documentos se arma con los documentos seleccionados, sus revisiones y fechas (pestaña Documentos del proyecto).</div>`; return; } const [k, tb] = Object.entries(t)[0]; return vistaTabla(body, p, id, tb.titulo.toUpperCase(), tb.columnas.map(c=>[c.titulo, c.key]), tb.filas); }
     body.innerHTML = `<div class="empty">Sin vista previa.</div>`;
   }catch(err){ console.error(err); body.innerHTML = `<div class="notice warn">No se pudo calcular la vista previa: ${esc(err.message||err)}</div>`; }
 }
@@ -77,7 +77,7 @@ function cabeceraHoja(p, id, titulo){
   return `<div class="xl-sheet"><div class="xl-title">${esc(titulo)}</div>
     <table class="xl-head"><tr><th>Cliente</th><td>${esc(p.cliente||"")}</td><th>Fecha</th><td>${esc(fmtF(di.fecha))}</td></tr>
     <tr><th>Proyecto</th><td>${esc(p.nombre||"")}</td><th>Revisión</th><td>${esc(di.rev||"A")}</td></tr>
-    <tr><th>Documento</th><td class="mono">${esc(di.codigo||"")}</td><th>P&amp;ID</th><td class="mono">${esc(p.pidRef||"—")}</td></tr></table>`;
+    <tr><th>Documento</th><td>${esc(entregable(id).nombre)}</td><th>Unidad</th><td>${esc(p.unidad||"—")}</td></tr></table>`;
 }
 function fmtF(f){ const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (f||""); }
 function tablaHTML(cols, filas, totales){
@@ -138,7 +138,7 @@ function vistaMemoria(body, p, id, tipo){
   const md = `<h3 class="ed-sub">${tipo==="md" ? "Anexo A" : "Resumen"} — Máxima demanda</h3>${tablaHTML([["Ítem","n"],["Tag","tag"],["Descripción","descripcion"],["P (kW)","kw"],["cos φ","fp"],["η","eff"],["S inst. (kVA)","si"],["FU","fu"],["FS","fs"],["MD (kVA)","md"],["In (A)","in"]], m.anexo_md)}`;
   const cond = `<h3 class="ed-sub mt-2">Anexo A — Conductores</h3>${tablaHTML([["Circ.","circuito"],["Hasta","hasta"],["In (A)","i"],["Id (A)","id"],["L (m)","l"],["Calibre","calibre"],["Iadm (A)","iadm"],["KT","ktot"],["Ic (A)","icorr"],["ΔV (%)","dv_pct"],["EGC","egc"],["Referencia","modelo"]], m.anexo_cables)}
     <h3 class="ed-sub mt-2">Anexo B — Protecciones</h3>${tablaHTML([["Circ.","circuito"],["Descripción","descripcion"],["In (A)","i"],["Tipo","tipo"],["Dispositivo","modelo"],["Ajuste","iprot"]], m.anexo_prot)}`;
-  body.innerHTML = `<div class="doc-prev"><div class="doc-cover"><div class="muted">${esc(p.cliente||"")}</div><h2>${esc(tituloDoc(p,id))}</h2><div class="mono">${esc(codigoDe(p,id))}</div></div>
+  body.innerHTML = `<div class="doc-prev"><div class="doc-cover"><div class="muted">${esc(p.cliente||"")}</div><h2>${esc(tituloDoc(p,id))}</h2></div>
     <div class="stat-row"><div class="stat"><div class="k">Potencia instalada</div><div class="v">${m.pi_total} kVA</div></div><div class="stat"><div class="k">Máxima demanda</div><div class="v">${m.md_total} kVA</div></div><div class="stat"><div class="k">I máx. demanda</div><div class="v">${m.i_md_total} A</div></div><div class="stat"><div class="k">Interruptor general</div><div class="v" style="font-size:14px">${esc(m.itm_general)}</div></div></div>
     ${tipo==="md" ? md : cond}
     <p class="muted mt-2" style="font-size:12px">El Word incluye además generalidades, normas, procedimiento, cálculo por ${tipo==="md" ? "tablero y carga" : "cable y protección"} e índice.</p></div>`;
@@ -204,7 +204,6 @@ function tabCajetin(body, state, p, id, def){
   const render = ()=>{
     body.innerHTML = html`<div class="grid-2">
       <div class="card"><div class="card-head"><h2>Identificación</h2><span class="muted" style="font-size:12px">Firmas vacías = las de <a href="#/organizacion">tu organización</a></span></div><div class="card-body">
-        <div class="field"><label>Código del documento</label><input type="text" class="mono" data-f="codigo" value="${esc(d.codigo)}"><span class="hint">Automático; si lo cambias queda fijo.</span></div>
         <div class="field"><label>Título</label><input type="text" data-f="titulo" value="${esc(d.titulo||"")}">${sistemaTag(p) ? `<span class="hint">Se completa con «- TAG: ${esc(sistemaTag(p))}».</span>` : ""}</div>
         <div class="grid-3">
           <div class="field"><label>Elaboró / diseñó</label><input type="text" data-f="elaboro" value="${esc(d.elaboro||"")}" placeholder="${esc(org.elaboraPor||"")}"></div>
@@ -220,13 +219,13 @@ function tabCajetin(body, state, p, id, def){
         </tbody></table></div><p class="muted mt-1" style="font-size:12px">La última fila es la vigente. Para emitir varios documentos a la vez usa «Emitir revisión» en Documentos.</p></div></div>
     </div>
     ${def.formato==="dxf" ? `<div class="card mt-2"><div class="card-head"><h2>Planos de referencia (cajetín)</h2><button class="btn-sm" id="rf-auto">Volver a sugerir</button></div><div class="card-body" id="refs"></div></div>` : ""}`;
-    $$("[data-f]", body).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; if(i.dataset.f==="codigo") d.codigoManual = true; S.save(); });
+    $$("[data-f]", body).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; S.save(); });
     $$("[data-rv]", body).forEach(i=>i.onchange = ()=>{ d.revisiones[+i.closest("tr").dataset.r][i.dataset.rv] = i.value; S.save(); });
     $$("[data-rdel]", body).forEach(b=>b.onclick = ()=>{ d.revisiones.splice(+b.closest("tr").dataset.r, 1); S.save(); render(); });
     $("#rv-add").onclick = ()=>{ const last = d.revisiones[d.revisiones.length-1]; const sig = nextRev(last.rev); d.revisiones.push({ rev:sig, fecha:new Date().toISOString().slice(0,10), descripcion: /^\d+$/.test(sig) ? "Emitido para construcción" : "Emitido para revisión del cliente" }); S.save(); render(); };
     if(def.formato==="dxf"){
       const rf = $("#refs");
-      const draw = ()=>{ rf.innerHTML = `${d.referencias.map((r,i)=>`<div class="row mb-1" data-i="${i}"><input type="text" class="mono" data-rf="codigo" value="${esc(r.codigo)}" style="width:280px"><input type="text" data-rf="titulo" value="${esc(r.titulo)}" style="flex:1"><button class="btn-ghost btn-sm" data-rfdel>${ICON.trash}</button></div>`).join("")}<button class="btn-sm" id="rf-add">${ICON.plus} Agregar</button>`;
+      const draw = ()=>{ rf.innerHTML = `${d.referencias.map((r,i)=>`<div class="row mb-1" data-i="${i}"><input type="text" data-rf="titulo" value="${esc(r.titulo)}" style="flex:1" placeholder="Título del plano o documento de referencia"><button class="btn-ghost btn-sm" data-rfdel>${ICON.trash}</button></div>`).join("")}<button class="btn-sm" id="rf-add">${ICON.plus} Agregar</button>`;
         $$("[data-rf]", rf).forEach(i=>i.onchange = ()=>{ d.referencias[+i.closest("[data-i]").dataset.i][i.dataset.rf] = i.value; S.save(); });
         $$("[data-rfdel]", rf).forEach(b=>b.onclick = ()=>{ d.referencias.splice(+b.closest("[data-i]").dataset.i,1); S.save(); draw(); });
         $("#rf-add", rf).onclick = ()=>{ if(d.referencias.length<5){ d.referencias.push({codigo:"",titulo:""}); S.save(); draw(); } }; };
@@ -282,8 +281,8 @@ async function tabPlantilla(body, state, p, id, def, tpl){
   }
 }
 async function marcadoresDisponibles(p, id, def){
-  const comunes = ["{{proyecto}}","{{cliente}}","{{unidad}}","{{etapa}}","{{disciplina}}","{{titulo}}","{{codigo}}","{{rev}}","{{fecha}}","{{org}}","{{org_corto}}","{{referencia}}","{{elaboro}}","{{reviso}}","{{aprobo}}","{{rev1.rev}} {{rev1.fecha}} {{rev1.descripcion}} {{rev1.elaboro}} …"];
-  if(def.formato==="docx") return `<p>Word (etiquetas docxtemplater): <span class="tokens">${["{proyecto}","{cliente}","{titulo}","{codigo}","{rev}","{fecha}","{org}","{#revisiones}{rev} {fecha} {descripcion} {elaboro} {reviso} {aprobo}{/revisiones}"].concat(def.secciones?["{#secciones}{titulo} {texto} {#items}{.}{/items}{/secciones}"]:id==="ele-md"?["{#tableros}{nombre} {tag} {#cargas}…{/cargas} {s_global} {dm_global} {i_md}{/tableros}","{#anexo_md}…{/anexo_md}","{pi_total} {md_total} {i_md_total}"]:["{#cables}…{/cables}","{#protecciones}…{/protecciones}","{#anexo_cables}…{/anexo_cables}","{#anexo_prot}…{/anexo_prot}"]).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p><p class="muted">Lo más práctico: descarga la plantilla por defecto, copia sus etiquetas al formato del cliente y cárgalo.</p>`;
+  const comunes = ["{{proyecto}}","{{cliente}}","{{unidad}}","{{etapa}}","{{disciplina}}","{{titulo}}","{{rev}}","{{fecha}}","{{org}}","{{org_corto}}","{{referencia}}","{{elaboro}}","{{reviso}}","{{aprobo}}","{{rev1.rev}} {{rev1.fecha}} {{rev1.descripcion}} {{rev1.elaboro}} …"];
+  if(def.formato==="docx") return `<p>Word (etiquetas docxtemplater): <span class="tokens">${["{proyecto}","{cliente}","{titulo}","{rev}","{fecha}","{org}","{#revisiones}{rev} {fecha} {descripcion} {elaboro} {reviso} {aprobo}{/revisiones}"].concat(def.secciones?["{#secciones}{titulo} {texto} {#items}{.}{/items}{/secciones}"]:id==="ele-md"?["{#tableros}{nombre} {tag} {#cargas}…{/cargas} {s_global} {dm_global} {i_md}{/tableros}","{#anexo_md}…{/anexo_md}","{pi_total} {md_total} {i_md_total}"]:["{#cables}…{/cables}","{#protecciones}…{/protecciones}","{#anexo_cables}…{/anexo_cables}","{#anexo_prot}…{/anexo_prot}"]).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p><p class="muted">Lo más práctico: descarga la plantilla por defecto, copia sus etiquetas al formato del cliente y cárgalo.</p>`;
   let tablas = "";
   try{
     const pay = await payloadExcel(p, id, {});
@@ -331,7 +330,7 @@ export async function descargarDoc(state, p, id, btn){
   try{
     const org = await orgConLogo(state);
     const di = docInfo(p, id);
-    const nombre = ext => ((di.codigo||"documento")+"_Rev"+(di.rev||"A")).replace(/[^\w\-.]+/g,"_")+"."+ext;
+    const nombre = ext => X.nombreSeguro(`${p.nombre||"Proyecto"} - ${e.nombre} - Rev ${di.rev||"A"}`)+"."+ext;
     const dd = p.documentos[id];
     const tplCli = dd.plantilla && dd.usarPlantilla!==false ? await S.leerArchivo(dd.plantilla) : null;
     if(def.formato==="dxf"){
@@ -340,11 +339,11 @@ export async function descargarDoc(state, p, id, btn){
     } else if(def.formato==="proceso"){ toast("Este entorno no genera archivo: alimenta el listado de instrumentos."); return;
     } else if(def.estandar || (def.texto && !tplCli)){
       // formatos estándar previos (lista de documentos, cables, criterios)
-      const ctx = { org, proyecto:{ nombre:p.nombre, cliente:p.cliente, unidad:p.unidad, codigo:p.codigo, etapaNombre:"" }, doc:{ codigo:di.codigo, titulo:tituloDoc(p,id), rev:di.rev, fecha:di.fecha, disciplina:DISCIPLINAS[e.disciplina].nombre, emitidoPara:di.emitido, referencia:p.pidRef||"" }, revisiones: di.revisiones.map(r=>Object.assign({ elaboro:di.elaboro||org.elaboraPor, reviso:di.reviso||org.revisaPor, aprobo:di.aprobo||org.apruebaPor }, r)), tablas:{}, campos:{} };
+      const ctx = { org, proyecto:{ nombre:p.nombre, cliente:p.cliente, unidad:p.unidad, codigo:"", etapaNombre:"" }, doc:{ codigo:"", titulo:tituloDoc(p,id), rev:di.rev, fecha:di.fecha, disciplina:DISCIPLINAS[e.disciplina].nombre, emitidoPara:di.emitido, referencia:p.pidRef||"" }, revisiones: di.revisiones.map(r=>Object.assign({ elaboro:di.elaboro||org.elaboraPor, reviso:di.reviso||org.revisaPor, aprobo:di.aprobo||org.apruebaPor }, r)), tablas:{}, campos:{} };
       if(false){
       } else if(id==="gen-registro"){
-        const filas = p.entregables.map(entregable).filter(Boolean).map((x,i)=>{ const d=p.documentos[x.id]||{}; return { item:i+1, codigo:d.codigo, titulo:x.nombre, disciplina:DISCIPLINAS[x.disciplina].nombre, tipo:TIPOS[x.tipo], rev:d.rev, fecha:d.fecha, emitido:d.emitido||"", estado:d.estado }; });
-        ctx.tablas = { "Lista de documentos": { titulo:"Lista de documentos / entregables", columnas:[{key:"item",titulo:"Ítem",ancho:6,num:true},{key:"codigo",titulo:"Código de documento",ancho:30},{key:"titulo",titulo:"Título",ancho:48},{key:"disciplina",titulo:"Disciplina",ancho:22},{key:"tipo",titulo:"Tipo",ancho:18},{key:"rev",titulo:"Rev.",ancho:6,center:true},{key:"fecha",titulo:"Fecha",ancho:12},{key:"emitido",titulo:"Emitido para",ancho:26},{key:"estado",titulo:"Estado",ancho:14}], filas } };
+        const filas = p.entregables.map(entregable).filter(Boolean).map((x,i)=>{ const d=p.documentos[x.id]||{}; return { item:i+1, titulo:x.nombre, disciplina:DISCIPLINAS[x.disciplina].nombre, tipo:TIPOS[x.tipo], rev:d.rev, fecha:d.fecha, emitido:d.emitido||"", estado:d.estado }; });
+        ctx.tablas = { "Lista de documentos": { titulo:"Lista de documentos / entregables", columnas:[{key:"item",titulo:"Ítem",ancho:6,num:true},{key:"titulo",titulo:"Documento",ancho:56},{key:"disciplina",titulo:"Disciplina",ancho:22},{key:"tipo",titulo:"Tipo",ancho:18},{key:"rev",titulo:"Rev.",ancho:6,center:true},{key:"fecha",titulo:"Fecha",ancho:12},{key:"emitido",titulo:"Emitido para",ancho:26},{key:"estado",titulo:"Estado",ancho:14}], filas } };
         X.descargar(await X.excelEstandar(ctx), nombre("xlsx"), X.MIME.xlsx);
       } else {
         ctx.tablas = tablasEstandar(p, id);
@@ -361,7 +360,7 @@ export async function descargarDoc(state, p, id, btn){
       const base = def.aliasDe || id;
       const extra = (base==="ele-mc" || base==="ele-md") ? datosMemoria(p) : def.secciones ? { secciones: def.secciones(p) } : {};
       const scal = escalares(p, id, org);
-      const data = Object.assign({}, scal, { cliente_corto:(p.cliente||"").toUpperCase(), numero_proyecto:p.codigo||"", orden_compra:p.ordenCompra||"", revisiones: di.revisiones.map(r=>({ rev:r.rev, fecha:fmtF(r.fecha), descripcion:r.descripcion, elaboro:r.elaboro||scal.elaboro, reviso:r.reviso||scal.reviso, aprobo:r.aprobo||scal.aprobo })) }, extra);
+      const data = Object.assign({}, scal, { cliente_corto:(p.cliente||"").toUpperCase(), numero_proyecto:"", orden_compra:p.ordenCompra||"", revisiones: di.revisiones.map(r=>({ rev:r.rev, fecha:fmtF(r.fecha), descripcion:r.descripcion, elaboro:r.elaboro||scal.elaboro, reviso:r.reviso||scal.reviso, aprobo:r.aprobo||scal.aprobo })) }, extra);
       delete data._calc;
       let buf = tplCli ? await tplCli.blob.arrayBuffer() : await (await fetch("assets/plantillas/"+def.plantilla)).arrayBuffer();
       const zip = new PizZip(buf);
@@ -371,7 +370,7 @@ export async function descargarDoc(state, p, id, btn){
       X.descargar(doc.getZip().generate({ type:"arraybuffer", compression:"DEFLATE", mimeType:X.MIME.docx }), nombre("docx"), X.MIME.docx);
     }
     if(dd.estado==="Por elaborar"){ dd.estado = "En elaboración"; S.save(); }
-    toast("Documento generado: "+(di.codigo||e.nombre));
+    toast("Documento generado: "+e.nombre);
   }catch(err){
     console.error(err);
     const msg = err.properties && err.properties.errors ? err.properties.errors.map(x=>x.properties.explanation).slice(0,3).join(" · ") : (err.message||String(err));

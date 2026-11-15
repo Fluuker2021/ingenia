@@ -4,7 +4,7 @@
    unifilares…). Los tableros se definen al crear el proyecto (tipo, cantidad y TAG) y cada carga /
    instrumento se asigna a uno de ellos. */
 import { computeCircuit, pickStep, BREAKER_STEPS, tempCorrFactor, buildMainConductorSpec, APPLICATIONS, egcFor, miguelezCableFor, configurarMotor, CABLE_TABLE } from "./engine/tablero-core.js";
-import { valoresDiseno } from "./modules/criterios.js";
+import { valoresDiseno, tempDiseno, tensionControlTxt, controlEnDC } from "./modules/criterios.js";
 import { save } from "./store.js";
 
 export const uidc = (p="x") => p+"_"+Math.random().toString(36).slice(2,8);
@@ -27,7 +27,7 @@ export function nuevoTablero(tipo, n){
   return t;
 }
 /* configuración de E/S de un tablero de control (valores por defecto = práctica del formato de referencia) */
-export const IO_DEF = () => ({ ioDiscreto:"120 VAC", vfdMando:"cableado", senalesTablero:true, repetidores:false, listarReservas:true, primerSlot:1, tbOffset:5, canales:{ AI:16, AO:8, DI:16, DO:16 }, tagLimpieza:"TCL-001" });
+export const IO_DEF = () => ({ ioDiscreto:"120 Vac", vfdMando:"cableado", senalesTablero:true, repetidores:false, listarReservas:true, primerSlot:1, tbOffset:5, canales:{ AI:16, AO:8, DI:16, DO:16 }, tagLimpieza:"TCL-001" });
 
 const conDef = (o, def) => { o = o || {}; for(const k in def) if(!(k in o)) o[k] = def[k]; return o; };
 /* ---------------- estructura base (con migración de proyectos anteriores) ---------------- */
@@ -94,8 +94,8 @@ export function ipRecomendado(v){
 /* ---------------- parámetros eléctricos (motor de cálculo) ---------------- */
 export function parametrosG(p){
   const v = valoresDiseno(p), d = datos(p);
-  return { voltage: +v.tension||460, freq: +v.frecuencia||60, ctrlVoltage: String(v.tensionControl||"120"), faultLevel: +v.icc||25,
-    altitude: +v.altitud||1000, ambientTemp: +v.tempDiseno||40, fuseMult:1.75, vfdBrkMult:1.25, brkMult:2.5,
+  return { voltage: +v.tension||460, freq: +v.frecuencia||60, ctrlVoltage: String(v.tensionControl||"120"), ctrlTipo: v.tensionControlTipo, faultLevel: +v.icc||25,
+    altitude: +v.altitud||1000, ambientTemp: tempDiseno(v), fuseMult:1.75, vfdBrkMult:1.25, brkMult:2.5,
     maxVD: +v.caidaTension||2.5, kGroup: +d.memoria.kGroup||1,
     flaNorma: /IEC/.test(v.corrienteMotores||"") ? "IEC" : "NEC", metodoAmp: /^75/.test(v.columnaAmpacidad||"") ? "75" : "90", minMM2: ((CABLE_TABLE.find(r=>r[0]===v.seccionMinima)||[0,0])[1]) };
 }
@@ -273,7 +273,7 @@ export function derivarIO(p){
   const ctls = tablerosControl(p).length ? tablerosControl(p) : [tc(p)];
   for(const ct of ctls){
     const plc = ct.tag || "PLC-001";
-    const dv = ct.ioDiscreto || "120 VAC";
+    const dv = ct.ioDiscreto || "120 Vac";
     const add = (o)=>filas.push(Object.assign({ tablero:plc, alimentacion:"-", rangoMin:"", rangoMax:"", unidad:"" }, o));
     const alimDisc = `${dv} desde el ${plc} - contacto seco en campo`;
     // tableros de fuerza controlados por este tablero
@@ -321,8 +321,8 @@ export function derivarIO(p){
         const analog = esAnalogico(i), salida = esSalida(i);
         const tipo = analog ? (salida ? "AO" : "AI") : (salida ? "DO" : "DI");
         const [rmin, rmax] = analog && i.rango ? String(i.rango).split(/\s*-\s*/) : ["",""];
-        const ali = analog ? (/loop/i.test(i.alimentacion||"") ? `Loop powered, 2 hilos (24 VDC desde ${limpieza ? ct.tagLimpieza : plc})` : `Externa, 4 hilos (${(i.alimentacion||"120 VAC").replace(/\s*\/.*$/,"")}) – salida 4-20 mA`) : (salida ? `${(i.alimentacion||"120 VAC").replace(/\s*\/.*$/,"")}` : alimDisc);
-        const base = { tag, descripcion: i.servicio || i.descripcion || "", tipo, voltaje: analog ? "4-20 mA" : (salida ? (i.alimentacion||"120 VAC").replace(/\s*\/.*$/,"") : dv), rangoMin: rmin||"", rangoMax: rmax||"", unidad: analog ? (i.unidad||"") : "", alimentacion: ali, origen:"instrumento" };
+        const ali = analog ? (/loop/i.test(i.alimentacion||"") ? `Loop powered, 2 hilos (24 Vdc desde ${limpieza ? ct.tagLimpieza : plc})` : `Externa, 4 hilos (${(i.alimentacion||"120 Vac").replace(/\s*\/.*$/,"")}) – salida 4-20 mA`) : (salida ? `${(i.alimentacion||"120 Vac").replace(/\s*\/.*$/,"")}` : alimDisc);
+        const base = { tag, descripcion: i.servicio || i.descripcion || "", tipo, voltaje: analog ? "4-20 mA" : (salida ? (i.alimentacion||"120 Vac").replace(/\s*\/.*$/,"") : dv), rangoMin: rmin||"", rangoMax: rmax||"", unidad: analog ? (i.unidad||"") : "", alimentacion: ali, origen:"instrumento" };
         if(limpieza && tipo==="AI"){
           const pdic = tag.replace(/^PD(I)?T/, "PDIC");
           add(Object.assign({}, base, { tablero: ct.tagLimpieza, senal: tag+"_"+funcionISA(tag,"AI") }));
@@ -355,8 +355,8 @@ export function derivarIO(p){
 
 /* ---------------- circuitos de un tablero de control ---------------- */
 export function derivarCircuitosControl(p, t){
-  // Criterio usual de unifilar de control: 24 VDC con portafusibles de 1 A por
-  // derivación; 120 VAC con ITM 2x2 A por instrumento / circuito; 220 VAC para ventilación, luminaria y
+  // Criterio usual de unifilar de control: 24 Vdc con portafusibles de 1 A por
+  // derivación; 120 Vac con ITM 2x2 A por instrumento / circuito; 220 Vac para ventilación, luminaria y
   // tomacorriente con diferencial de 30 mA.
   t = t || tc(p);
   const inst = instrumentos(p).filter(i=>tableroDeInstrumento(p, i).id===t.id);
@@ -375,7 +375,7 @@ export function derivarCircuitosControl(p, t){
     if(/24\s*V/i.test(i.alimentacion||"") || (esAnalogico(i) && /loop/i.test(i.alimentacion||""))) for(const tg of expandirTag(i.tag)) c24.push({ descripcion:"Alimentación al "+(i.descripcion||"instrumento").toLowerCase()+" "+tg, proteccion:1 });
   }
   c24.push({ descripcion:"Reserva", proteccion:1 }, { descripcion:"Reserva", proteccion:1 });
-  c120.push({ descripcion:"Fuente de 24 VDC", proteccion:10, potencia:240 });
+  c120.push({ descripcion:"Fuente de 24 Vdc", proteccion:10, potencia:240 });
   c120.push({ descripcion:"Alimentación a entradas digitales", proteccion:2, potencia:10 });
   c120.push({ descripcion:"Alimentación a salidas digitales", proteccion:2, potencia:16 });
   for(const i of inst){
@@ -389,9 +389,9 @@ export function derivarCircuitosControl(p, t){
   c220.push({ descripcion:"Alimentación al tomacorriente", proteccion:4, diferencial:true });
   const add = (arr, barra, cable)=>arr.map((c,i)=>Object.assign({ barra, circuito:"C"+(i+1), cable }, c));
   return [
-    ...add(c24, "24 VDC", "2C#14AWG+14AWG(T)"),
-    ...add(c120, "120 VAC", "2C#14AWG+14AWG(T)"),
-    ...add(c220, "220 VAC", "2C#14AWG+14AWG(T)"),
+    ...add(c24, "24 Vdc", "2C#14AWG+14AWG(T)"),
+    ...add(c120, "120 Vac", "2C#14AWG+14AWG(T)"),
+    ...add(c220, "220 Vac", "2C#14AWG+14AWG(T)"),
   ];
 }
 export function circuitosControl(p, t){ t = t || tc(p); const d = datos(p); const c = d.circuitosCtl[t.id]; return c && c.length ? c : derivarCircuitosControl(p, t); }
@@ -401,7 +401,7 @@ export function equiposElectricos(p){
   const d = datos(p), v = valoresDiseno(p);
   const sist = sistemaNombre(p).toUpperCase() + (sistemaTag(p) ? "\n"+sistemaTag(p) : "");
   const filas = [];
-  const fuerza = `${v.tension} Vac / ${v.frecuencia} Hz / 3F`, ctrl = `${v.tensionControl} Vac / ${v.frecuencia} Hz / 1F`;
+  const fuerza = `${v.tension} Vac / ${v.frecuencia} Hz / 3F`, ctrl = controlEnDC(v) ? tensionControlTxt(v) : `${tensionControlTxt(v)} / ${v.frecuencia} Hz / 1F`;
   for(const t of tableros(p)){
     filas.push({ sistema:sist, cant:1, tag:t.tag, descripcion:(t.nombre||TIPOS_TABLERO[t.tipo].nombre).toUpperCase(), marca:t.marca||"", modelo:t.modelo||"", tension: t.tipo==="control" ? ctrl : fuerza, plano:"", notas: "", _doc: t.tipo==="control" ? "ins-unifilar-tc" : "ele-unifilar" });
   }

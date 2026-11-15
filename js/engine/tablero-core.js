@@ -438,7 +438,8 @@ function computeCircuit(load, idx, g){
   if(load.kind==="control"){
     const totalBranchVA = load.controlBranches.reduce((a,br)=>a+(br.va>=0?br.va:0), 0);
     const ctrlVA = pickStep(CTRL_XFMR_STEPS, totalBranchVA);
-    const secFLA = ctrlVA / (g.ctrlVoltage==="220"?220:120);
+    const ctrlV = parseFloat(g.ctrlVoltage) || 120, ctrlDC = g.ctrlTipo==="Vdc";
+    const secFLA = ctrlVA / ctrlV;
     const vaPrimaryA = ctrlVA / g.voltage;
     const mainBrk = pickStep(CTRL_BREAKER_STEPS, secFLA*1.25);
     const fuse = pickStep(FUSE_STEPS, vaPrimaryA*2.0);
@@ -446,7 +447,7 @@ function computeCircuit(load, idx, g){
     const ctrlEgcMig = miguelezCableFor(ctrlEgc[2], 1);
     const items = [
       {comp:"Portafusible primario (antes del transformador)", devtag:"F"+tag, model:"Fusible gG", val: fuse+"A", src:null},
-      {comp:"Transformador de control", devtag:"T"+tag, model: g.voltage+"/"+(g.ctrlVoltage==="220"?"220":"120")+"VAC+T", val: ctrlVA+" VA (Σ derivaciones "+totalBranchVA.toFixed(0)+" VA)", src:null},
+      {comp: ctrlDC ? "Fuente de alimentación de control" : "Transformador de control", devtag:"T"+tag, model: ctrlDC ? g.voltage+" Vac / "+ctrlV+" Vdc" : g.voltage+"/"+ctrlV+" Vac+T", val: ctrlVA+" VA (Σ derivaciones "+totalBranchVA.toFixed(0)+" VA)", src:null},
       {comp:"ITM principal de control (después del transformador)", devtag:"Q"+tag, model:"ABB System pro M compact (2P)", val: "2x"+mainBrk+"A", src:DS.tmax},
       {comp:"Conductor de puesta a tierra (EGC), secundario", devtag:"—", model: egcModelText(ctrlEgc, ctrlEgcMig), val:"NEC Tabla 250.122", src:null},
     ];
@@ -602,6 +603,8 @@ const DXF_ACCENTS = {
 // descarta (en vez de dejarlo pasar corrupto, como ocurría antes con p.ej. "Σ" en los rótulos del transformador).
 function dxfEsc(s){
   return String(s==null?"":s)
+    // unidades de tensión siempre como «Vac» / «Vdc», aunque el texto se haya pasado a mayúsculas
+    .replace(/(\d\s?)VAC\b/g,"$1Vac").replace(/(\d\s?)VDC\b/g,"$1Vdc")
     .replace(/°/g,"%%d").replace(/±/g,"%%p").replace(/Ø/g,"%%c")
     .replace(/[^\x00-\xFF]/g, c=>DXF_ACCENTS[c]!=null ? DXF_ACCENTS[c] : "")
     .replace(/[\r\n\t]+/g," ");
@@ -1141,7 +1144,7 @@ function buildUnifilarDXF(results, meta){
     let subMinX=Infinity, subMaxX=-Infinity;
     trunks.forEach(({idxs})=>{ idxs.forEach(i=>{ subMinX=Math.min(subMinX,xOf(i)); subMaxX=Math.max(subMaxX,xOf(i)); }); });
     doc.line(subMinX-usedPitch/2+8, busY2, subMaxX+usedPitch/2-8, busY2, "E-FZA-BT-SEC");
-    doc.text(subMinX-usedPitch/2+8, busY2+5, 2.6, "BARRA "+(g.ctrlVoltage||"-")+"VAC (control)", "G-TEX");
+    doc.text(subMinX-usedPitch/2+8, busY2+5, 2.6, "BARRA "+(g.ctrlVoltage||"-")+(g.ctrlTipo==="Vdc"?" Vdc":" Vac")+" (control)", "G-TEX");
     trunks.forEach(({c,idxs})=>{
       const tx = idxs.reduce((a,i)=>a+xOf(i),0)/idxs.length;
       drawControlTrunkDXF(doc, tx, busY, busY2, c);

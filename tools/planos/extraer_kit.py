@@ -354,6 +354,9 @@ def extraer(tipo, entrada, salida):
             if not pz.get('compartida'):
                 asignado.add(i)
             usados.add(p[1])
+        if pz.get('simplificar'):
+            from simplificar import simplificar
+            sel = simplificar(sel, **(pz['simplificar'] if isinstance(pz['simplificar'], dict) else {}))
         if pz.get('centrar'):
             # las coordenadas ya están relativas al ancla: se llevan las cajas al mismo sistema
             cz = dict(pz['centrar'])

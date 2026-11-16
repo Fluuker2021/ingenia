@@ -554,3 +554,8 @@ td.num.err{color:var(--err); font-weight:600;}
 .carga-ov.fuera{opacity:0;}
 .carga-caja{display:flex;align-items:center;gap:12px;padding:14px 18px;background:var(--grafito);color:#fff;border-radius:12px;box-shadow:var(--shadow);font:500 14px var(--sans);border-left:4px solid var(--amarillo);}
 .carga-caja .spin{width:22px;height:22px;border-color:rgba(255,255,255,.2);border-top-color:var(--amarillo);border-right-color:#fff;}
+
+/* Copito: entregables actualizados por un cambio */
+.cp-afect{ margin-top:8px; padding:8px 10px; border-left:3px solid var(--amarillo); background:rgba(245,197,24,.08); border-radius:6px; font-size:12.5px; line-height:1.5 }
+.cp-afect a{ white-space:nowrap }
+.cp-docbar .muted{ font-size:12.5px }

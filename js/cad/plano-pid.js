@@ -12,6 +12,7 @@ import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS } from "./formato.js";
 import { datos, instrumentos, expandirTag, tipoInstrumento, esAnalogico, esSalida, sistemaTag, sistemaNombre, calcularTodos } from "../datos.js";
 import { envolver } from "./kit.js";
+import { filosofiaDe } from "../modules/filosofia.js";
 
 const may = s => String(s||"").toUpperCase();
 const CAPAS = { "TP-PRI":{ c:5, lt:"CONTINUOUS" }, "TP-SEC":{ c:140, lt:"CONTINUOUS" }, "TP-EQ-PRI":{ c:7, lt:"CONTINUOUS" }, "I-SIM":{ c:60, lt:"CONTINUOUS" }, "I-SE-ANALO":{ c:134, lt:"CONTINUOUS" }, "I-CONTROL":{ c:172, lt:"CONTINUOUS" }, "G-TEX":{ c:7, lt:"CONTINUOUS" }, "G-VARIOS":{ c:40, lt:"CONTINUOUS" } };
@@ -55,18 +56,19 @@ function asignar(eqs, tag, i){
   return eqs.find(e=>sv && e.desc && sv.includes(e.desc.toLowerCase().split(" ")[0])) || eqs[0];
 }
 /* funciones en el PLC de cada instrumento (indicación y alarmas, ISA 5.1) */
-function funciones(tag, i, p){
+function funciones(tag, i, p, alarmas){
   const L = tipoInstrumento(tag), n = tag.replace(/^[A-Z]+-?/, "");
-  const fil = (datos(p).filosofia||{}).alarmas;
-  const propias = Array.isArray(fil) ? fil.filter(a=>a && (a.tag===tag || a.instrumento===tag)).map(a=>String(a.funcion || a.tag || "").replace(/-.*$/,"")).filter(Boolean) : [];
-  if(propias.length) return propias.map(f=>f+"-"+n);
-  if(esAnalogico(i)){ const x = L.replace(/I?T$/, ""); const al = /^(P|F|L)$/.test(x) ? [x+"AL"] : [x+"AH", x+"AHH"]; return [x+"I", ...(x==="PD" ? [x+"AH", x+"AL"] : al)].map(f=>f+"-"+n); }
+  // alarmas de la filosofía de control (p. ej. PIT-001_PAL → PAL-001): el P&ID muestra las mismas funciones
+  const al = (alarmas||[]).filter(a=>a.instrumento===tag && /_/.test(a.senal||"")).map(a=>String(a.senal).split("_").pop()+"-"+n);
+  const ind = esAnalogico(i) ? [L.replace(/I?T$/, "")+"I-"+n] : [];
+  if(al.length || ind.length) return [...ind, ...al];
   const m = L.match(/^([A-Z]+?)S([HL]{1,2})$/); if(m) return [m[1]+"A"+m[2]+"-"+n];
   return [];
 }
 
 export async function pidKit({ p, valsDe, cliente }){
   const doc = new DXFDoc(); Object.assign(doc.capas, CAPAS);
+  let alarmas = []; try{ alarmas = filosofiaDe(p).tablas.alarmas || []; }catch(e){}
   const eqs = equiposProceso(p);
   // instrumentos agrupados (XV-003A@003R se dibuja como un grupo en el cabezal de aire)
   const lazos = [];
@@ -81,7 +83,7 @@ export async function pidKit({ p, valsDe, cliente }){
   hojas.forEach((ls, ih)=>{
     const ox = ih*PASO_HOJAS;
     dibujarLamina(doc, ox, 0, valsDe(ih, hojas.length, hojas.length>1 ? { TITULO2:`HOJA ${ih+1} DE ${hojas.length}` } : {}), cliente);
-    dibujarHoja(doc, ox, p, eqs, ls, ih);
+    dibujarHoja(doc, ox, p, eqs, ls, ih, alarmas);
   });
   return { dxf: doc.toDXF(), hojas: hojas.length };
 }
@@ -151,7 +153,7 @@ function equipo(doc, e, x){
   return { w: 44, in:[cx - 14, y + 10], out:[cx + 14, y + 10], top: y + 30, tap:{}, x0:cx - 14, x1:cx + 14, cx };
 }
 
-function dibujarHoja(doc, ox, p, eqs, lazos, ih){
+function dibujarHoja(doc, ox, p, eqs, lazos, ih, alarmas){
   const X = x => ox + x, st = (sistemaTag(p)||"").replace(/-/g, "");
   // leyenda (a la derecha)
   const lx = X(692), ly = 560, filasL = [["burbuja","INSTRUMENTO DE CAMPO"],["plc","FUNCIÓN EN EL PLC (INDICACIÓN / ALARMA)"],["hmi","VISUALIZACIÓN EN EL HMI"],["motor","MOTOR ELÉCTRICO"],["sol","VÁLVULA SOLENOIDE"],["proc","LÍNEA DE PROCESO"],["aire","AIRE COMPRIMIDO"],["senal","SEÑAL ELÉCTRICA"]];
@@ -220,7 +222,7 @@ function dibujarHoja(doc, ox, p, eqs, lazos, ih){
       doc.circle(xe, ye, 0.7, "I-SE-ANALO");
     }
     // funciones en el PLC (apiladas) y visualización en el HMI
-    const fs = funciones(lz.tag, lz.i, p);
+    const fs = funciones(lz.tag, lz.i, p, alarmas);
     let y = yF0;
     doc.line(xc, yB + 5.5, xc, y - 5.5, "I-SIM"); flecha(doc, xc, y - 5.5, 90);
     fs.slice(0, 3).forEach((f, j)=>{ funcionPLC(doc, xc, y, f, st); y += 11; });

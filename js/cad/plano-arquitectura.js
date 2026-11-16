@@ -7,8 +7,8 @@
      al controlador de limpieza; cada grupo cuelga de su barra y se reparte CENTRADO en el ancho del sistema.
    · Si las filas de campo no entran, continúan en otra lámina. */
 import { DXFDoc } from "../engine/tablero-core.js";
-import { dibujarLamina, PASO_HOJAS } from "./formato.js";
-import { tablerosControl, tc as tcPrincipal, instrumentos, tableroDeInstrumento, expandirTag, tipoInstrumento, esAnalogico, esSalida, calcularTodos, tableroPorId, tf, esControl, sistemaNombre, sistemaTag } from "../datos.js";
+import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
+import { datos, tablerosControl, tc as tcPrincipal, instrumentos, tableroDeInstrumento, expandirTag, tipoInstrumento, esAnalogico, esSalida, calcularTodos, tableroPorId, tf, esControl, sistemaNombre, sistemaTag } from "../datos.js";
 import { cargarKit, usarKit, pieza, envolver, cajaPieza } from "./kit.js";
 import { equiposControl } from "../control/equipos.js";
 import { repartirEquilibrado } from "./plano-unifilar.js";
@@ -46,7 +46,7 @@ function campo(p, t, eq){
   return dv;
 }
 
-export async function arquitecturaKit({ p, valsDe, cliente }){
+export async function arquitecturaKit({ p, valsDe, cliente, id }){
   const kit = await cargarKit("arquitectura");
   const doc = new DXFDoc(); usarKit(doc, kit);
   const lista = tablerosControl(p).length ? tablerosControl(p) : [tcPrincipal(p)];
@@ -70,6 +70,7 @@ export async function arquitecturaKit({ p, valsDe, cliente }){
       const ox = k*PASO_HOJAS;
       dibujarLamina(doc, ox, 0, valsDe(k, total, { TITULO2: `${may(pl.t.nombre||"Tablero de control")} ${pl.t.tag}${pl.hojas.length>1 ? ` (${ih+1} DE ${pl.hojas.length})` : ""}` }), cliente);
       dibujarHoja(doc, kit, ox, p, pl, filas, ih);
+      if(k===0) notasLamina(doc, ox, 0, datos(p).notas[id || "ins-arquitectura"], { y1: 470 });
       k++;
     });
   }

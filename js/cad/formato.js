@@ -141,3 +141,24 @@ export function dibujarLogo(doc, raster, x, y, w, h){
     doc.entities.push("0\nSOLID\n8\n"+L+"\n62\n"+c+"\n10\n"+n(xa)+"\n20\n"+n(yb)+"\n30\n0.0\n11\n"+n(xb)+"\n21\n"+n(yb)+"\n31\n0.0\n12\n"+n(xa)+"\n22\n"+n(yt)+"\n32\n0.0\n13\n"+n(xb)+"\n23\n"+n(yt)+"\n33\n0.0");
   }
 }
+
+/* NOTAS del usuario en la lámina, siempre en zona libre y nunca sobre el cajetín: por defecto en la columna derecha,
+   sobre el bloque reservado (x 688…829, y 108…yTop). Se cortan al ancho y, si no entran, se reduce la altura del texto;
+   lo que aun así no entre se indica con «(continúa en la memoria / filosofía)». Devuelve la altura usada. */
+export function notasLamina(doc, ox, oy, lista, { x0 = 688, x1 = 829, y0 = 108, y1 = 300, titulo = "NOTAS:" } = {}){
+  const notas = (lista||[]).map(n=>String(n||"").trim()).filter(Boolean);
+  if(!notas.length || y1 - y0 < 12) return 0;
+  const cortar = (s, n) => { const out = []; let cur = ""; for(const w of s.split(/\s+/)){ if((cur+" "+w).trim().length > n){ if(cur) out.push(cur); cur = w; } else cur = (cur+" "+w).trim(); } if(cur) out.push(cur); return out; };
+  for(const h of [2.2, 2.0, 1.8, 1.6]){
+    const n = Math.max(12, Math.floor((x1 - x0 - 6)/(h*0.72))), ls = h*1.55;
+    const lineas = notas.flatMap((t, i)=>cortar(`${i+1}. ${t}`, n).map((l, k)=>k ? "   "+l : l));
+    const alto = (lineas.length + 1)*ls + 2;
+    if(alto <= y1 - y0 || h===1.6){
+      const max = Math.floor((y1 - y0 - 2)/ls) - 1, vis = lineas.length > max ? lineas.slice(0, Math.max(1, max - 1)).concat(["(continúan en el documento de referencia)"]) : lineas;
+      doc.text(ox + x0, oy + y1 - h, h*1.1, titulo, "G-TEXT");
+      vis.forEach((l, i)=>doc.text(ox + x0, oy + y1 - h - (i + 1)*ls, h, l, "G-TEXT"));
+      return (vis.length + 1)*ls + 2;
+    }
+  }
+  return 0;
+}

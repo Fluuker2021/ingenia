@@ -82,7 +82,7 @@ function circuitoRef(p, tb, t){
     if(re.test(t)){ const c = cs.find(c=>frag.test(norm(c.descripcion))); if(c) return c; }
   return null;
 }
-const CFG_EQUIPO = [["hmi", /\bhmi\b|pantalla/, "la pantalla HMI"], ["router", /router/, "el router IIoT"], ["switch", /switch/, "el switch Ethernet"], ["controladorLimpieza", /controlador de limpieza/, "el controlador de limpieza"]];
+const CFG_EQUIPO = [["hmi", /\bhmi\b|pantalla/, "la pantalla HMI"], ["router", /router/, "el router IIoT"], ["switch", /switch/, "el switch Ethernet"], ["controladorLimpieza", /controlador de limpieza/, "el controlador de limpieza"], ["lucesPiloto", /luc(es|e)s? pilotos?|luz(es)? pilotos?/, "las luces piloto de la puerta"]];
 
 /* ---------- interpretar una orden sobre documentos (motor propio) ---------- */
 export function interpretarDoc(q, p){
@@ -117,7 +117,7 @@ export function interpretarDoc(q, p){
     const c = {};
     const sinTab = tagsTab.reduce((a, tg)=>a.split(tg).join(" "), t);
     const esInstrumento = /\b[a-z]{1,5}-\d{2,4}[a-z]?\b/.test(sinTab) || /(de|tipo) (nivel|presion|flujo|caudal|temperatura|velocidad|posicion|vibracion)/.test(t);
-    for(const [k, re] of CFG_EQUIPO) if(re.test(t) && !/circuito|alimentaci/.test(t) && !esInstrumento){ if(quitar) c[k] = false; else if(agregar) c[k] = true; }
+    for(const [k, re] of CFG_EQUIPO) if(re.test(t) && (!/circuito|alimentaci/.test(t) || k==="lucesPiloto") && !esInstrumento){ if(quitar) c[k] = false; else if(agregar) c[k] = true; }
     if(/\bplc\b|controlador/.test(t) && /siemens|s7|simatic/.test(t)) Object.assign(c, { marcaPlc:"Siemens", plc:"Controlador SIMATIC S7-1500", modeloPlc:"" });
     if(/\bplc\b|controlador/.test(t) && /allen|rockwell|compactlogix/.test(t)) Object.assign(c, { marcaPlc:"Allen-Bradley", plc:"Controlador CompactLogix 5380", modeloPlc:"" });
     const mm = q.match(/modelo\s+del?\s+(?:plc|controlador|cpu)\s*(?:a|por|:)\s*(.+)$/i); if(mm) c.modeloPlc = limpiar(mm[1]);
@@ -152,7 +152,7 @@ export function interpretarDoc(q, p){
       // un circuito que alimenta un instrumento o un equipo sigue a ese componente
       const inst = /([A-Z]{1,5}-\d{2,4}[A-Z]?)$/.exec(ref.descripcion||"");
       if(inst && !ref.reserva) return [{ op:"aviso", texto:`${ref.tag} alimenta a <b>${esc(inst[1])}</b>: el circuito sigue al instrumento. Para quitarlo, elimina el instrumento («Elimina el instrumento ${esc(inst[1])}») o cambia su alimentación.` }];
-      const eqc = CFG_EQUIPO.find(([, re])=>re.test(norm(ref.descripcion)));
+      const eqc = CFG_EQUIPO.find(([k, re])=>k!=="lucesPiloto" && re.test(norm(ref.descripcion)));
       if(eqc) return [{ op:"control.editar", tag: tb.tag, campos:{ [eqc[0]]: false } }];
       return [Object.assign({ op:"circuito.eliminar", tag: tb.tag }, sel)];
     }
@@ -193,7 +193,7 @@ export function describirDoc(op, p){
     case "circuito.agregar": return `${esc(op.tag)}: agregar un circuito de <b>${esc(op.barra)}</b> «${esc(op.descripcion)}» con ${op.barra==="24 Vdc" ? "fusible" : "ITM 2P"} de <b>${op.proteccion} A</b>${op.diferencial ? " y diferencial de 30 mA" : ""}${op.potencia ? `, ${op.potencia} W` : ""}`;
     case "circuito.eliminar": return `${esc(op.tag)}: quitar <b>${esc(op.tagEq)}</b> (${esc(op.circuito)} de ${esc(op.barra)} — ${esc(op.descripcion)}); los demás circuitos se renumeran y se centran en el plano`;
     case "circuito.editar": return `${esc(op.tag)}, <b>${esc(op.tagEq)}</b> (${esc(op.descripcion)}): ${Object.entries(c).map(([k, v])=>`${{ proteccion:"protección", potencia:"potencia", descripcion:"descripción", diferencial:"diferencial 30 mA", barra:"barra" }[k]||k} → <b>${k==="proteccion" ? v+" A" : k==="potencia" ? v+" W" : si(v)}</b>`).join(", ")}`;
-    case "control.editar": return `Tablero de control <b>${esc(op.tag)}</b>: ${Object.entries(c).map(([k, v])=>`${{ hmi:"pantalla HMI", switch:"switch Ethernet", router:"router IIoT", controladorLimpieza:"controlador de limpieza", marcaPlc:"marca del PLC", plc:"controlador", modeloPlc:"modelo del PLC", ioDiscreto:"tensión de entradas digitales", vfdMando:"mando de variadores", redIP:"red IP", canales:"canales por módulo", repetidores:"repetición de estados", alimAux:"acometida auxiliar de 220 Vac" }[k]||k} → <b>${k==="canales" ? esc(Object.entries(v).map(([a, b])=>`${a} ${b}`).join(", ")) : k==="vfdMando" ? (v==="red" ? "por red" : "cableado") : k==="alimAux" ? "sin acometida auxiliar" : v==="" ? "el de catálogo de la marca" : si(v)}</b>`).join(", ")}`;
+    case "control.editar": return `Tablero de control <b>${esc(op.tag)}</b>: ${Object.entries(c).map(([k, v])=>`${{ hmi:"pantalla HMI", switch:"switch Ethernet", router:"router IIoT", controladorLimpieza:"controlador de limpieza", lucesPiloto:"luces piloto en la puerta", marcaPlc:"marca del PLC", plc:"controlador", modeloPlc:"modelo del PLC", ioDiscreto:"tensión de entradas digitales", vfdMando:"mando de variadores", redIP:"red IP", canales:"canales por módulo", repetidores:"repetición de estados", alimAux:"acometida auxiliar de 220 Vac" }[k]||k} → <b>${k==="canales" ? esc(Object.entries(v).map(([a, b])=>`${a} ${b}`).join(", ")) : k==="vfdMando" ? (v==="red" ? "por red" : "cableado") : k==="alimAux" ? "sin acometida auxiliar" : v==="" ? "el de catálogo de la marca" : si(v)}</b>`).join(", ")}`;
     case "documento.editar": return `${nom(op.doc)}: ${Object.entries(c).map(([k, v])=>`${{ titulo:"título", elaboro:"elaboró", reviso:"revisó", aprobo:"aprobó", dibujo:"dibujó", estado:"estado" }[k]||k} → <b>${esc(v)}</b>`).join(", ")}`;
     case "documento.emitir": return `Emitir la siguiente revisión de <b>${nom(op.doc)}</b>: «${esc(op.motivo)}»`;
     case "nota.agregar": return `${nom(op.doc)}: agregar la nota «${esc(op.texto)}»${(datos(p).notas[op.doc]||[]).length ? "" : " (reemplaza las notas del formato)"}`;
@@ -237,7 +237,7 @@ export function aplicarDoc(p, op, avisos){
       const k = {}; L.forEach(y=>{ k[y.barra] = (k[y.barra]||0) + 1; y.circuito = "C"+k[y.barra]; }); return {}; }
     case "control.editar": { if(!tb){ avisos.push("El proyecto no tiene tablero de control."); return {}; }
       for(const [k, v] of Object.entries(c)){
-        if(["hmi","switch","router","controladorLimpieza","repetidores"].includes(k)) tb[k] = !!v;
+        if(["hmi","switch","router","controladorLimpieza","repetidores","lucesPiloto"].includes(k)) tb[k] = !!v;
         else if(k==="canales") tb.canales = Object.assign({}, tb.canales||{}, v);
         else if(k==="ioDiscreto" && ["120 Vac","24 Vdc"].includes(v)) tb.ioDiscreto = v;
         else if(k==="vfdMando" && ["red","cableado"].includes(v)) tb.vfdMando = v;

@@ -11,8 +11,8 @@
    Los circuitos se reparten y CENTRAN en el ancho útil: al quitar o agregar circuitos el plano se reordena solo;
    si no entran se reduce la escala y, si aun así no entran, la distribución de 120 Vac sigue en otra lámina. */
 import { DXFDoc } from "../engine/tablero-core.js";
-import { dibujarLamina, PASO_HOJAS } from "./formato.js";
-import { tablerosControl, tc as tcPrincipal } from "../datos.js";
+import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
+import { tablerosControl, tc as tcPrincipal, datos } from "../datos.js";
 import { cargarKit, usarKit, pieza, envolver } from "./kit.js";
 import { equiposControl } from "../control/equipos.js";
 import { repartirEquilibrado } from "./plano-unifilar.js";
@@ -69,7 +69,7 @@ function anchoSeg(sg){
   return sg.bus==="220" && sg.alim ? Math.max(w, PASO["220"]/2 + RET_SPD + 6) : w;
 }
 
-export async function unifilarControlKit({ p, valsDe, cliente }){
+export async function unifilarControlKit({ p, valsDe, cliente, id }){
   const kit = await cargarKit("unifilar_control");
   const doc = new DXFDoc(); usarKit(doc, kit);
   const lista = tablerosControl(p).length ? tablerosControl(p) : [tcPrincipal(p)];
@@ -82,6 +82,7 @@ export async function unifilarControlKit({ p, valsDe, cliente }){
       const ox = k*PASO_HOJAS;
       dibujarLamina(doc, ox, 0, valsDe(k, total, { TITULO2: `${may(t.nombre||"Tablero de control")} ${t.tag}${hojas.length>1 ? ` (${ih+1} DE ${hojas.length})` : ""}` }), cliente);
       dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh: hojas.length, hojaDe: i => k0 + i + 1 });
+      if(k===0) notasLamina(doc, ox, 0, datos(p).notas[id || "ins-unifilar-tc"], { y1: 296 });
       k++;
     });
   }

@@ -135,7 +135,8 @@ function construir(eq, calef, sup){
   // resistencia calefactora abajo (el aire caliente sube): al pie de la placa junto a la barra de tierra; con entrada
   // superior (borneras arriba), al final de la última fila
   if(calef){
-    const r1 = mk({ tag:"R1", tipo:"resistencia", desc:"Resistencia calefactora anticondensación 50 W con termostato TH2 (alimentar desde una reserva del tablero)", modelo:"Resistencia PTC 50 W + termostato TH2 0…60 °C", val:"50 W", w:60, h:125, d:60, montaje:"din", perdidas:0, fuente:"Accesorios de climatización de gabinetes (referencial)" });
+    const pc = eq.calefaccion, wr = pc ? pc.resistencias[0].w : 100;
+    const r1 = mk({ tag:"R1", tipo:"resistencia", desc:`Resistencia calefactora anticondensación ${wr} W con termostato TH2, alimentada desde ${pc ? pc.circuito : "el tablero"}`, modelo:`Resistencia PTC ${wr} W + termostato TH2 0…60 °C`, val:`${wr} W`, w:60, h:125, d:60, montaje:"din", perdidas:0, fuente:"Accesorios de climatización de gabinetes (referencial)" });
     if(sup) filas.push({ id:"calef", nombre:"Calefacción anticondensación", zona:"calef", juntar:true, grupos:[{ items:[r1], gap:30 }] });
     else ext.calef = r1;
   }
@@ -155,7 +156,8 @@ export function arregloControl(p, t){
   const criterios = [], avisos = [], ajustes = [];
   const comps = [], canaletas = [], rieles = [], barras = [], conexiones = [], placas = [], secciones = [], puerta = [], base = [], bloquesB = [];
   const tMin = parseFloat(v.tempMin), tAmb = tempDiseno(v), alt = parseFloat(v.altitud) || 0;
-  const calef = cfg.calefaccion==="si" || (cfg.calefaccion==="auto" && ((isFinite(tMin) && tMin <= 5) || /exterior|intemperie/i.test(v.ambiente||"")));
+  // calefacción y luces piloto: las mismas del unifilar y del multifilar (equiposControl)
+  const calef = !!eq.calefaccion;
   const entrada = cfg.entrada==="superior" ? "superior" : "inferior";
   const { filas, ext } = construir(eq, calef, entrada==="superior");
   let panelAlt = +cfg.panelAltura || 0;
@@ -369,7 +371,8 @@ export function arregloControl(p, t){
   const libre = (cx, cy, w, h) => hojas.some(([x0, x1])=>cx - w/2 > x0 + 35 && cx + w/2 < x1 - 35) && cy - h/2 > 40 && cy + h/2 < H - 40 && !obst.some(([ox, oy, ow, oh])=>cx + w/2 > ox && cx - w/2 < ox + ow && cy + h/2 > oy && cy - h/2 < oy + oh);
   const cxP = puertas===2 ? W/4 : W/2;
   let panel = null;
-  const luces = cfg.mandos==="si" ? [{ tag:"H1", tipo:"luz", color:"verde", leyenda:`${eq.vEst} PRESENTE` }, { tag:"H2", tipo:"luz", color:"verde", leyenda:"24 Vdc PRESENTE" }] : [];
+  const COLOR_LUZ = { blanca:"blanco", verde:"verde", roja:"rojo", ambar:"ambar" };
+  const luces = cfg.mandos==="no" ? [] : (eq.puerta||[]).filter(d=>d.tipo==="luz").map(d=>({ tag:d.tag, tipo:"luz", color:COLOR_LUZ[d.color]||d.color, leyenda:d.leyenda }));
   if(hm || luces.length){
     const hH = hm ? hm.h : 0, hLuz = luces.length ? 110 : 0;
     let yH = montaje==="mural" ? Math.min(H - 200 - hH/2, Math.max(H*0.6, hH/2 + hLuz + 120)) : Math.min(H - 300, 1400 - zocalo/2);

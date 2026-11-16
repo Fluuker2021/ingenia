@@ -10,7 +10,7 @@
    · servicios del tablero en 220 Vac (ventilación, luminaria y tomacorriente con diferencial de 30 mA);
    · PLC con su CPU en el slot 0 y los módulos de E/S por tipo (AI, AO, DO, DI), relés de interfaz CRn para las
      salidas digitales y una bornera por módulo (TB = slot + desplazamiento, como el listado I/O). */
-import { datos, tablerosControl, tablerosPotencia, tableroPorId, circuitosControl, desdeTxt, esFuerza, tc as tcPrincipal } from "../datos.js";
+import { datos, tablerosControl, tablerosPotencia, tableroPorId, circuitosControl, desdeTxt, esFuerza, tc as tcPrincipal, instrumentos, expandirTag } from "../datos.js";
 import { valoresDiseno, tensionEstabilizada } from "../modules/criterios.js";
 import { procesarFilas } from "../modules/tablas.js";
 
@@ -88,17 +88,18 @@ export function equiposControl(p, t){
 
   // --- circuitos derivados (en el orden del unifilar): 24 Vdc con fusible-borne, 120 Vac y 220 Vac con ITM 2P
   const circuitos = [];
-  c24.forEach((c, i)=>circuitos.push({ barra:"24 Vdc", circuito:"C"+(i+1), tag:"F"+(i+1), tipo:"fusible", polos:1, in:+c.proteccion||1, val:`${+c.proteccion||1}A`,
+  c24.forEach((c, i)=>circuitos.push({ barra:"24 Vdc", circuito:"C"+(i+1), tag:"F"+(i+1), tipo:"fusible", polos:1, in:+c.proteccion||1, val:`${+c.proteccion||1}A`, cfg:c.cfg,
     modelo:"UT 4-HESI (5x20) + fusible 5x20", borne:`XF1.${i+1}`, descripcion:c.descripcion, cable:"2C#14AWG+14AWG(T)", potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") }));
   dist120.forEach((c, i)=>{ const a = +c.proteccion||2; circuitos.push({ barra:"120 Vac", circuito:"C"+(i+1), tag:cbTag(), tipo:"mcb", polos:2, in:a, val:`2x${a}A`, modelo:mcbModelo(2, a),
-    borne:`TB3.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") }); });
+    borne:`TB3.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||""), cfg:c.cfg }); });
   let nID = 0;
-  c220.forEach((c, i)=>{ const a = +c.proteccion||4; const o = { barra: conAux ? "220 Vac" : vEst, circuito:"C"+(i+1), tag:cbTag(), tipo:"mcb", polos:2, in:a, val:`2x${a}A`, modelo:mcbModelo(2, a),
+  c220.filter(c=>conAux || c.cfg!=="luz220").forEach((c, i)=>{ const a = +c.proteccion||4; const o = { cfg:c.cfg, barra: conAux ? "220 Vac" : vEst, circuito:"C"+(i+1), tag:cbTag(), tipo:"mcb", polos:2, in:a, val:`2x${a}A`, modelo:mcbModelo(2, a),
     borne:`TB4.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") };
     if(c.diferencial){ o.id = { tag:"ID"+(++nID), tipo:"diferencial", polos:2, in:25, sens:"30mA", modelo:"FH202 AC-25/0.03", val:"2x25A 30mA" }; }
     if(/ventila/i.test(c.descripcion||"")) o.extra = { termostato:"TH1", ventiladores:["V1","V2"] };
     if(/luminaria/i.test(c.descripcion||"")) o.extra = { interruptorPuerta:"SQ1", luminaria:"LM1" };
     if(/tomacorriente/i.test(c.descripcion||"")) o.extra = { tomacorriente:"TC1" };
+    if(c.cfg==="calefaccion") o.extra = { termostato:"TH2", resistencias:["R1"], potencia:+c.potencia||100 };
     circuitos.push(o); });
   // cargas fuera del tablero (instrumentos de campo, controlador de limpieza): en el unifilar quedan fuera de la envolvente
   const INTERNA = /plc|cpu|hmi|router|switch|entradas|salidas|fuente|ventilaci|luminaria|tomacorriente|m[oó]dulo/i;
@@ -119,6 +120,13 @@ export function equiposControl(p, t){
     return { tag, tipo, slot, canales, modelo: modeloModulo(fam, tipo, canales, t.ioDiscreto), desc:`${NOMBRE_MOD[tipo]||"Módulo"} ${canales} canales`, tb,
       senales: Array.from({ length:canales }, (_, ch)=>filas.find(f=>+f.ch===ch) || { tag:"-", senal:tipo+"_RESERVA", descripcion:"Reserva", tipo, ch, slot, origen:"reserva", terminales:`${tb}:${2*ch+1} / ${tb}:${2*ch+2}` }) };
   });
+  // lazos 4-20 mA de 2 hilos: un fusible-borne por lazo (XF2.k, 0,5 A) desde la derivación de entradas analógicas
+  const lazo2h = tag => { const i = instrumentos(p).find(x=>expandirTag(x.tag).includes(tag)); return !!i && /loop/i.test(i.alimentacion||""); };
+  const fAI = circuitos.find(c=>c.barra==="24 Vdc" && /entradas anal/i.test(c.descripcion||""));
+  let nXF2 = 0;
+  for(const m of modulos) if(m.tipo==="AI") for(const s of m.senales) if(s.origen!=="reserva" && lazo2h(s.tag)) s.fusible = { tag:`XF2.${++nXF2}`, in:0.5, desde: fAI ? fAI.tag : "" };
+  for(const m of modulos) for(const s of m.senales){ if(s.origen==="reserva" || s.fusible) continue;
+    const c = circuitos.find(c=>new RegExp(`(^|[^A-Za-z0-9])${String(s.tag).replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}$`).test(c.descripcion||"")); if(c) s.alimentacionDe = c.tag; }
   const plc = { cpu:{ tag:"PLC", tipo:"cpu", slot:0, modelo: t.modeloPlc || fam.cpu, desc: t.plc || "Controlador lógico programable (PLC)", familia:fam.nombre },
     modulos, fpd: fam.fpd ? { tag:"CN1", tipo:"fpd", modelo:fam.fpd, desc:"Separador / distribuidor de potencial" } : null, tapa: fam.tapa ? { tag:"TAP", tipo:"tapa", modelo:fam.tapa, desc:"Tapa terminadora" } : null, red:fam.red };
   // limpieza: señales del controlador auxiliar (sin slot del PLC)
@@ -145,12 +153,25 @@ export function equiposControl(p, t){
   if(b220.length) borneras.push({ tag:"TB4", desc:"Salidas de servicios del tablero (220 Vac)", bornes: b220.flatMap((c, i)=>[{ n:String(2*i+1), fun:"L", modelo:"UT 4", ref:c.tag }, { n:String(2*i+2), fun:"N", modelo:"UT 4", ref:c.tag }]).concat([{ n:"PE", fun:"PE", modelo:"UT 4-PE", pe:true }]) });
   const f24 = circuitos.filter(c=>c.barra==="24 Vdc");
   if(f24.length) borneras.push({ tag:"XF1", desc:"Fusibles-borne de 24 Vdc", bornes: f24.map((c, i)=>({ n:String(i+1), fun:"+24V", modelo:"UT 4-HESI", ref:c.tag })).concat([{ n:"0V", fun:"0V", modelo:"UT 4" }]) });
+  const xf2 = modulos.flatMap(m=>m.senales.filter(x=>x.fusible).map(x=>({ n:x.fusible.tag.split(".")[1], fun:"+24V", modelo:"UT 4-HESI (5x20) 0,5 A", ref:x.tag })));
+  if(xf2.length) borneras.push({ tag:"XF2", desc:`Fusibles-borne de lazos 4-20 mA (0,5 A)${fAI ? ", desde "+fAI.tag : ""}`, bornes: xf2 });
   for(const m of modulos){
     const ana = m.tipo==="AI" || m.tipo==="AO";
     borneras.push({ tag:m.tb, desc:`Señales de ${m.tag} (slot ${m.slot})`, modulo:m.tag, bornes: m.senales.flatMap(s=>[{ n:String(2*s.ch+1), fun: ana ? "+" : "L", modelo: ana ? "UT 4" : "PTTB 4", ref:s.tag }, { n:String(2*s.ch+2), fun: ana ? "-" : "N", modelo: ana ? "UT 4" : "PTTB 4", ref:s.tag }]).concat(ana ? [{ n:"SH", fun:"SH", modelo:"UT 4-PE", pe:true }] : []) });
   }
 
-  return { tablero:t, v, familia:fam, vEst, acometidas, fuente, cb120, circuitos, spd, plc, limpieza, red, reles, borneras, io:propias };
+  // luces piloto de la puerta (H1…Hn en el orden: 120 Vac, 220 Vac, 24 Vdc, alarma general) y calefacción
+  const puerta = []; let nH = 0;
+  const luz = (c, color, leyenda, extra) => { if(!c) return null; const o = Object.assign({ tag:"H"+(++nH), tipo:"luz", color, leyenda, circuito:c.tag, modelo:`Luz piloto LED 22 mm ${color}, ${c.barra}` }, extra||{}); puerta.push(o); (c.extra = c.extra || {}).luces = (c.extra.luces||[]).concat([o]); return o; };
+  const c120l = circuitos.find(c=>c.cfg==="luz120"), c220l = circuitos.find(c=>c.cfg==="luz220"), c24l = circuitos.find(c=>c.cfg==="luz24");
+  luz(c120l, "blanca", `${vEst} PRESENTE`);
+  luz(c220l, "blanca", "220 Vac PRESENTE");
+  luz(c24l, "verde", "24 Vdc PRESENTE");
+  const crAlm = reles.find(r=>r.senal && /_ALM$/.test(r.senal.senal||""));
+  if(c120l && crAlm) luz(c120l, "roja", "ALARMA GENERAL", { rele: crAlm.tag });
+  const calC = circuitos.find(c=>c.cfg==="calefaccion");
+  const calefaccion = calC ? { circuito:calC.tag, termostato:{ tag:"TH2", modelo:"Termostato NC 0…60 °C (ajuste 10 °C)", desc:"Termostato de la calefacción anticondensación" }, resistencias:[{ tag:"R1", modelo:`Resistencia calefactora PTC ${calC.extra.potencia} W`, w:calC.extra.potencia, desc:"Resistencia calefactora anticondensación" }] } : null;
+  return { tablero:t, v, familia:fam, vEst, acometidas, fuente, cb120, circuitos, spd, plc, limpieza, red, reles, borneras, io:propias, puerta, calefaccion };
 }
 
 /* todos los tableros de control del proyecto con sus equipos */
@@ -168,6 +189,8 @@ export function indiceEquipos(eq){
   add(eq.plc.cpu, "plc"); eq.plc.modulos.forEach(m=>add(m, "plc")); add(eq.plc.fpd, "plc"); add(eq.plc.tapa, "plc");
   eq.red.forEach(r=>add(r, "red")); eq.reles.forEach(r=>add(r, "reles"));
   if(eq.limpieza) add(eq.limpieza, "limpieza");
+  (eq.puerta||[]).forEach(l=>add(Object.assign({ desc:`Luz piloto (${l.color}) — ${l.leyenda}` }, l), "puerta"));
+  if(eq.calefaccion){ add(Object.assign({ tipo:"termostato" }, eq.calefaccion.termostato), "calefaccion"); eq.calefaccion.resistencias.forEach(r=>add(Object.assign({ tipo:"resistencia" }, r), "calefaccion")); }
   eq.borneras.forEach(b=>add(Object.assign({ tipo:"bornera" }, b), "borneras"));
   return out;
 }

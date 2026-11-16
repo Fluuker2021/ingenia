@@ -9,7 +9,7 @@
    instrumentos del listado; las alarmas, de la filosofía de control cuando existe. Todo se reparte y centra en
    la lámina; si no entra, continúa en otra. */
 import { DXFDoc } from "../engine/tablero-core.js";
-import { dibujarLamina, PASO_HOJAS } from "./formato.js";
+import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
 import { datos, instrumentos, expandirTag, tipoInstrumento, esAnalogico, esSalida, sistemaTag, sistemaNombre, calcularTodos } from "../datos.js";
 import { envolver } from "./kit.js";
 import { filosofiaDe } from "../modules/filosofia.js";
@@ -18,6 +18,10 @@ const may = s => String(s||"").toUpperCase();
 const CAPAS = { "TP-PRI":{ c:5, lt:"CONTINUOUS" }, "TP-SEC":{ c:140, lt:"CONTINUOUS" }, "TP-EQ-PRI":{ c:7, lt:"CONTINUOUS" }, "I-SIM":{ c:60, lt:"CONTINUOUS" }, "I-SE-ANALO":{ c:134, lt:"CONTINUOUS" }, "I-CONTROL":{ c:172, lt:"CONTINUOUS" }, "G-TEX":{ c:7, lt:"CONTINUOUS" }, "G-VARIOS":{ c:40, lt:"CONTINUOUS" } };
 // zona de dibujo de la lámina A1 (el rótulo ocupa la esquina inferior derecha; la leyenda va a la derecha)
 const ZX0 = 36, ZX1 = 668, ZY0 = 64, ZY1 = 566, YPROC = 150;
+
+/* ancho de cada equipo en la línea de proceso y ancho útil de la línea (sin la flecha de entrada) */
+const anchoEq = e => e.tipo==="colector" ? 75*(e.n||1) : e.tipo==="ventilador" ? 50 : e.tipo==="chimenea" ? 34 : 44;
+const GAP_MIN = 26, ANCHO_PROC = ZX1 - ZX0 - 80;
 
 /* ---------- equipos del proceso (del P&ID del proyecto o deducidos de cargas e instrumentos) ---------- */
 const TIPO_APLIC = { "ventilador-centrifugo":"ventilador", "ventilador-axial":"ventilador", "valvula-rotativa":"valvula-rotativa", "bomba-centrifuga":"bomba", "faja-transportadora":"faja", "compresor-piston":"compresor", molino:"molino", chancadora:"chancadora", agitador:"agitador" };
@@ -66,7 +70,7 @@ function funciones(tag, i, p, alarmas){
   return [];
 }
 
-export async function pidKit({ p, valsDe, cliente }){
+export async function pidKit({ p, valsDe, cliente, id }){
   const doc = new DXFDoc(); Object.assign(doc.capas, CAPAS);
   let alarmas = []; try{ alarmas = filosofiaDe(p).tablas.alarmas || []; }catch(e){}
   const eqs = equiposProceso(p);
@@ -78,12 +82,21 @@ export async function pidKit({ p, valsDe, cliente }){
     if(/^(XV|SV)$/.test(L) && tags.length > 1){ lazos.push({ tag: tags[0]+"@"+tags[tags.length-1].slice(-1), rango: tags[0]+"@"+tags[tags.length-1].replace(/^[A-Z]+-?/,""), tags, i, grupo:true, eq: asignar(eqs, tags[0], i) }); continue; }
     for(const tag of tags) lazos.push({ tag, i, eq: asignar(eqs, tag, i) });
   }
-  // láminas: hasta 22 lazos por lámina (las cadenas se reparten en columnas)
-  const POR = 22, hojas = []; for(let k=0; k<Math.max(1, lazos.length); k+=POR) hojas.push(lazos.slice(k, k+POR));
-  hojas.forEach((ls, ih)=>{
+  // equipos repartidos en tramos que entran en el ancho útil (el proceso sigue en la lámina siguiente) y, en cada
+  // tramo, hasta 22 lazos por lámina (las cadenas se reparten en columnas)
+  const tramos = []; let cur = [], w = 0;
+  for(const e of eqs){ const a = anchoEq(e) + (cur.length ? GAP_MIN : 0); if(cur.length && w + a > ANCHO_PROC){ tramos.push(cur); cur = []; w = 0; } cur.push(e); w += cur.length > 1 ? a : anchoEq(e); }
+  if(cur.length || !tramos.length) tramos.push(cur);
+  const tramoDe = lz => { const i = tramos.findIndex(t=>lz.eq && (lz.eq.tipo==="aire" ? t.some(e=>e.tipo==="colector") : t.includes(lz.eq))); return i < 0 ? 0 : i; };
+  const POR = 22, hojas = [];
+  tramos.forEach((t, it)=>{ const ls = lazos.filter(lz=>tramoDe(lz)===it); for(let k=0; k<Math.max(1, ls.length); k+=POR) hojas.push({ eqs:t, ls:ls.slice(k, k+POR), it }); });
+  hojas.forEach((h, ih)=>{
     const ox = ih*PASO_HOJAS;
     dibujarLamina(doc, ox, 0, valsDe(ih, hojas.length, hojas.length>1 ? { TITULO2:`HOJA ${ih+1} DE ${hojas.length}` } : {}), cliente);
-    dibujarHoja(doc, ox, p, eqs, ls, ih, alarmas);
+    // continuidad del proceso entre tramos: viene de la última lámina del tramo anterior y sigue en la primera del siguiente
+    const prev = h.it ? hojas.findIndex(x=>x.it===h.it-1) + 1 : 0, next = h.it < tramos.length-1 ? hojas.findIndex(x=>x.it===h.it+1) + 1 : 0;
+    dibujarHoja(doc, ox, p, h.eqs, h.ls, ih, alarmas, { prev, next });
+    if(ih===0) notasLamina(doc, ox, 0, datos(p).notas[id || "ins-pid"], { y1: 425 });
   });
   return { dxf: doc.toDXF(), hojas: hojas.length };
 }
@@ -153,7 +166,7 @@ function equipo(doc, e, x){
   return { w: 44, in:[cx - 14, y + 10], out:[cx + 14, y + 10], top: y + 30, tap:{}, x0:cx - 14, x1:cx + 14, cx };
 }
 
-function dibujarHoja(doc, ox, p, eqs, lazos, ih, alarmas){
+function dibujarHoja(doc, ox, p, eqs, lazos, ih, alarmas, cont = {}){
   const X = x => ox + x, st = (sistemaTag(p)||"").replace(/-/g, "");
   // leyenda (a la derecha)
   const lx = X(692), ly = 560, filasL = [["burbuja","INSTRUMENTO DE CAMPO"],["plc","FUNCIÓN EN EL PLC (INDICACIÓN / ALARMA)"],["hmi","VISUALIZACIÓN EN EL HMI"],["motor","MOTOR ELÉCTRICO"],["sol","VÁLVULA SOLENOIDE"],["proc","LÍNEA DE PROCESO"],["aire","AIRE COMPRIMIDO"],["senal","SEÑAL ELÉCTRICA"]];
@@ -164,15 +177,17 @@ function dibujarHoja(doc, ox, p, eqs, lazos, ih, alarmas){
     else if(k==="sol") solenoide(doc, x, y - 2); else if(k==="proc") doc.line(x - 9, y, x + 9, y, "TP-PRI"); else if(k==="aire") doc.line(x - 9, y, x + 9, y, "TP-SEC"); else doc.line(x - 9, y, x + 9, y, "I-SE-ANALO");
     doc.text(lx + 30, y, 2.1, txt, "G-TEX", { valign:2 }); if(i) doc.line(lx, y + 7, lx + 135, y + 7, "G-VARIOS"); });
 
-  // ---------- equipos en el orden del flujo, centrados ----------
-  const ancho = e => e.tipo==="colector" ? 75*(e.n||1) : e.tipo==="ventilador" ? 50 : e.tipo==="chimenea" ? 34 : 44;
-  const GAP = 46, W = eqs.reduce((a, e)=>a + ancho(e), 0) + GAP*Math.max(0, eqs.length-1);
+  // ---------- equipos en el orden del flujo, centrados (la separación se reduce si son muchos) ----------
+  const ancho = anchoEq, sumW = eqs.reduce((a, e)=>a + ancho(e), 0);
+  const GAP = eqs.length > 1 ? Math.max(GAP_MIN, Math.min(46, (ANCHO_PROC - sumW)/(eqs.length - 1))) : 46, W = sumW + GAP*Math.max(0, eqs.length-1);
   let x = ZX0 + Math.max(30, ((ZX1 - ZX0) - W)/2);
   const pos = new Map();
   for(const e of eqs){ pos.set(e, equipo(doc, e, X(x))); x += ancho(e) + GAP; }
   // líneas de proceso entre equipos (ortogonales)
   const lista = eqs.map(e=>pos.get(e));
-  if(lista.length && lista[0].in){ const [a, b] = lista[0].in; doc.line(a - 40, b, a, b, "TP-PRI"); flecha(doc, a, b, 0, "TP-PRI"); doc.text(a - 40, b + 3, 2.2, eqs[0].tipo==="colector" ? "CAPTACIÓN DE POLVO" : "ALIMENTACIÓN", "G-TEX"); }
+  if(lista.length && lista[0].in){ const [a, b] = lista[0].in; doc.line(a - 40, b, a, b, "TP-PRI"); flecha(doc, a, b, 0, "TP-PRI"); doc.text(a - 40, b + 3, 2.2, cont.prev ? `VIENE DE HOJA ${cont.prev}` : eqs[0].tipo==="colector" ? "CAPTACIÓN DE POLVO" : "ALIMENTACIÓN", "G-TEX"); }
+  const ultP = lista[lista.length-1];
+  if(cont.next && ultP && ultP.out){ const [a, b] = ultP.out, xf = Math.min(a + 34, X(ZX1)); doc.line(a, b, xf, b, "TP-PRI"); flecha(doc, xf, b, 0, "TP-PRI"); doc.text(xf, b + 3, 2.2, `SIGUE EN HOJA ${cont.next}`, "G-TEX", { halign:2 }); }
   for(let k=0; k<lista.length-1; k++){
     const a = lista[k].out, b = lista[k+1].in; if(!a || !b) continue;
     const xm = (a[0] + b[0])/2;

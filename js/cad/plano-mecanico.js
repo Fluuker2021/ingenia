@@ -10,6 +10,7 @@
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS, A1 } from "./formato.js";
 import { envolver } from "./kit.js";
+import { datos } from "../datos.js";
 import { arreglosProyecto } from "../mecanico/arreglo.js";
 import { arreglosControl } from "../mecanico/arreglo-control.js";
 import * as C from "../mecanico/componentes.js";
@@ -437,7 +438,7 @@ function isometrica(doc, ox, oy, s, m){
 }
 
 /* =============================== generador =============================== */
-export async function mecanicoKit({ p, valsDe, cliente }, tipo){
+export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
   const doc = new DXFDoc();
   Object.assign(doc.capas, CAPAS); Object.assign(doc.tiposLinea, TIPOS_LINEA);
   // tipo "control": tableros de control (js/mecanico/arreglo-control.js); si no, los de fuerza
@@ -479,7 +480,7 @@ export async function mecanicoKit({ p, valsDe, cliente }, tipo){
     tituloVista(doc, vL.X(m.D/2), vL.Y(-m.zocalo) - 16, "VISTA LATERAL DERECHA", escTxt(s1));
     // isométrica en el espacio restante (sin escala), notas debajo
     const xIso0 = vL.X(m.D + 80) + 18, xIso1 = ox + AR.x1 - 8;
-    const notas = m.notas || notasPlano(m);
+    const notas = (m.notas || notasPlano(m)).concat(id ? datos(p).notas[id] || [] : []);   // + notas del usuario
     const xNot1 = ox + RES.x0 - 6;                               // las notas no invaden el bloque del cajetín
     const anchoNot = Math.max(120, xNot1 - xIso0);
     const altoNotas = notas.reduce((a, n)=>a + envolver(n, Math.floor(anchoNot/(1.9*0.72)) - 4).length*2.76 + 0.8, 0) + 10;

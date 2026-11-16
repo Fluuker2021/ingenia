@@ -372,6 +372,6 @@ export async function generarPlano(p, id, org, logos){
   const st = sistemaTag(p);
   const titulo = (di.titulo||g.titulo).toUpperCase() + (st && !(di.titulo||"").includes(st) ? " - TAG: "+st : "");
   const valsDe = (i, n, extra)=>Object.assign(valoresCajetin({ p, ent:entregable(id), docInfo:di, org, titulo, hoja:`${i+1} DE ${n}`, disciplina: DISC_TXT[entregable(id).disciplina], escala:"S/E" }), { _logos: logos||null }, extra||{});
-  return g.fn({ p, valsDe, cliente });
+  return g.fn({ p, valsDe, cliente, id });
 }
 export { dxfBytes };

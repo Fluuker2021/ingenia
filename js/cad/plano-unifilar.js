@@ -5,8 +5,8 @@
    en el ancho del tablero para que el plano quede ordenado y proporcionado a la lámina; si no entran, se
    reduce la escala y, si aun así no entran, el tablero continúa en otra lámina. */
 import { DXFDoc } from "../engine/tablero-core.js";
-import { dibujarLamina, PASO_HOJAS } from "./formato.js";
-import { calcularTablero, calcularTodos, tf, desdeTxt, r2 } from "../datos.js";
+import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
+import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza, envolver } from "./kit.js";
 
@@ -83,7 +83,7 @@ const GAP_ACOM = ANCHO_COL;   // hueco de la barra donde baja la acometida: el a
 const FMAX = 1.5;       // separación máxima entre circuitos cuando sobra espacio (×)
 function repartir(cols){ return repartirEquilibrado(cols, ancho, (LIM_DER - LIM_IZQ)/0.75, GAP_ACOM); }
 
-export async function unifilarKit({ p, valsDe, cliente }){
+export async function unifilarKit({ p, valsDe, cliente, id }){
   const kit = await cargarKit("unifilar");
   const calcs = calcularTodos(p);
   const lista = calcs.length ? calcs : [calcularTablero(p, tf(p))];
@@ -98,6 +98,8 @@ export async function unifilarKit({ p, valsDe, cliente }){
       const ox = k*PASO_HOJAS;
       dibujarLamina(doc, ox, 0, valsDe(k, total, { TITULO2: `${(t.nombre||"").toUpperCase()} ${t.tag}${hojas.length>1 ? ` (${ih+1} DE ${hojas.length})` : ""}` }), cliente);
       dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera: ih===0, ih, nh: hojas.length });
+      // notas del usuario (primera lámina), debajo de la leyenda y sobre el cajetín
+      if(k===0) notasLamina(doc, ox, 0, datos(p).notas[id || "ele-unifilar"], { y1: 236 });
       k++;
     });
   }

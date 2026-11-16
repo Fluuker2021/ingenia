@@ -13,6 +13,7 @@ import { unifilarControlKit } from "./plano-unifilar-control.js";
 import { arquitecturaKit } from "./plano-arquitectura.js";
 import { equiposControl } from "../control/equipos.js";
 import { pidKit } from "./plano-pid.js";
+import { lazoKit } from "./plano-lazo.js";
 
 /* ---------- utilidades de dibujo ---------- */
 const T = (doc, x, y, h, s, layer, opt) => { if(s!=null && s!=="") doc.text(x, y, h, dxfTrunc(String(s), (opt&&opt.n)||80), layer||"G-TEXT", opt||{}); };
@@ -67,118 +68,6 @@ export function unifilarFuerza({ p, valsDe, cliente }){
     }
   });
   return { dxf: doc.toDXF(), hojas: lista.length, calc: lista[0] };
-}
-
-/* =====================================================================================
-   3) DIAGRAMAS DE LAZO : CAMPO | TABLERO DE CONTROL | SOFTWARE
-   ===================================================================================== */
-export function lazos({ p, valsDe, cliente }){
-  const d = datos(p), st = sistemaTag(p);
-  const io = procesarFilas("ins-io", d["ins-io"]||[], p);
-  const lazosL = [];
-  for(const i of instrumentos(p)){
-    const tb = tableroDeInstrumento(p, i);
-    if(/^\s*N\.?\s*A\.?\s*$/i.test(i.tipoSenal||"") && !/^XV|^SV/.test(tipoInstrumento(i.tag))) continue;   // indicadores locales: sin lazo
-    for(const tag of expandirTag(i.tag)){
-      if(!tag) continue;
-      const a = esAnalogico(i), out = esSalida(i);
-      const sig = io.find(f=>f.tag===tag) || {};
-      lazosL.push({ tag, i, analog:a, salida:out, io: sig, tb });
-    }
-  }
-  const porHoja = 7;
-  // páginas: los lazos de cada tablero de control empiezan en una lámina nueva
-  const paginas = []; const orden = [...new Set(lazosL.map(l=>l.tb))];
-  for(const tb of orden){ const ls = lazosL.filter(l=>l.tb===tb); for(let k=0;k<ls.length;k+=porHoja) paginas.push({ tb, ls: ls.slice(k,k+porHoja) }); }
-  if(!paginas.length) paginas.push({ tb: tc(p), ls: [] });
-  const nH = paginas.length;
-  // equipos del tablero de control (mismos TAG del unifilar / multifilar / mecánico): módulo, fusible o ITM y relé de cada lazo
-  const eqDe = new Map(); const eqT = t => { if(!eqDe.has(t.id)){ try{ eqDe.set(t.id, equiposControl(p, t)); }catch(e){ eqDe.set(t.id, null); } } return eqDe.get(t.id); };
-  const rx = tg => new RegExp(`(^|[^A-Z0-9])${tg.replace(/[.*+?^${}()|[\]\\-]/g,"\\$&")}$`, "i");
-  const ligas = lz => { const eq = eqT(lz.tb); if(!eq) return {};
-    return { mod: eq.plc.modulos.find(m=>m.senales.some(s=>s.tag===lz.tag)), circ: eq.circuitos.find(c=>rx(lz.tag).test(c.descripcion||"")), rele: eq.reles.find(r=>r.senal && r.senal.tag===lz.tag), limp: eq.limpieza && eq.limpieza.senales.some(s=>s.tag===lz.tag) ? eq.limpieza.tag : null }; };
-  const doc = new DXFDoc();
-  const areas = laminas(doc, nH, valsDe, cliente);
-  areas.forEach((A, hi)=>{
-    const tc = paginas[hi].tb;
-    const W = A.x1-A.x0, top = A.y1;
-    const xT = A.x0 + W*0.29, xS = A.x0 + W*0.82, xPLC = A.x0 + W*0.775;
-    // encabezado de columnas
-    L(doc, A.x0, top-15, A.x1, top-15, "G-VARIOS");
-    L(doc, xT, top, xT, A.y0+60, "G-VARIOS"); L(doc, xS, top, xS, A.y0+60, "G-VARIOS");
-    T(doc, (A.x0+xT)/2, top-9, 2.6, "CAMPO"+(st?" - "+st:""), "G-TEXT", { halign:1 });
-    T(doc, (xT+xS)/2, top-7.5, 2.6, "TABLERO DE CONTROL", "G-TEXT", { halign:1 }); T(doc, (xT+xS)/2, top-11.5, 2.4, tc.tag||"", "G-TEXT", { halign:1 });
-    T(doc, (xS+A.x1)/2, top-9, 2.6, "SOFTWARE", "G-TEXT", { halign:1 });
-    // tarjeta del controlador
-    const filasH = paginas[hi].ls;
-    const rowH = 64;
-    const yTopRows = top - 30;
-    R(doc, xPLC-8, yTopRows - rowH*porHoja + 20, 16, rowH*porHoja + 4, "I-EQ");
-    T(doc, xPLC, yTopRows+7, 2.2, (tc.modeloPlc||"PLC").slice(0,16), "G-TEXT", { halign:1 });
-    filasH.forEach((lz, k)=>{
-      const yc = yTopRows - k*rowH;
-      const xF = A.x0 + 22;
-      const letras = tipoInstrumento(lz.tag);
-      const num = lz.tag.replace(/^[A-Z]+-?/,"");
-      // instrumento de campo (burbuja ISA)
-      doc.circle(xF, yc, 6.5, "I-SIM"); L(doc, xF-6.5, yc, xF+6.5, yc, "I-SIM");
-      T(doc, xF, yc+1.6, 2.3, letras, "I-SIM", { halign:1 }); T(doc, xF, yc-3.6, 2.0, num, "I-SIM", { halign:1 });
-      const ac0 = /120|220/.test(lz.i.alimentacion||""); const nh = lz.analog ? 3 : (lz.salida ? 3 : 6);
-      const yTxt = Math.min(yc-11, yc + 8 - (nh-1)*4.2 - 6);
-      T(doc, xF-8, yTxt, 2.0, (lz.i.descripcion||"").toUpperCase(), "G-TEXT", { n:34 });
-      T(doc, xF-8, yTxt-3.5, 1.8, st ? st.replace(/-/g,"")+"-"+lz.tag : lz.tag, "G-TEXT", { n:36 });
-      const ac = /120|220/.test(lz.i.alimentacion||"");
-      const hilos = lz.analog ? (ac ? [["L","N"],["+","-"],["SH"]].flat() : ["P1+","P1-","SH"]) : (lz.salida ? ["1","2","GND"] : ["1","2","3","4","5","GND"]);
-      const capaS = lz.analog ? "I-SE-ANALO" : (ac ? "I-FZA-AC" : "I-CONTROL");
-      const x1 = xF + 14, x2 = xT + 60, x3 = xT + 95;
-      const dy = 4.2;
-      const lg = ligas(lz);
-      // bornes del listado I/O (p. ej. «TB6:1 / TB6:2»): los dos primeros conductores de señal van a esos bornes
-      const bornes = String((lz.io && lz.io.terminales) || "").split("/").map(x=>x.trim()).filter(x=>/:/.test(x));
-      const tbTag = bornes.length ? bornes[0].split(":")[0] : "";
-      hilos.forEach((h, j)=>{
-        const y = yc + 8 - j*dy;
-        const capa = h==="SH"||h==="GND" ? "I-TIERRA" : capaS;
-        L(doc, x1, y, x2, y, capa);
-        T(doc, x1+1, y+0.6, 1.8, h, "G-TEXT");
-        T(doc, x2+1.5, y+0.6, 1.8, bornes[j] ? bornes[j].split(":")[1] : (h==="SH"||h==="GND" ? "PE" : String(j+1)), "G-TEXT");
-        L(doc, x2+5, y, x3, y, capa);
-      });
-      const yb = yc + 8 - (hilos.length-1)*dy;
-      doc.polyline([[x1+8,yc+9.5],[x1+6.5,(yc+8+yb)/2],[x1+8,yb-1.5]], "G-VARIOS");
-      doc.polyline([[x2-6,yc+9.5],[x2-4.5,(yc+8+yb)/2],[x2-6,yb-1.5]], "G-VARIOS");
-      const cableTag = (st ? st.replace(/-/g,"") : "") + lz.tag.replace(/-/g,"") + (lz.analog ? "-J01" : "-C01");
-      const spec = lz.analog ? "1-1Pr#16AWG+SH" : (lz.salida ? "1-3C#14AWG+T" : "1-5C#14AWG+T");
-      T(doc, (x1+x2)/2 - 25, yc+11, 2.1, cableTag, "G-TEXT"); T(doc, (x1+x2)/2 - 25, yc+8.6, 1.9, spec, "G-TEXT");
-      // borneras y alimentación en tablero
-      const pw = lz.analog ? (ac ? lz.i.alimentacion : "24 Vdc") : (/24/.test(lz.i.alimentacion||"") ? "24 Vdc" : (lz.i.alimentacion||"120 Vac"));
-      T(doc, x3+2, yc+8.6, 2.0, pw + (lg.circ ? `  (${lg.circ.tag}${lg.circ.borne && /^XF/.test(lg.circ.borne) ? " · "+lg.circ.borne : ""})` : lg.limp ? `  (${lg.limp})` : ""), "G-TEXT");
-      if(tbTag) T(doc, x2 + 2.5, yc + 11.2, 2.0, tbTag, "G-TEXT", { halign:1 });
-      T(doc, x3+2, yb+0.6, 2.0, lz.analog && !ac ? "0 Vdc" : "PE", "G-TEXT");
-      // señal al controlador
-      const ys = yc + 8 - dy;
-      L(doc, x3, ys, xPLC-8, ys, capaS);
-      const io = lz.io; const canal = io.tipo ? (io.slot!=="" && io.slot!=null ? `${lg.mod ? lg.mod.tag+"  " : io.tipo+"  "}S${io.slot}:CH${io.ch}` : `${io.tipo}  ${io.tablero||""}`) : (lz.analog ? "AI" : lz.salida ? "DO" : "DI");
-      if(lg.rele) T(doc, xPLC-36, ys-2.8, 1.9, `RELÉ ${lg.rele.tag} (${lg.rele.contacto})`, "G-TEXT");
-      T(doc, xPLC-36, ys+1, 2.0, canal, "G-TEXT");
-      // software: bloque de función en el controlador (cuadro con rombo)
-      const xs = xS + 18, ysw = yc;
-      R(doc, xs-6, ysw-6, 12, 12, "I-SIM"); doc.polyline([[xs,ysw+6],[xs+6,ysw],[xs,ysw-6],[xs-6,ysw],[xs,ysw+6]], "I-SIM");
-      const fn = lz.analog ? funcionISA(lz.tag, "AI") : (lz.salida ? letras.replace(/V$/,"Y") : funcionISA(lz.tag, "DI"));
-      T(doc, xs+9, ysw+1, 2.0, fn+"-"+num, "G-TEXT"); T(doc, xs+9, ysw-2.6, 1.8, st||"", "G-TEXT");
-      Tw(doc, xs-6, ysw+12, 2.0, (lz.i.servicio||lz.i.descripcion||"").toUpperCase(), 34, "G-TEXT");
-      L(doc, xPLC+8, ys, xs-6, ysw, "I-DAT");
-    });
-    // leyenda de conexión y notas
-    const lx = A.x0 + W*0.45, ly = A.y0 + 54;
-    tablaLeyenda(doc, lx, ly, 120, [
-      { layer:"I-FZA-AC", texto:"Línea de fuerza 120 Vac" }, { layer:"I-FZA-DC", texto:"Línea de fuerza 24 Vdc" }, { layer:"I-TIERRA", texto:"Línea de tierra" },
-      { layer:"I-CONTROL", texto:"Línea de control" }, { layer:"I-SE-ANALO", texto:"Línea de instrumentación" }, { layer:"I-DAT", texto:"Límite de data y comunicación" } ], "LEYENDA DE CONEXIÓN");
-    T(doc, A.x0+4, A.y0+52, 2.4, "NOTAS:", "G-TEXT");
-    Tw(doc, A.x0+4, A.y0+47, 2.0, "1. ES RESPONSABILIDAD DEL USUARIO DE ESTE PLANO ASEGURARSE DE USAR LA ÚLTIMA REVISIÓN DE LA LISTA DE E/S Y DEL LISTADO DE INSTRUMENTOS.", 80, "G-TEXT");
-    Tw(doc, A.x0+4, A.y0+38, 2.0, "2. CANALES (SLOT/CH) ASIGNADOS AUTOMÁTICAMENTE DESDE LA LISTA DE E/S DEL PROYECTO.", 80, "G-TEXT");
-  });
-  return { dxf: doc.toDXF(), hojas:nH, lazos: lazosL.length };
 }
 
 /* =====================================================================================
@@ -278,7 +167,7 @@ export const GENERADORES = {
   ...GENERADORES2,
   "ele-unifilar": { fn: unifilarKit, titulo:"DIAGRAMA UNIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
   "ins-unifilar-tc": { fn: unifilarControlKit, titulo:"DIAGRAMA UNIFILAR DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
-  "ins-lazo": { fn: lazos, titulo:"DIAGRAMA DE LAZO", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
+  "ins-lazo": { fn: lazoKit, titulo:"DIAGRAMA DE LAZO", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ins-pid": { fn: pidKit, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN (P&ID)", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ins-arquitectura": { fn: arquitecturaKit, titulo:"ARQUITECTURA DEL SISTEMA DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ins-bloques": { fn: bloques, titulo:"DIAGRAMA DE BLOQUES", disciplina:"ELECTRICIDAD, CONTROL E INSTRUMENTACIÓN" },

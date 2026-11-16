@@ -12,6 +12,7 @@ import { unifilarKit } from "./plano-unifilar.js";
 import { unifilarControlKit } from "./plano-unifilar-control.js";
 import { arquitecturaKit } from "./plano-arquitectura.js";
 import { equiposControl } from "../control/equipos.js";
+import { pidKit } from "./plano-pid.js";
 
 /* ---------- utilidades de dibujo ---------- */
 const T = (doc, x, y, h, s, layer, opt) => { if(s!=null && s!=="") doc.text(x, y, h, dxfTrunc(String(s), (opt&&opt.n)||80), layer||"G-TEXT", opt||{}); };
@@ -475,6 +476,7 @@ export const GENERADORES = {
   "ele-unifilar": { fn: unifilarKit, titulo:"DIAGRAMA UNIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
   "ins-unifilar-tc": { fn: unifilarControlKit, titulo:"DIAGRAMA UNIFILAR DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ins-lazo": { fn: lazos, titulo:"DIAGRAMA DE LAZO", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
+  "ins-pid": { fn: pidKit, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN (P&ID)", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ins-arquitectura": { fn: arquitecturaKit, titulo:"ARQUITECTURA DEL SISTEMA DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ins-bloques": { fn: bloques, titulo:"DIAGRAMA DE BLOQUES", disciplina:"ELECTRICIDAD, CONTROL E INSTRUMENTACIÓN" },
 };

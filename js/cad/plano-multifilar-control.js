@@ -158,9 +158,10 @@ function hAcometidas(c){
     P.pz("a_spd", 0, { vars:spd });
   } else {
     // supresor colgado de la barra estabilizada, a continuación de la distribución
-    const xs = dx+430;
+    const xs = dx+440;
     P.linea(dx+320, 664.85, xs, 664.85, BUS.l); P.linea(dx+352, 648.85, xs+32, 648.85, BUS.l);
-    P.pz("a_spd", xs-690, { vars:spd });
+    P.pz("a_spd", xs-702, { vars:spd });
+    P.linea(xs+50, 632.85, xs+66, 632.85, BUS.pe); P.texto(xs+66, 630.2, 3.25, "PE", { capa:"EPLAN420", c:7, ha:1, va:3 });
   }
   P.pz("leyenda", 18);
   const notas = ["NOTAS:", `1. LA ACOMETIDA DE ${up(est.tension)} (${est.fases}, ${v.frecuencia} HZ) PARA EL ${nombre} ES SUMINISTRADA POR EL CLIENTE.`,

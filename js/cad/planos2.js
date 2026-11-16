@@ -10,6 +10,7 @@ import { procesarFilas } from "../modules/tablas.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { parseDXF } from "../dxf.js";
 import { multifilarKit } from "./plano-multifilar.js";
+import { mecanicoKit } from "./plano-mecanico.js";
 import * as S from "../store.js";
 
 /* ---------- utilidades de dibujo ---------- */
@@ -307,24 +308,6 @@ function hojaDisposicion(doc, A, titulo, comps, puerta, nota){
   if(lista.length > filasL.length) T(doc, xl, yl - rh*(filasL.length+1) - 5, 1.8, `(+${lista.length-filasL.length} componentes adicionales en la hoja de datos del tablero)`, "G-TEXT", { n:90 });
   if(nota) Tw(doc, A.x0+4, A.y0+28, 1.9, nota, 170, "G-TEXT", {}, 3);
 }
-export function mecanicoFuerza({ p, valsDe, cliente }){
-  const v = valoresDiseno(p), ip = ipRecomendado(v);
-  const lista = tablerosPotencia(p).map(t=>({ t, c: calcularTablero(p, t) }));
-  const doc = new DXFDoc();
-  const As = laminas(doc, lista.length || 1, valsDe, cliente, i=>({ TITULO2: lista[i] ? `${(lista[i].t.nombre||"").toUpperCase()} ${lista[i].t.tag}` : "" }));
-  lista.forEach(({ t, c }, h)=>{
-    const comps = [{ comp:"Interruptor general", devtag:"Q-GEN", val:`3x${c.mainBreaker||"-"}A` }];
-    const acc = t.accesorios||{};
-    if(acc.spd) comps.push({ comp:"Supresor de sobretensiones", devtag:"SPD", val:"T1+2" });
-    if(acc.releFase) comps.push({ comp:"Relé de supervisión de fases", devtag:"RF", val:"" });
-    for(const ci of c.circuits) for(const it of (ci.items||[])) if(it.devtag && it.devtag!=="—" && DISPOSITIVO.test(it.comp||"")) comps.push(it);
-    borneras(comps, "Bornera de salida", "X", c.circuits.length*4);
-    const puerta = acc.luces ? [{ tag:"H-R" },{ tag:"H-S" },{ tag:"H-T" }] : [];
-    hojaDisposicion(doc, As[h], `DISPOSICIÓN DE EQUIPOS — ${(t.nombre||"TABLERO").toUpperCase()} ${t.tag}`, comps, puerta,
-      `NOTAS: 1) GABINETE ${ip}, AUTOSOPORTADO O MURAL SEGÚN DIMENSIONES. 2) DIMENSIONES ESTIMADAS CON 20% DE RESERVA; CONFIRMAR CON EL FABRICANTE DEL TABLERO. 3) ENTRADA DE CABLES POR LA PARTE INFERIOR CON PRENSAESTOPAS. 4) MARCA / MODELO DEL GABINETE: ${(t.marca||"POR DEFINIR").toUpperCase()} ${(t.modelo||"").toUpperCase()}.`);
-  });
-  return { dxf: doc.toDXF(), hojas: lista.length || 1 };
-}
 export function mecanicoControl({ p, valsDe, cliente }){
   const v = valoresDiseno(p), ip = ipRecomendado(v), d = datos(p);
   const filas = procesarFilas("ins-io", d["ins-io"]||[], p);
@@ -429,7 +412,7 @@ export const GENERADORES2 = {
   "ins-pid": { fn: pid, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN (P&ID)", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-multifilar": { fn: multifilarKit, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
   "ins-multifilar-tc": { fn: multifilarControl, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE CONTROL - CONEXIONADO DE E/S", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
-  "ele-mecanico": { fn: mecanicoFuerza, titulo:"DISPOSICIÓN DE EQUIPOS DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
+  "ele-mecanico": { fn: mecanicoKit, titulo:"PLANO MECÁNICO DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
   "ins-mecanico-tc": { fn: mecanicoControl, titulo:"DISPOSICIÓN DE EQUIPOS DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-arreglo": { fn: arregloEquipos, titulo:"ARREGLO GENERAL DE EQUIPOS ELÉCTRICOS", disciplina:"ELECTRICIDAD" },
   "ins-arreglo": { fn: arregloInstrumentos, titulo:"ARREGLO GENERAL DE INSTRUMENTOS", disciplina:"INSTRUMENTACIÓN Y CONTROL" },

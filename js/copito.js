@@ -341,6 +341,8 @@ export function iniciarCopito(rutaActual, alCambiar){
     guardar(); pintar();
   };
   $("#cp-form").onsubmit = ev=>{ ev.preventDefault(); const q = $("#cp-q").value; $("#cp-q").value = ""; preguntar(q); };
+  // otras pantallas (p. ej. la vista 3D del tablero) abren a Copito con una orden propuesta o la envían directamente
+  window.copito = { abrir:(texto, enviar)=>{ abrir(true); if(enviar) preguntar(texto); else if(texto){ const i = $("#cp-q"); i.value = texto; setTimeout(()=>{ i.focus(); i.setSelectionRange(texto.length, texto.length); }, 60); } } };
   $("#cp-sug").addEventListener("click", ev=>{ const b = ev.target.closest("button"); if(b) preguntar(b.textContent); });
   document.addEventListener("keydown", ev=>{ if(ev.key==="Escape" && !panel.hidden) abrir(false); });
 }

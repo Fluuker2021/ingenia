@@ -12,6 +12,7 @@ import { dibujarLamina, PASO_HOJAS } from "./formato.js";
 import { calcularTablero, calcularTodos, tf, desdeTxt, r2 } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza } from "./kit.js";
+import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/componentes.js";
 
 const DX = 25, DY = -112;                        // hoja del plano de referencia → área útil de la lámina A1
 const BARRAS = [664.51, 648.51, 632.51], PE_Y = 616.51;
@@ -53,10 +54,11 @@ function columnas(calc, g){
     }
     if(c.kind==="motor"){
       const q = item(c, /^Guardamotor|^ITM/), k = item(c, /^Contactor/);
-      return { pieza:"b_mcp", vars: Object.assign(motor, { q:q.devtag, qv:q.val, qm:sinMarca(q.model), k:k.devtag, kv:k.val, km:sinMarca(k.model), aux:"HKF1-11+HK1-11", tb:"TB"+c.tag.replace(/\D/g,""), tbs:"6 mm2", tbm:"UT 6", tbpe:"UT 6-PE" }), awg, egc };
+      const bm = borneFuerza(parseFloat(String(q.val||"").replace(/[^\d.]/g,"")) || c.installedCurrent);
+      return { pieza:"b_mcp", vars: Object.assign(motor, { q:q.devtag, qv:q.val, qm:sinMarca(q.model), k:k.devtag, kv:k.val, km:sinMarca(k.model), aux:"HKF1-11+HK1-11", tb:tagBornera(c.tag), tbs:bm.replace(/^\D+/,"")+" mm2", tbm:bm, tbpe:bm+"-PE" }), awg, egc };
     }
-    const q = item(c, /^ITM/);
-    return { pieza:"b_mcp", omitir:["contactor","auxiliares","motor"], vars:{ q:q.devtag, qv:amps(q.val), qm:sinMarca(q.model), tb:"TB"+c.tag.replace(/\D/g,""), tbs:"6 mm2", tbm:"UT 6", tbpe:"UT 6-PE", tag:l.tag||"", desc1:d1, desc2:d2 }, awg, egc };
+    const q = item(c, /^ITM/), bf = borneFuerza(c.installedCurrent);
+    return { pieza:"b_mcp", omitir:["contactor","auxiliares","motor"], vars:{ q:q.devtag, qv:amps(q.val), qm:sinMarca(q.model), tb:tagBornera(c.tag), tbs:bf.replace(/^\D+/,"")+" mm2", tbm:bf, tbpe:bf+"-PE", tag:l.tag||"", desc1:d1, desc2:d2 }, awg, egc };
   });
 }
 /* reparte columnas en hojas según su ancho */
@@ -83,11 +85,13 @@ export async function multifilarKit({ p, valsDe, cliente }){
   let k = 0;
   for(const { calc, fuerza, sec, n } of planes){
     const t = calc.tablero, g = calc.g, base = k;   // base: índice de la hoja de acometida del tablero
+    const bF = barraFase(calc.mainBreaker || 100), bPE = barraTierra(bF);
+    const barraTxt = s => s.trim()==="20x5 mm" ? `${bF.nombre} mm` : s.trim()==="20x3 mm" ? `${bPE.nombre} mm` : s;
     const lam = (titulo2)=>{ dibujarLamina(doc, k*PASO_HOJAS, 0, valsDe(k, total, { TITULO2: titulo2 }), cliente); return k*PASO_HOJAS; };
     const nombre = `${(t.nombre||"").toUpperCase()} ${t.tag}`;
     // 1) acometida
     let ox = lam(`${nombre} - ACOMETIDA`);
-    pieza(doc, kit, "h_acometida", ox+DX, DY, { lineas:{ acometida:16, notas:48 }, vars:{
+    pieza(doc, kit, "h_acometida", ox+DX, DY, { lineas:{ acometida:16, notas:48 }, texto: barraTxt, vars:{
       acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}`, alim:`Alimentación\n${g.voltage} V ${g.freq} Hz 3F\n+PE`,
       q:"Q1", qv:`${calc.mainBreaker}A`, qm:`Tmax XT ${calc.mainBreaker}A 3P (Ekip LS/I)`, t1:`${g.voltage}/120Vac+T`, vp:`${g.voltage}V`, vs:"120V",
       notas:`NOTAS :\n1.LA ACOMETIDA PARA EL ${nombre} DE ${g.voltage} Vac, 3F + T, ${g.freq} HZ ES SUMINISTRADA POR EL CLIENTE.\n2.BARRA A TIERRA FIJA DEL TABLERO DE FUERZA Y CONTROL.\n3.LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A ${v.altitud} m.s.n.m.` } });
@@ -98,8 +102,8 @@ export async function multifilarKit({ p, valsDe, cliente }){
     fuerza.forEach((cols, i)=>{
       ox = lam(`${nombre} - FUERZA${fuerza.length>1 ? ` (${i+1} DE ${fuerza.length})` : ""}`);
       const hoja = k+1, prev = hoja-1, sig = hoja+1;
-      pieza(doc, kit, "b_entrada", ox+DX, DY, { texto: s=> s.trim()==="1.H:1" ? `${prev}.H:1` : s });
-      pieza(doc, kit, "b_salida", ox+DX+737, DY, { texto: s=> s.trim()==="3.A:1" ? (i < fuerza.length-1 || sec.length ? `${sig}.A:1` : "") : s });
+      pieza(doc, kit, "b_entrada", ox+DX, DY, { texto: s=> s.trim()==="1.H:1" ? `${prev}.H:1` : barraTxt(s) });
+      pieza(doc, kit, "b_salida", ox+DX+737, DY, { texto: s=> s.trim()==="3.A:1" ? (i < fuerza.length-1 || sec.length ? `${sig}.A:1` : "") : barraTxt(s) });
       dibujarBarras(doc, ox, kit, true);
       // columnas repartidas en el ancho disponible (separación extra proporcional, sin pasar de 1,25)
       const W = cols.reduce((a,c)=>a+ANCHO[c.pieza], 0), f = Math.min((X_FIN - X_INI)/W, 1.25);
@@ -110,7 +114,7 @@ export async function multifilarKit({ p, valsDe, cliente }){
         const pe = PE_X[c.pieza];
         pieza(doc, kit, c.pieza, ox+DX+x0, DY, { vars:c.vars, omitir:om, lineas:{ desc:20 },
           quitar: c.ss ? new RegExp(REF.source+"|"+SOLO_VFD.source) : REF,
-          texto: (s, e)=>{ if(c.awg && /^\s*\d+(\/0)?\s*AWG\s*$/i.test(s)) return (e[4] >= pe-1 && e[4] <= pe+9) ? c.egc : c.awg; return s; } });
+          texto: (s, e)=>{ if(c.awg && /^\s*\d+(\/0)?\s*AWG\s*$/i.test(s)) return (e[4] >= pe-1 && e[4] <= pe+9) ? c.egc : c.awg; return barraTxt(s); } });
         for(const z of (c.omitir||[])){ const pz = PUENTE[z]; if(pz) for(const ex of EJES[c.pieza]) doc.line(ox+DX+x0+ex, pz[0]+DY, ox+DX+x0+ex, pz[1]+DY, "E-FZA-BT-PRI"); }
         if(c.pieza==="b_trafo" && hojaSec.has(c)) doc.text(ox+DX+x0+69, 262+DY, 2.5, `A HOJA ${hojaSec.get(c)}`, "G-TEX", { halign:1 });
         x += a*f;

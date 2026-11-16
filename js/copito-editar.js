@@ -9,6 +9,7 @@ import { datos, tableros, tablerosPotencia, instrumentos, expandirTag, tipoInstr
 import { valoresDiseno } from "./modules/criterios.js";
 import { docInfo } from "./docs.js";
 import { nextRev } from "./workspace.js";
+import { cfgMecanico, arregloTablero } from "./mecanico/arreglo.js";
 
 /* ---------- texto ---------- */
 // normaliza (minúsculas, sin tildes) conservando la posición de cada carácter en el texto original
@@ -86,6 +87,9 @@ export function interpretar(q, p){
     const rv = q.match(/\brev(?:isi[oó]n)?\.?\s+([A-Z0-9])\b/i);
     return [{ op:"documentos.emitir", motivo: mot, rev: rv ? rv[1].toUpperCase() : "" }];
   }
+  // arreglo mecánico del tablero (gabinete, entrada de cables, ventilación, reserva, mandos en puerta…)
+  const mec = interpretarMecanico(t, p, tabTag);
+  if(mec) return mec;
   // eliminar
   if(borrar){ for(const e of tags.filter(e=>e.tipo!=="tablero")) ops.push({ op: e.tipo+".eliminar", tag: e.tag }); return ops.length ? ops : null; }
   // agregar carga o instrumento
@@ -152,6 +156,30 @@ export function interpretar(q, p){
   }
   return null;
 }
+const MEC = /gabinete|envolvente|entrada de cables|ingreso de cables|ventilacion|ventilador|aire acondicionado|montaje (mural|de piso|autosoportado)|\bmural\b|autosoportado|mandos? (en|de) (la )?puerta|pulsadores en (la )?puerta|botonera|calefaccion|resistencia calefactora|temperatura interior|reserva de espacio|arreglo mecanico|dimensiones del tablero|alto del tablero|ancho del tablero|fondo del tablero/;
+function interpretarMecanico(t, p, tabTag){
+  if(!MEC.test(t)) return null;
+  const pot = tablerosPotencia(p); if(!pot.length) return null;
+  const tab = tabTag && pot.find(x=>x.tag===tabTag.tag) ? tabTag.tag : pot[0].tag;
+  // los TAG (de tableros, equipos o cargas) no se confunden con medidas: se quitan antes de leer los números
+  for(const x of tableros(p)) t = t.split(x.tag.toLowerCase()).join(" ");
+  t = t.replace(/\b[a-z]{1,5}-?\d{1,4}(\.[a-z]\d+)?\b/g, m=>/^\d/.test(m) ? m : " ");
+  const c = {};
+  const dims = t.match(/(\d{3,4})\s*(?:x|×|por)\s*(\d{3,4})(?:\s*(?:x|×|por)\s*(\d{3,4}))?/);
+  if(dims){ c.ancho = +dims[1]; c.alto = +dims[2]; if(dims[3]) c.fondo = +dims[3]; }
+  for(const [re, k] of [[/(?:alto|altura)\D{0,40}?(\d{3,4})/, "alto"], [/ancho\D{0,40}?(\d{3,4})/, "ancho"], [/(?:fondo|profundidad)\D{0,40}?(\d{3,4})/, "fondo"]]){ const m2 = t.match(re); if(m2 && !dims) c[k] = +m2[1]; }
+  if(/(gabinete|dimensiones).*(automatic|como estaba|por defecto)/.test(t)){ c.ancho = ""; c.alto = ""; c.fondo = ""; }
+  if(/entrada|ingreso/.test(t)){ if(/superior|por arriba|por encima/.test(t)) c.entrada = "superior"; else if(/inferior|por abajo|por debajo/.test(t)) c.entrada = "inferior"; }
+  if(/\bmural\b|a la pared|adosado/.test(t)) c.montaje = "mural"; else if(/autosoportado|de piso|sobre el piso/.test(t)) c.montaje = "piso"; else if(/montaje automatico/.test(t)) c.montaje = "auto";
+  if(/ventilacion|ventilador/.test(t)){ if(/natural|sin ventilador/.test(t)) c.ventilacion = "natural"; else if(/automatica|segun (el )?balance/.test(t)) c.ventilacion = "auto"; else if(/forzada|con ventilador|agrega|pon/.test(t)) c.ventilacion = "forzada"; }
+  const res = t.match(/reserva(?: de espacio)?\D{0,30}?(\d{1,2})\s*%?/); if(res) c.reserva = +res[1];
+  if(/mandos?|pulsadores|botonera/.test(t)){ if(/\b(sin|quita|quitar|elimina|eliminar|retira|retirar|saca)\b/.test(t)) c.mandos = "no"; else if(/automatic/.test(t)) c.mandos = "auto"; else c.mandos = "si"; }
+  if(/calefaccion|resistencia calefactora/.test(t)){ if(/\b(sin|quita|quitar|elimina|eliminar|retira)\b/.test(t)) c.calefaccion = "no"; else if(/automatic/.test(t)) c.calefaccion = "auto"; else c.calefaccion = "si"; }
+  const ti = t.match(/temperatura interior\D{0,30}?(\d{2})/); if(ti) c.tInterior = +ti[1];
+  return Object.keys(c).length ? [{ op:"mecanico.editar", tag: tab, campos: c }] : null;
+}
+const NOMBRE_MEC = { ancho:["ancho del gabinete","mm"], alto:["alto del gabinete","mm"], fondo:["fondo del gabinete","mm"], entrada:["entrada de cables",""], montaje:["montaje",""], ventilacion:["ventilación",""], reserva:["reserva de espacio","%"], mandos:["mandos en la puerta",""], calefaccion:["calefacción anticondensación",""], tInterior:["temperatura interior máxima","°C"] };
+const VAL_MEC = { auto:"automático", piso:"autosoportado", mural:"mural", si:"sí", no:"no", natural:"natural", forzada:"forzada", inferior:"inferior", superior:"superior" };
 function descInstrumento(tag){
   const L = tipoInstrumento(tag); const v = VARIABLE[L.slice(0,2)] && L.startsWith("PD") ? VARIABLE.PD : VARIABLE[L[0]] || "proceso";
   if(/^XV|^SV|Y$/.test(L)) return "Válvula solenoide";
@@ -184,6 +212,8 @@ export function describir(op, p){
     case "sistema.editar": return `Sistema: ${Object.entries(c).map(([k,v])=>`${k==="tag"?"TAG":"nombre"} → <b>${esc(v)}</b>`).join(", ")}`;
     case "proyecto.editar": return `Proyecto: ${Object.entries(c).map(([k,v])=>`${CAMPO[k]||k} «${esc(k==="etapa" ? (ETAPAS.find(e=>e.id===p.etapa)||{}).nombre : p[k]||"—")}» → <b>${esc(k==="etapa" ? (ETAPAS.find(e=>e.id===v)||{}).nombre||v : v)}</b>`).join(", ")}`;
     case "diseno.editar": { const v = valoresDiseno(p); return Object.entries(c).map(([k,x])=>{ const [n,u] = NOMBRE_DISENO[k]||[k,""]; return `${esc(n)}: ${esc(v[k]??"—")} ${u} → <b>${esc(fmt(x))} ${u}</b>`; }).join("<br>"); }
+    case "mecanico.editar": { const t = tablerosPotencia(p).find(x=>x.tag===op.tag); const cfg = t ? cfgMecanico(p, t) : {};
+      return `Arreglo mecánico de <b>${esc(op.tag)}</b>: ${Object.entries(c).map(([k, v])=>{ const [n, u] = NOMBRE_MEC[k]||[k,""]; const ant = cfg[k]==="" || cfg[k]==null ? "automático" : (VAL_MEC[cfg[k]]||cfg[k]) + (u && cfg[k]!=="" ? " "+u : ""); const nv = v==="" ? "automático" : (VAL_MEC[v]||v) + (u ? " "+u : ""); return `${esc(n)} ${esc(ant)} → <b>${esc(nv)}</b>`; }).join(", ")}`; }
     case "documentos.emitir": return `Emitir ${op.rev ? "la revisión <b>"+esc(op.rev)+"</b>" : "la siguiente revisión"} de los <b>${p.entregables.length}</b> documentos: «${esc(op.motivo)}»`;
   }
   return esc(op.op);
@@ -200,7 +230,8 @@ function foto(p){
   const v = valoresDiseno(p);
   const md = tablerosPotencia(p).map(t=>{ const c = calcularTablero(p, t); return { tag:t.tag, md:c.totalKVA||0, i:c.demandCurrent||0, itm:c.mainBreaker, n:c.circuits.length }; });
   let caidas = 0; try{ caidas = cablesFuerza(p).filter(f=>(f.dv||0) > (+v.caidaTension||2.5)).length; }catch(e){}
-  return { md, cargas: datos(p).cargas.length, inst: instrumentos(p).length, io: (datos(p)["ins-io"]||[]).length, caidas };
+  const mec = tablerosPotencia(p).map(t=>{ try{ const c = calcularTablero(p, t); if(!c.circuits.length) return null; const m = arregloTablero(p, t, c); return { tag:t.tag, gab:`${m.W} × ${m.H} × ${m.D} mm`, vent:m.termico.modo, n:m.comps.length, avisos:m.avisos.length }; }catch(e){ return null; } }).filter(Boolean);
+  return { md, cargas: datos(p).cargas.length, inst: instrumentos(p).length, io: (datos(p)["ins-io"]||[]).length, caidas, mec };
 }
 export function aplicar(p, ops){
   const antes = foto(p), copia = JSON.parse(JSON.stringify(p));
@@ -246,6 +277,14 @@ export function aplicar(p, ops){
     } else if(op.op==="diseno.editar"){
       p.diseno = p.diseno || {};
       for(const [k, v] of Object.entries(c)) if(NOMBRE_DISENO[k] && v!=null && v!=="" && (k!=="tensionControlTipo" || v==="Vac" || v==="Vdc")) p.diseno[k] = String(v);
+    } else if(op.op==="mecanico.editar"){
+      const t = tablerosPotencia(p).find(x=>x.tag===op.tag); if(!t){ avisos.push(`No existe el tablero de fuerza ${op.tag}.`); continue; }
+      const cfg = cfgMecanico(p, t);
+      const okVal = { entrada:["inferior","superior"], montaje:["auto","piso","mural"], ventilacion:["auto","natural","forzada"], mandos:["auto","si","no"], calefaccion:["auto","si","no"] };
+      for(const [k, v] of Object.entries(c)){
+        if(okVal[k]){ if(okVal[k].includes(v)) cfg[k] = v; else avisos.push(`Valor no válido para ${k}: ${v}.`); }
+        else if(["ancho","alto","fondo","reserva","tInterior"].includes(k)){ if(v==="" || v==null) cfg[k] = ""; else if(+v>0) cfg[k] = +v; else avisos.push(`Valor no válido para ${k}: ${v}.`); }
+      }
     } else if(op.op==="documentos.emitir"){
       const o = S.load().org, firmas = { elaboro:o.elaboraPor||"", reviso:o.revisaPor||"", aprobo:o.apruebaPor||"" };
       const hoy = new Date().toISOString().slice(0,10), rev = String(op.rev||"").toUpperCase();
@@ -271,6 +310,10 @@ function impacto(a, b, io){
   if(a.inst!==b.inst) r.push(`Instrumentos: ${a.inst} → <b>${b.inst}</b>`);
   if(io && a.io!==b.io) r.push(`Señales del listado I/O: ${a.io} → <b>${b.io}</b> (regenerado)`);
   if(a.caidas!==b.caidas) r.push(`Cables que superan la caída de tensión: ${a.caidas} → <b>${b.caidas}</b>`);
+  for(const m of (b.mec||[])){ const x = (a.mec||[]).find(y=>y.tag===m.tag); if(!x) continue;
+    if(x.gab!==m.gab) r.push(`${m.tag}: gabinete ${x.gab} → <b>${m.gab}</b>`);
+    if(x.vent!==m.vent) r.push(`${m.tag}: ventilación ${x.vent} → <b>${m.vent}</b>`);
+    if(x.avisos!==m.avisos) r.push(`${m.tag}: observaciones del arreglo ${x.avisos} → <b>${m.avisos}</b> (ver Datos de entrada del plano mecánico)`); }
   return r;
 }
 export function deshacer(p, copia){
@@ -287,14 +330,14 @@ export const HERRAMIENTA = {
     proyecto_id: { type:"string", description:"id del proyecto (campo id del JSON de contexto)" },
     resumen: { type:"string", description:"una frase con lo que se va a cambiar" },
     operaciones: { type:"array", items: { type:"object", properties: {
-      op: { type:"string", enum:["carga.agregar","carga.editar","carga.eliminar","instrumento.agregar","instrumento.editar","instrumento.eliminar","tablero.editar","sistema.editar","proyecto.editar","diseno.editar","documentos.emitir"] },
+      op: { type:"string", enum:["carga.agregar","carga.editar","carga.eliminar","instrumento.agregar","instrumento.editar","instrumento.eliminar","tablero.editar","sistema.editar","proyecto.editar","diseno.editar","mecanico.editar","documentos.emitir"] },
       tag: { type:"string", description:"TAG de la carga, instrumento o tablero" },
       descripcion: { type:"string" }, potencia: { type:"number" }, unidad: { type:"string", enum:["hp","kw"] },
       arranque: { type:"string", enum:["dol","vfd","ss"], description:"dol = directo, vfd = variador, ss = arrancador suave" },
       tablero: { type:"string", description:"TAG del tablero" }, aplicacion: { type:"string", enum:["bomba-centrifuga","ventilador-centrifugo","ventilador-axial","faja-transportadora","valvula-rotativa","compresor-piston","molino","chancadora","agitador","otro"] },
       servicio: { type:"string" }, ubicacion: { type:"string" }, cantidad: { type:"number" },
       motivo: { type:"string", enum:["Emitido para revisión interna","Emitido para revisión del cliente","Emitido para aprobación","Emitido para construcción","Conforme a obra"] }, rev: { type:"string" },
-      campos: { type:"object", description:"Campos a cambiar. carga.editar: potencia, unidad, arranque, longitud_cable (m), tablero, descripcion, fp, eficiencia, fu, fs. instrumento.editar: descripcion, servicio, ubicacion, marca, modelo, alimentacion, rango, senal. tablero.editar: nombre, tag. sistema.editar: nombre, tag. proyecto.editar: nombre, cliente, unidad (unidad minera / planta), etapa (conceptual/basica/detalle). diseno.editar: tension (Vac), frecuencia, tensionControl, tensionControlTipo (Vac o Vdc), tensionInstr (Vdc), icc, altitud, tempMin, tempMax (es la temperatura de diseño), ubicacion, caidaTension, caidaAlimentador, reservaIO." },
+      campos: { type:"object", description:"Campos a cambiar. carga.editar: potencia, unidad, arranque, longitud_cable (m), tablero, descripcion, fp, eficiencia, fu, fs. instrumento.editar: descripcion, servicio, ubicacion, marca, modelo, alimentacion, rango, senal. tablero.editar: nombre, tag. sistema.editar: nombre, tag. proyecto.editar: nombre, cliente, unidad (unidad minera / planta), etapa (conceptual/basica/detalle). diseno.editar: tension (Vac), frecuencia, tensionControl, tensionControlTipo (Vac o Vdc), tensionInstr (Vdc), icc, altitud, tempMin, tempMax (es la temperatura de diseño), ubicacion, caidaTension, caidaAlimentador, reservaIO. mecanico.editar (arreglo mecánico del tablero de fuerza tag): ancho, alto, fondo (mm, \"\" = automático), entrada (inferior|superior), montaje (auto|piso|mural), ventilacion (auto|natural|forzada), reserva (%), mandos (auto|si|no), calefaccion (auto|si|no), tInterior (°C)." },
     }, required:["op"] } },
   }, required:["resumen","operaciones"] },
 };

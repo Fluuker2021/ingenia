@@ -11,12 +11,14 @@ import { camposHD, camposHDEq } from "./docs.js";
 import { EQUIPOS_PROCESO, recomendarInstrumentos } from "./modules/proceso.js";
 import { elementosArreglo, sugerirTableros } from "./cad/planos2.js";
 import { parseDXF, drawPreview } from "./dxf.js";
+import { cfgMecanico, arregloTablero } from "./mecanico/arreglo.js";
 
 export const TITULOS = {
   criterios:"Criterios de diseño", cargas:"Cargas por tablero", cargasControl:"Cargas de 120 Vac de los tableros de control",
   tableros:"Tableros del proyecto", instrumentos:"Listado de instrumentos", io:"Lista de entradas y salidas", tablerocontrol:"Configuración de los tableros de control", circuitos:"Circuitos de los tableros de control",
   memoria:"Criterios de la memoria de cálculo", hd:"Datos por instrumento", hdEq:"Datos por tablero", notas:"Notas del documento", cables:"Cables por carga",
   equiposCfg:"Alcance del listado", proceso:"Proceso y recomendación de instrumentos", filosofia:"Filosofía de control", arreglo:"Planta y ubicación de equipos",
+  mecanico:"Arreglo mecánico del tablero",
 };
 export const AYUDA = {
   criterios:"Valores típicos que usan los cálculos y las memorias. Cámbialos solo si el cliente exige otros.",
@@ -28,6 +30,7 @@ export const AYUDA = {
   cables:"Tipo y sección salen del listado de cargas. Completa TAG, longitud y canalización.",
   tableros:"Las cargas e instrumentos se asignan a estos tableros.",
   arreglo:"Carga la planta del cliente (DXF) e ingresa X, Y de cada equipo en las mismas unidades del plano.",
+  mecanico:"Ingenia ordena los equipos con criterio de diseño y elige el gabinete con las dimensiones reales de cada componente. Deja en «Automático» lo que no quieras fijar; también puedes pedirle los cambios a Copito.",
 };
 
 export function renderEditores(cont, p, claves, docId, onChange){
@@ -113,6 +116,52 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
 
 /* ---------------- editores ---------------- */
 const ED = {
+  mecanico(el, p, cambio){
+    const pot = tablerosPotencia(p);
+    if(!pot.length){ el.innerHTML = `<div class="empty">El proyecto no tiene tableros de fuerza.</div>`; return; }
+    const cur = el.dataset.t && pot.find(t=>t.id===el.dataset.t) ? el.dataset.t : pot[0].id;
+    const t = pot.find(x=>x.id===cur), cfg = cfgMecanico(p, t), v = valoresDiseno(p);
+    let m = null; try{ m = arregloTablero(p, t); }catch(err){ console.error(err); }
+    const num = (k, ph) => `<input type="text" inputmode="numeric" data-mk="${k}" value="${esc(cfg[k]??"")}" placeholder="${esc(ph||"Automático")}">`;
+    const opc = (k, ops) => `<select data-mk="${k}">${ops.map(([val, l])=>`<option value="${val}" ${String(cfg[k])===val?"selected":""}>${esc(l)}</option>`).join("")}</select>`;
+    const sinCargas = m && !m.calc.circuits.length;
+    el.innerHTML = (pot.length>1 ? selectorTablero(pot, cur) : "") + `
+      <div class="grid-3">
+        ${campo("Montaje del gabinete", opc("montaje", [["auto","Automático"],["piso","Autosoportado (piso)"],["mural","Mural"]]), m ? `Elegido: ${m.montaje==="mural"?"mural":"autosoportado"}` : "")}
+        ${campo("Entrada de cables", opc("entrada", [["inferior","Inferior"],["superior","Superior"]]))}
+        ${campo("Reserva de espacio (%)", num("reserva", `Criterio del proyecto: ${v.reservaTablero} %`))}
+        ${campo("Ancho total (mm)", num("ancho", m ? `Automático: ${m.W}` : ""), "Secciones normalizadas de 600, 800, 1000 o 1200")}
+        ${campo("Alto (mm)", num("alto", m ? `Automático: ${m.H}` : ""), "1800, 2000 o 2200 (mural: 500 a 1200)")}
+        ${campo("Fondo (mm)", num("fondo", m ? `Automático: ${m.D}` : ""), "400, 500, 600 u 800")}
+        ${campo("Ventilación", opc("ventilacion", [["auto","Según balance térmico"],["natural","Natural"],["forzada","Forzada"]]), m ? `Balance térmico: ${m.termico.modo}` : "")}
+        ${campo("Mandos en la puerta", opc("mandos", [["auto","Automático (tablero de fuerza y control)"],["si","Sí: pulsadores, luces y selectores"],["no","No: luces de fase y parada de emergencia"]]))}
+        ${campo("Calefacción anticondensación", opc("calefaccion", [["auto","Automático (T mín. ≤ 5 °C o exterior)"],["si","Sí"],["no","No"]]))}
+        ${campo("Temperatura interior máxima (°C)", num("tInterior", "45"), "Para el balance térmico (IEC 60890)")}
+      </div>
+      <div id="mec-res"></div>`;
+    const res = $("#mec-res", el);
+    if(sinCargas) res.innerHTML = `<div class="notice mt-2">El tablero ${esc(t.tag)} aún no tiene cargas: agrégalas en el listado de cargas para armar el arreglo.</div>`;
+    else if(m){
+      const f = x => Math.round(x*10)/10;
+      res.innerHTML = `<div class="stat-row mt-2"><div class="stat"><div class="k">Gabinete</div><div class="v" style="font-size:15px">${m.W} × ${m.H} × ${m.D} mm</div></div>
+          <div class="stat"><div class="k">Secciones</div><div class="v" style="font-size:15px">${m.secciones.map(s=>s.W).join(" + ")} mm</div></div>
+          <div class="stat"><div class="k">Pérdidas</div><div class="v" style="font-size:15px">${m.termico.perdidas} W</div></div>
+          <div class="stat"><div class="k">Ventilación</div><div class="v" style="font-size:15px">${esc(m.termico.modo)}${m.termico.caudal ? ` · ${m.termico.caudal} m³/h` : ""}</div></div></div>
+        ${m.avisos.length ? `<div class="notice warn mt-2">${m.avisos.map(esc).join("<br>")}</div>` : ""}
+        <h3 class="ed-sub mt-2">Criterios de diseño aplicados</h3><ul class="mec-crit">${m.criterios.map(c=>`<li>${esc(c)}</li>`).join("")}</ul>
+        <h3 class="ed-sub mt-2">Componentes con sus dimensiones (base de datos de Ingenia)</h3>
+        <div class="table-wrap"><table class="ed-table"><thead><tr><th>TAG</th><th>Descripción</th><th>Modelo</th><th>Ancho × alto × fondo (mm)</th><th>Montaje</th><th>Fuente</th></tr></thead><tbody>
+        ${m.comps.filter(c=>c.tag).map(c=>`<tr><td class="mono">${esc(c.tag)}</td><td>${esc(c.desc||"")}</td><td>${esc(c.modelo||"")}</td><td class="mono">${f(c.w)} × ${f(c.h)} × ${f(c.d||0)}</td><td>${esc({ din:"Riel DIN", placa:"Placa", base:"Base", contactor:"Bajo contactor" }[c.montaje]||"Placa")}</td><td class="muted" style="font-size:12px">${esc(c.fuente||"")}</td></tr>`).join("")}
+        </tbody></table></div>
+        <p class="muted mt-1" style="font-size:12px">Dimensiones referenciales de catálogo: verificar con el plano dimensional del código exacto antes de fabricar. Pídele cambios a Copito, por ejemplo: «Cambia el gabinete de ${esc(t.tag)} a 1200x2000x600», «Entrada de cables superior en ${esc(t.tag)}» o «Ventilación forzada en ${esc(t.tag)}».</p>`;
+    }
+    $$("[data-mk]", el).forEach(i=>i.onchange = ()=>{
+      const k = i.dataset.mk; let val = i.value.trim();
+      if(["ancho","alto","fondo","reserva","tInterior"].includes(k)){ val = val.replace(/[^\d.]/g, ""); if(val!=="" && !(+val>0)){ toast("Ingresa un número", true); i.value = cfg[k]; return; } val = val==="" ? "" : +val; }
+      cfg[k] = val; cambio(); ED.mecanico(el, p, cambio);
+    });
+    const sl = $("[data-tsel]", el); if(sl) sl.onchange = ()=>{ el.dataset.t = sl.value; ED.mecanico(el, p, cambio); };
+  },
   criterios(el, p, cambio){
     p.diseno = p.diseno || {}; const v = valoresDiseno(p);
     const g = PARAMETROS_DISENO.find(x=>/dimensionamiento/i.test(x.grupo));

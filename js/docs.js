@@ -244,7 +244,7 @@ export const DOCS = {
   "ele-md": { formato:"docx", plantilla:"docx/memoria_md.docx", ref:"Memoria de cálculo con anexo de máxima demanda", editores:[] },
   "ele-unifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros"] },
   "ele-multifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["cargas"] },
-  "ele-mecanico": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros"] },
+  "ele-mecanico": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["mecanico"], vista3d:true },
   "ele-arreglo": { formato:"dxf", ref:"Lámina A1 sobre la planta del cliente", editores:["arreglo"] },
   "ins-pid": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["proceso"] },
   "ins-instrumentos": { formato:"xlsx", plantilla:"xlsx/lista_instrumentos.xlsx", man:"lista_instrumentos", ref:"Listado de instrumentos: carátula + listado", editores:["instrumentos","notas"] },

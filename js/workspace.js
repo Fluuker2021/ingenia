@@ -28,7 +28,9 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
   if(!e.interno && !esPro(state)){ pantallaPro(main, state, p, e, topbar); return; }
   const di = docInfo(p, id);
   // todo se descarga en el formato estándar de Ingenia; la descarga se habilita en «Cajetín y revisiones»
-  const tabs = def.formato==="proceso" ? [["datos","1. Datos de entrada"],["vista","2. Resumen"],["cajetin","3. Cajetín y revisiones"]] : [["datos","1. Datos de entrada"],["vista","2. Vista previa"],["cajetin","3. Cajetín y descarga"]];
+  const tabs = def.formato==="proceso" ? [["datos","1. Datos de entrada"],["vista","2. Resumen"],["cajetin","3. Cajetín y revisiones"]]
+    : def.vista3d ? [["datos","1. Datos de entrada"],["vista","2. Vista previa 2D"],["vista3d","3. Vista previa 3D"],["cajetin","4. Cajetín y descarga"]]
+    : [["datos","1. Datos de entrada"],["vista","2. Vista previa"],["cajetin","3. Cajetín y descarga"]];
   tab = tabs.some(t=>t[0]===tab) ? tab : "datos";
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos", href:"#/proyectos"},{label:p.nombre, href:`#/proyecto/${p.id}/documentos`},{label:e.nombre}], title:e.nombre,
     sub:`<span class="mono">Rev. ${esc(di.rev||"A")}</span><span>${esc(DISCIPLINAS[e.disciplina].nombre)} · ${esc(FMT[def.formato])}</span>`,
@@ -38,6 +40,7 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
   const body = $("#ws-body");
   if(tab==="datos") return tabDatos(body, p, id, def);
   if(tab==="vista") return tabVista(body, state, p, id, def);
+  if(tab==="vista3d") return tabVista3D(body, p, id);
   if(tab==="cajetin") return tabCajetin(body, state, p, id, def);
 }
 
@@ -160,7 +163,7 @@ async function vistaPlano(body, state, p, id){
       <button class="btn-sm" id="pl-fit">Ajustar</button><span class="muted" style="font-size:12px">Rueda del ratón: zoom · arrastrar: desplazar</span></div>
       <span class="muted">${hojas} lámina(s) A1 · ${d.entities.length} entidades · capas: ${Object.keys(d.layers).length}</span></div>
     <div class="plano-view"><canvas id="pl-cv"></canvas></div>
-    <div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">DXF R12 · capas G-, I-, E- con sus colores${r.lazos!=null?` · ${r.lazos} lazo(s)`:""}.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`;
+    <div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">DXF R12 · capas ${defDoc(id).vista3d ? "M- (gabinete, placas, canaletas, equipos, cobre, tierra, cableado, cotas)" : "G-, I-, E-"} con sus colores${r.lazos!=null?` · ${r.lazos} lazo(s)`:""}.</p>${defDoc(id).vista3d ? `<a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista3d">Siguiente: vista previa 3D →</a>` : `<a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a>`}</div>`;
   const cv = $("#pl-cv");
   const view = { hoja:0 };
   const fit = ()=>{ const b = { minX: view.hoja*1000, minY:0, maxX: view.hoja*1000+841, maxY:594 }; view.b = b; view.s = null; dibujar(); };
@@ -172,7 +175,8 @@ async function vistaPlano(body, state, p, id){
     if(view.ox==null){ view.ox = -b.minX*s; view.oy = H + b.minY*s; }
     const X = x=>view.ox + x*s, Y = y=>view.oy - y*s;
     ctx.lineWidth = 1; ctx.strokeStyle = "#1b2a3c"; ctx.fillStyle = "#1b2a3c";
-    const col = l=>({ "I-SE-ANALO":"#1d6fb8","I-PROTOCOL":"#1d6fb8","I-FZA-AC":"#b8336a","E-FZA-BT-PRI":"#b8336a","E-FZA":"#b8336a","I-FZA-DC":"#7a4fbf","I-TIERRA":"#2e8b57","E-TIERRA":"#2e8b57","I-CONTROL":"#c27c0e","E-CONTROL":"#c27c0e" }[l] || "#1b2a3c");
+    const col = l=>({ "I-SE-ANALO":"#1d6fb8","I-PROTOCOL":"#1d6fb8","I-FZA-AC":"#b8336a","E-FZA-BT-PRI":"#b8336a","E-FZA":"#b8336a","I-FZA-DC":"#7a4fbf","I-TIERRA":"#2e8b57","E-TIERRA":"#2e8b57","I-CONTROL":"#c27c0e","E-CONTROL":"#c27c0e",
+      "M-COBRE":"#c0661f","M-TIERRA":"#2e8b57","M-CABLE":"#a23b72","M-COTA":"#1d6fb8","M-ETIQUETA":"#9a6a00","M-SENAL":"#c99a00","M-CANALETA":"#7b8490","M-RIEL":"#8a93a0","M-PLACA":"#7b8490","M-DETALLE":"#5b6573","M-OCULTO":"#9aa3ae" }[l] || "#1b2a3c");
     for(const e of d.entities){
       ctx.strokeStyle = col(e.layer);
       if(e.t==="L"){ ctx.beginPath(); ctx.moveTo(X(e.x1),Y(e.y1)); ctx.lineTo(X(e.x2),Y(e.y2)); ctx.stroke(); }
@@ -185,7 +189,7 @@ async function vistaPlano(body, state, p, id){
         ctx.save(); ctx.translate(X(e.x),Y(e.y)); ctx.rotate(-(e.rot||0)*Math.PI/180); ctx.font = `${fs}px "IBM Plex Sans Condensed", Arial Narrow, Arial, sans-serif`;
         ctx.textAlign = e.align===1 ? "center" : e.align===2 ? "right" : "left";
         ctx.textBaseline = e.valign===3 ? "top" : e.valign===2 ? "middle" : e.valign===1 ? "bottom" : "alphabetic";
-        ctx.fillText(e.text.replace(/%%[dD]/g,"°").replace(/%%[cC]/g,"Ø"), 0, 0); ctx.restore();
+        ctx.fillText(e.text.replace(/%%[dD]/g,"°").replace(/%%[cC]/g,"Ø").replace(/%%[uUoO]/g,""), 0, 0); ctx.restore();
       }
     }
   };
@@ -199,6 +203,31 @@ async function vistaPlano(body, state, p, id){
   cv.addEventListener("mousedown", ev=>{ drag = { x:ev.clientX, y:ev.clientY, ox:view.ox, oy:view.oy }; cv.style.cursor = "grabbing"; });
   window.addEventListener("mouseup", ()=>{ drag = null; cv.style.cursor = ""; });
   cv.addEventListener("mousemove", ev=>{ if(!drag) return; view.ox = drag.ox + (ev.clientX-drag.x)*2; view.oy = drag.oy + (ev.clientY-drag.y)*2; dibujar(); });
+}
+
+/* ---------------- vista previa 3D (plano mecánico del tablero) ---------------- */
+async function tabVista3D(body, p, id){
+  body.innerHTML = `<div class="muted">Armando el tablero en 3D…</div>`;
+  try{
+    const { arreglosProyecto } = await import("./mecanico/arreglo.js");
+    const lista = arreglosProyecto(p);
+    if(!lista.length){ body.innerHTML = `<div class="empty">No hay tableros de fuerza con cargas. Agrégalas en el <a href="#/proyecto/${p.id}/doc/ele-cargas/datos">listado de cargas</a>.</div>`; return; }
+    const sel = lista.find(m=>m.tablero.id===body.dataset.t) || lista[0];
+    const t = sel.tablero;
+    const chips = [`Cambia la entrada de cables de ${t.tag} a ${sel.entrada==="inferior" ? "superior" : "inferior"}`, `Cambia la reserva de espacio de ${t.tag} a 30 %`, `Cambia el alto del gabinete de ${t.tag} a ${sel.H>=2200 ? 2000 : 2200} mm`, `Pon ventilación ${sel.termico.modo==="forzada" ? "natural" : "forzada"} en ${t.tag}`, `${sel.puerta.some(d=>d.tipo==="pulsador") ? "Quita" : "Agrega"} los mandos en la puerta de ${t.tag}`];
+    body.innerHTML = `<div class="row between mb-2" style="flex-wrap:wrap;gap:8px"><div class="row">${lista.length>1 ? `<label class="muted">Tablero</label><select id="v3-t">${lista.map(m=>`<option value="${m.tablero.id}" ${m===sel?"selected":""}>${esc(m.tablero.tag)} — ${esc(m.tablero.nombre||"")}</option>`).join("")}</select>` : `<strong>${esc(t.tag)}</strong><span class="muted">${esc(t.nombre||"")}</span>`}</div>
+        <span class="muted" style="font-size:12.5px">Gabinete ${sel.W} × ${sel.H} × ${sel.D} mm · ${sel.secciones.length} sección(es) · ${sel.comps.filter(c=>c.tag).length} equipos · ventilación ${esc(sel.termico.modo)}</span></div>
+      ${sel.avisos.length ? `<div class="notice warn mb-2">${sel.avisos.map(esc).join("<br>")}</div>` : ""}
+      <div id="v3-cont"></div>
+      <div class="v3d-copito-bar mt-2"><div><strong>Cambios con Copito</strong><span class="muted"> · Copito propone el cambio, lo aplicas al confirmar y el 2D, el 3D y la lista de materiales se actualizan.</span></div>
+        <div class="v3d-chips">${chips.map(c=>`<button class="btn-sm" data-cp="${esc(c)}">${esc(c)}</button>`).join("")}<button class="btn-sm btn-accent" data-cp="">Escribir otro cambio…</button></div></div>
+      <div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">El 3D usa las mismas dimensiones y posiciones del plano 2D. La descarga del CAD es la del plano 2D.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`;
+    const ts = $("#v3-t"); if(ts) ts.onchange = ()=>{ body.dataset.t = ts.value; tabVista3D(body, p, id); };
+    const pedir = (txt, enviar)=>{ if(window.copito) window.copito.abrir(txt, enviar); else toast("Copito no está disponible", true); };
+    $$("[data-cp]", body).forEach(b=>b.onclick = ()=>b.dataset.cp ? pedir(b.dataset.cp, true) : pedir(`En ${t.tag}, `, false));
+    const { visor3D } = await import("./mecanico/visor3d.js");
+    await visor3D($("#v3-cont"), sel, { copito:(d, m)=>pedir(`En ${m.tablero.tag}${d.tag ? `, para ${d.tag}` : ""}, `, false) });
+  }catch(err){ console.error(err); body.innerHTML = `<div class="notice warn">No se pudo armar la vista 3D: ${esc(err.message||err)}</div>`; }
 }
 
 /* ---------------- 3. cajetín y revisiones ---------------- */

@@ -1,6 +1,6 @@
 # Ingenia
 
-Plataforma web para elaborar ingenierías de **Electricidad e Instrumentación & Control** a partir de pocos datos: cada entregable tiene su propio entorno (datos de entrada → vista previa → cajetín y revisiones → plantilla) y se descarga en Excel, Word o DXF.
+Plataforma web para elaborar ingenierías de **Electricidad e Instrumentación & Control** a partir de pocos datos: cada entregable tiene su propio entorno (datos de entrada → vista previa → cajetín y descarga) y se descarga en Excel, Word o DXF.
 
 - Sitio estático (GitHub Pages): `index.html` (presentación) · `app.html` (plataforma).
 - Datos en el navegador (localStorage + IndexedDB para logos y plantillas). Sin servidor.
@@ -12,7 +12,7 @@ Plataforma web para elaborar ingenierías de **Electricidad e Instrumentación &
    - *Tableros*: tipo, cantidad, TAG y alimentación.
    - *Documentos*: se marcan los documentos que se elaborarán.
 2. Menú del proyecto: **Resumen · Datos generales · Documentos · Formatos del cliente**. Datos generales guarda los tableros en detalle y los criterios de diseño; lo ingresado al crear el proyecto se cambia con *Editar*.
-3. Cada documento se trabaja en su propio entorno: **1. Datos de entrada → 2. Vista previa → 3. Cajetín y descarga** (la descarga se habilita recién en el cajetín). Todo se descarga en el formato estándar de Ingenia, con la paleta de INGENIA. Los documentos **no llevan codificación**: se identifican por su nombre y se descargan como «Proyecto - Documento - Rev X».
+3. Cada documento se trabaja en su propio entorno: **1. Datos de entrada → 2. Vista previa → 3. Cajetín y descarga** (la descarga se habilita recién en el cajetín). El plano mecánico del tablero tiene además **vista previa 3D**: 1. Datos → 2. Vista previa 2D → 3. Vista previa 3D → 4. Cajetín y descarga (el CAD que se descarga es el 2D). Todo se descarga en el formato estándar de Ingenia, con la paleta de INGENIA. Los documentos **no llevan codificación**: se identifican por su nombre y se descargan como «Proyecto - Documento - Rev X».
 - **Plan Pro**: los documentos y planos son del plan Profesional (`js/plan.js`). Sin él se muestra la etiqueta «Pro» y, al abrir un documento, la pantalla de actualización; con él, el tipo de archivo (EXCEL, WORD, AUTOCAD). Mientras el pago en línea no esté habilitado, el plan se activa en *Configuración → Mi plan* y queda en el navegador.
 - Excel: cada fórmula se guarda con su resultado (visible aun en visores que no recalculan); rellenos y encabezados con la paleta de INGENIA y valores numéricos centrados.
 - Las unidades de tensión se escriben siempre como **Vac / Vdc**; los datos guardados con «VAC / VDC» se convierten al abrir la plataforma.
@@ -55,6 +55,14 @@ Formatos propios de Ingenia (carátula, tabla de revisiones, estilos y fórmulas
 ### Planos a partir de los planos de referencia del usuario
 El **diagrama unifilar** y el **diagrama multifilar** del tablero de fuerza se arman con piezas tomadas de los planos de referencia del usuario (DWG convertido a DXF con LibreDWG): `tools/planos/extraer_kit.py` + `tools/planos/piezas.py` → `assets/plantillas/planos/unifilar.json` y `multifilar.json` (geometría, capas, colores, tipos de línea y textos; los textos variables son marcadores `{clave}`). Los generadores (`js/cad/plano-unifilar.js`, `js/cad/plano-multifilar.js`, con `js/cad/kit.js`) colocan una columna por circuito (variador, guardamotor + contactor, arrancador suave, alimentador, transformador de control con sus derivaciones), reparten las columnas en el ancho de la lámina y, si no entran, reducen la escala o continúan en otra lámina. Los DWG/DXF originales no se publican (contienen datos del cliente); solo el kit extraído.
 
+### Plano mecánico del tablero de fuerza (arreglo, 2D y 3D)
+- **Base de datos de componentes** (`js/mecanico/componentes.js`): dimensiones reales (ancho × alto × fondo), montaje (riel DIN, placa, base, puerta) y pérdidas de cada familia: Tmax XT / Emax, guardamotores MS116…MS495, contactores AF, relés TA/EF, S200/FH200, portafusibles E 90, XLP, ACS880-01 (bastidores R1…R9 con sus espacios libres), PowerFlex 755, PSR/PSTX, reactancias, transformadores y fuentes, bornes Phoenix UT/UKH/PTTB, canaletas, riel, barras (DIN 43671), dispositivos de puerta, ventiladores, prensaestopas y gabinetes normalizados. Valores referenciales de catálogo (cada uno con su fuente); la estructura permite reemplazarlos por datos de servidores de fabricantes (ETIM / BMEcat) sin tocar el motor.
+- **Motor de arreglo** (`js/mecanico/arreglo.js`): con los mismos equipos y TAG del multifilar dispone todo con criterio de diseñador: placa de control (filas DIN: protecciones auxiliares de la acometida, guardamotores alineados sobre sus contactores con barra peine, distribución de control, borneras agrupadas TB1 / TBn / X1, barra de tierra) y placa de fuerza (barras L1-L2-L3 con aisladores, interruptor general alimentado por abajo con franja libre para la acometida, derivaciones colgadas de las barras, variador con sus espacios libres y subcolumna con interruptor, seccionador portafusible y reactancias sobre la base, borneras de salida bajo cada columna). Elige el gabinete normalizado (secciones, alto y fondo) por las dimensiones reales, aplica la reserva de espacio, dimensiona canaletas y prensaestopas y hace el balance térmico IEC 60890 (ventilación natural, forzada con caudal corregido por altitud o aire acondicionado). Lo que el usuario fija vive en `datos(p).mecanico[tablero.id]`.
+- **Plano 2D** (`js/cad/plano-mecanico.js`, 4 láminas A1 por tablero, a imagen del plano mecánico de referencia del usuario): vistas exteriores (frontal, lateral, isométrica, cotas, llamadas y notas), disposición de equipos en las placas (contornos detallados, canaletas, rieles, barras, recorridos de fuerza) con detalle de borneras, panel de operación y base con prensaestopas, y lista de materiales con dimensiones, criterios aplicados y balance térmico.
+- **Vista 3D** (`js/mecanico/visor3d.js`, three.js en `vendor/three`, se carga solo en esa pestaña): vistas isométrica / frente / lateral / planta / posterior, abrir y cerrar puertas, explosionar, capas (gabinete, puertas, canaletas, cableado, TAG, dispositivos de puerta), selección de equipos con sus datos, pantalla completa e imagen PNG.
+- **Copito** es el intermediario de los cambios: desde la vista 3D (o el chat) propone el cambio del arreglo (`mecanico.editar`: medidas del gabinete, montaje, entrada de cables, ventilación, reserva, mandos en puerta, calefacción, temperatura interior), se aplica al confirmar y muestra el impacto (p. ej. el gabinete nuevo); el 2D, el 3D y la lista de materiales se regeneran.
+- El multifilar usa los mismos criterios compartidos (TAG de bornera TBn, bornes según la corriente y barras según el interruptor general), para que ambos planos conversen.
+
 Planos generados (DXF R12, ANSI 1252): P&ID esquemático, unifilar y multifilar de los tableros de fuerza, disposición de equipos de los tableros, unifilar y conexionado de E/S de los tableros de control, diagramas de lazo, arquitectura de control, diagrama de bloques y arreglos generales sobre la planta del cliente. Los logos se dibujan con entidades SOLID (R12 no admite imágenes).
 
 ## Código
@@ -70,7 +78,9 @@ js/modules/proceso.js    recomendación de instrumentos (P&ID) · js/modules/fil
 js/xlsx-engine.js  motor de plantillas Excel ({{…}}, filas ancla, fórmulas, combinaciones, logos)
 js/engine/tablero-core.js  motor de cálculo NEC + catálogos ABB / Miguélez + escritor DXF
 js/cad/formato.js  lámina y cajetín · js/cad/planos.js y planos2.js generadores de planos
+js/cad/plano-mecanico.js   plano mecánico del tablero (4 láminas)
+js/mecanico/       componentes.js (dimensiones) · arreglo.js (motor de arreglo) · visor3d.js (vista 3D)
 ```
-Librerías en `vendor/`: ExcelJS, docxtemplater + PizZip, pako.
+Librerías en `vendor/`: ExcelJS, docxtemplater + PizZip, pako y three.js 0.169 (`vendor/three`, con `OrbitControls` y `CSS2DRenderer` importando `./three.module.min.js`).
 - `vendor/exceljs.min.js` lleva un parche: escribe `<outlinePr>` antes de `<pageSetUpPr>` dentro de `<sheetPr>` (orden del esquema OOXML). Sin él, Excel «reparaba» las hojas de los formatos y las dejaba vacías.
 - `tools/ordenar_docx.py` ordena según el esquema las propiedades de tabla y `updateFields` de las plantillas Word. Los archivos generados se verifican con el validador del Open XML SDK de Microsoft.

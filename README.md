@@ -12,7 +12,9 @@ Plataforma web para elaborar ingenierías de **Electricidad e Instrumentación &
    - *Tableros*: tipo, cantidad, TAG y alimentación.
    - *Documentos*: se marcan los documentos que se elaborarán.
 2. Menú del proyecto: **Resumen · Datos generales · Documentos · Formatos del cliente**. Datos generales guarda los tableros en detalle y los criterios de diseño; lo ingresado al crear el proyecto se cambia con *Editar*.
-3. Cada documento se trabaja en su propio entorno. Los documentos **no llevan codificación**: se identifican por su nombre y se descargan como «Proyecto - Documento - Rev X».
+3. Cada documento se trabaja en su propio entorno: **1. Datos de entrada → 2. Vista previa → 3. Cajetín y descarga** (la descarga se habilita recién en el cajetín). Todo se descarga en el formato estándar de Ingenia, con la paleta de INGENIA. Los documentos **no llevan codificación**: se identifican por su nombre y se descargan como «Proyecto - Documento - Rev X».
+- **Plan Pro**: los documentos y planos son del plan Profesional (`js/plan.js`). Sin él se muestra la etiqueta «Pro» y, al abrir un documento, la pantalla de actualización; con él, el tipo de archivo (EXCEL, WORD, AUTOCAD). Mientras el pago en línea no esté habilitado, el plan se activa en *Configuración → Mi plan* y queda en el navegador.
+- Excel: cada fórmula se guarda con su resultado (visible aun en visores que no recalculan); rellenos y encabezados con la paleta de INGENIA y valores numéricos centrados.
 - Las unidades de tensión se escriben siempre como **Vac / Vdc**; los datos guardados con «VAC / VDC» se convierten al abrir la plataforma.
 - La vista previa de los documentos usa los colores de INGENIA (grafito y amarillo).
 
@@ -49,6 +51,9 @@ Formatos propios de Ingenia (carátula, tabla de revisiones, estilos y fórmulas
 | Memoria de cálculo de máxima demanda | `assets/plantillas/docx/memoria_md.docx` |
 | Filosofía de control / típicos de montaje | `assets/plantillas/docx/documento_texto.docx` |
 | Planos (lámina A1 + cajetín con logos) | `js/cad/formato.js` |
+
+### Planos a partir de los planos de referencia del usuario
+El **diagrama unifilar** y el **diagrama multifilar** del tablero de fuerza se arman con piezas tomadas de los planos de referencia del usuario (DWG convertido a DXF con LibreDWG): `tools/planos/extraer_kit.py` + `tools/planos/piezas.py` → `assets/plantillas/planos/unifilar.json` y `multifilar.json` (geometría, capas, colores, tipos de línea y textos; los textos variables son marcadores `{clave}`). Los generadores (`js/cad/plano-unifilar.js`, `js/cad/plano-multifilar.js`, con `js/cad/kit.js`) colocan una columna por circuito (variador, guardamotor + contactor, arrancador suave, alimentador, transformador de control con sus derivaciones), reparten las columnas en el ancho de la lámina y, si no entran, reducen la escala o continúan en otra lámina. Los DWG/DXF originales no se publican (contienen datos del cliente); solo el kit extraído.
 
 Planos generados (DXF R12, ANSI 1252): P&ID esquemático, unifilar y multifilar de los tableros de fuerza, disposición de equipos de los tableros, unifilar y conexionado de E/S de los tableros de control, diagramas de lazo, arquitectura de control, diagrama de bloques y arreglos generales sobre la planta del cliente. Los logos se dibujan con entidades SOLID (R12 no admite imágenes).
 

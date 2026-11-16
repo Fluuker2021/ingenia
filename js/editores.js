@@ -78,6 +78,9 @@ export function enlazarDiseno(root, onCambio){
 /* tabla editable genérica */
 function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, onCell, clase, extraBotones }){
   const render = ()=>{
+    // al redibujar se conserva el desplazamiento horizontal de la tabla y el campo en edición
+    const wrap0 = $(".table-wrap", el), sl = wrap0 ? wrap0.scrollLeft : 0;
+    const act = document.activeElement && el.contains(document.activeElement) && document.activeElement.closest("tr[data-i]") ? { i: document.activeElement.closest("tr").dataset.i, c: document.activeElement.dataset.c } : null;
     el.innerHTML = html`<div class="row between mb-2"><div class="row">
         ${nuevo ? `<button class="btn-primary btn-sm" data-add>${ICON.plus} Agregar fila</button>` : ""}
         ${ejemplo ? `<button class="btn-sm" data-ej>Cargar ejemplo</button>` : ""}${extraBotones||""}
@@ -101,6 +104,8 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
       onChange(); if(c.rerender || onCell) render();
     }));
     if(el._pie) el._pie($("[data-pie]", el));
+    const wrap1 = $(".table-wrap", el); if(wrap1) wrap1.scrollLeft = sl;
+    if(act && act.c){ const x = $(`tr[data-i="${act.i}"] [data-c="${act.c}"]`, el); if(x){ x.focus({ preventScroll:true }); if(wrap1) wrap1.scrollLeft = sl; } }
   };
   el._render = render;
   render();
@@ -196,16 +201,15 @@ const ED = {
         { k:"tablero", t:"Tablero", op: opsT, w:100 },
         { k:"tag", t:"TAG", w:110 }, { k:"desc", t:"Nombre de la carga", w:180 },
         { k:"kind", t:"Tipo", op:[["motor","Motor"],["general","Carga general (kW)"],["control","Transformador de control"],["feeder","Alimentador"]], w:120 },
-        { k:"application", t:"Aplicación", op: apps, w:150 },
+        { k:"application", t:"Aplicación", op: apps, w:200 },
         { k:"power", t:"Potencia", n:true, w:70 }, { k:"powerUnit", t:"Unidad", op:[["hp","HP"],["kw","kW"]], w:70 },
         { k:"starter", t:"Arranque", op:[["dol","Directo"],["vfd","Variador"],["ss","Arrancador suave"]], w:130 },
         { k:"regimen", t:"Régimen", op: REGIMENES.map(r=>[r.v, r.label]), w:120 },
         { k:"fp", t:"FDP", n:true, w:58 }, { k:"effPct", t:"EFF (%)", n:true, w:60 }, { k:"fu", t:"FU", n:true, w:52 }, { k:"fs", t:"FS", n:true, w:52 },
-        { k:"inPlaca", t:"I placa (A)", n:true, w:62 },
         { k:"fases", t:"Fases", op:[["3","3F"],["1","1F"]], w:60 },
-        { k:"secV", t:"V sec. trafo", op:[["","—"],["120","120 V"],["220","220 V"]], w:75 },
-        { k:"feederAmps", t:"I alim. (A)", n:true, w:70 },
+        { calc:(f)=>{ const c = corrienteDe(f); return c ? r2(c,2) : "—"; }, k:"_in", t:"In (A) calculada" },
       ] });
+    function corrienteDe(f){ for(const t of pot){ const c = calcularTablero(p, t).circuits.find(x=>x.load && x.load.id===f.id); if(c) return c.installedCurrent; } return null; }
     const tip = $("[data-tip]", wrap); if(tip) tip.onclick = ()=>{ d.cargas.forEach(l=>{ l.man = {}; aplicarTipicos(l); }); cambio(); wrap._render(); toast("Valores típicos aplicados"); };
   },
   cables(el, p, cambio){

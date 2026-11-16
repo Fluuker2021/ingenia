@@ -9,6 +9,7 @@ import { datos, calcularTablero, instrumentos, expandirTag, tipoInstrumento, esA
 import { procesarFilas } from "../modules/tablas.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { parseDXF } from "../dxf.js";
+import { multifilarKit } from "./plano-multifilar.js";
 import * as S from "../store.js";
 
 /* ---------- utilidades de dibujo ---------- */
@@ -426,7 +427,7 @@ export const arregloInstrumentos = ctx => arreglo(ctx, "INS");
 
 export const GENERADORES2 = {
   "ins-pid": { fn: pid, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN (P&ID)", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
-  "ele-multifilar": { fn: multifilarFuerza, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
+  "ele-multifilar": { fn: multifilarKit, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
   "ins-multifilar-tc": { fn: multifilarControl, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE CONTROL - CONEXIONADO DE E/S", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-mecanico": { fn: mecanicoFuerza, titulo:"DISPOSICIÓN DE EQUIPOS DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
   "ins-mecanico-tc": { fn: mecanicoControl, titulo:"DISPOSICIÓN DE EQUIPOS DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },

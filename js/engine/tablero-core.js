@@ -685,30 +685,42 @@ const DXF_BLOCKS = {
 };
 
 class DXFDoc{
-  constructor(){ this.entities = []; this.layersUsed = new Set(["0"]); this.blocksUsed = new Set(); }
+  constructor(){ this.entities = []; this.layersUsed = new Set(["0"]); this.blocksUsed = new Set(); this.capas = {}; this.tiposLinea = {}; }
   _layer(name){ this.layersUsed.add(name); return name; }
-  line(x1,y1,x2,y2,layer){
+  // color (62) y tipo de línea (6) propios de la entidad: ambos son códigos de grupo de R12
+  _props(o){ o = o||{}; let s = ""; if(o.lt && this.tiposLinea[o.lt]) s += "\n6\n"+o.lt; if(o.c!=null) s += "\n62\n"+o.c; return s; }
+  line(x1,y1,x2,y2,layer,o){
     layer = this._layer(layer||"0");
-    this.entities.push("0\nLINE\n8\n"+layer+"\n10\n"+dxfNum(x1)+"\n20\n"+dxfNum(y1)+"\n30\n0.0\n11\n"+dxfNum(x2)+"\n21\n"+dxfNum(y2)+"\n31\n0.0");
+    this.entities.push("0\nLINE\n8\n"+layer+this._props(o)+"\n10\n"+dxfNum(x1)+"\n20\n"+dxfNum(y1)+"\n30\n0.0\n11\n"+dxfNum(x2)+"\n21\n"+dxfNum(y2)+"\n31\n0.0");
   }
-  circle(cx,cy,r,layer){
+  circle(cx,cy,r,layer,o){
     layer = this._layer(layer||"0");
-    this.entities.push("0\nCIRCLE\n8\n"+layer+"\n10\n"+dxfNum(cx)+"\n20\n"+dxfNum(cy)+"\n30\n0.0\n40\n"+dxfNum(r));
+    this.entities.push("0\nCIRCLE\n8\n"+layer+this._props(o)+"\n10\n"+dxfNum(cx)+"\n20\n"+dxfNum(cy)+"\n30\n0.0\n40\n"+dxfNum(r));
+  }
+  arc(cx,cy,r,a1,a2,layer,o){
+    layer = this._layer(layer||"0");
+    this.entities.push("0\nARC\n8\n"+layer+this._props(o)+"\n10\n"+dxfNum(cx)+"\n20\n"+dxfNum(cy)+"\n30\n0.0\n40\n"+dxfNum(r)+"\n50\n"+dxfNum(a1)+"\n51\n"+dxfNum(a2));
+  }
+  solid(p,layer,o){
+    layer = this._layer(layer||"0");
+    const q = p.length===3 ? [p[0],p[1],p[2],p[2]] : p;
+    this.entities.push("0\nSOLID\n8\n"+layer+this._props(o)+q.map((v,i)=>"\n1"+i+"\n"+dxfNum(v[0])+"\n2"+i+"\n"+dxfNum(v[1])+"\n3"+i+"\n0.0").join(""));
   }
   text(x,y,h,str,layer,opt){
     opt = opt||{};
     layer = this._layer(layer||"G-TEX");
-    let e = "0\nTEXT\n8\n"+layer+"\n10\n"+dxfNum(x)+"\n20\n"+dxfNum(y)+"\n30\n0.0\n40\n"+dxfNum(h)+"\n1\n"+dxfEsc(str);
+    let e = "0\nTEXT\n8\n"+layer+(opt.c!=null ? "\n62\n"+opt.c : "")+"\n10\n"+dxfNum(x)+"\n20\n"+dxfNum(y)+"\n30\n0.0\n40\n"+dxfNum(h)+"\n1\n"+dxfEsc(str);
     if(opt.rot) e += "\n50\n"+dxfNum(opt.rot);
-    if(opt.halign){ e += "\n72\n"+opt.halign+"\n11\n"+dxfNum(x)+"\n21\n"+dxfNum(y)+"\n31\n0.0"; }
+    if(opt.wf && opt.wf!==1) e += "\n41\n"+dxfNum(opt.wf);
+    if(opt.halign || opt.valign){ e += (opt.halign ? "\n72\n"+opt.halign : "")+"\n11\n"+dxfNum(x)+"\n21\n"+dxfNum(y)+"\n31\n0.0"+(opt.valign ? "\n73\n"+opt.valign : ""); }
     this.entities.push(e);
   }
   rect(x,y,w,h,layer){
     this.line(x,y,x+w,y,layer); this.line(x+w,y,x+w,y+h,layer);
     this.line(x+w,y+h,x,y+h,layer); this.line(x,y+h,x,y,layer);
   }
-  polyline(pts,layer){
-    for(let i=0;i<pts.length-1;i++) this.line(pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1],layer);
+  polyline(pts,layer,o){
+    for(let i=0;i<pts.length-1;i++) this.line(pts[i][0],pts[i][1],pts[i+1][0],pts[i+1][1],layer,o);
   }
   // inserta una instancia del bloque real `key` (una de las claves de DXF_BLOCKS) en (x,y), escala 1,
   // rotación 0 — igual que TODAS las instancias reales en el plano del cliente (se verificó que ninguna
@@ -734,10 +746,18 @@ class DXFDoc{
     // (pantalla en negro + "Press ENTER to continue" repetido = el parser estricto de AutoCAD atascado en
     // códigos de grupo que no reconoce para un archivo declarado AC1009). Revertido: solo color (62) por
     // capa, que es 100% válido en R12 puro y es lo que de verdad cambia la apariencia.
+    // capas de los planos de referencia del usuario (color y tipo de línea) y tabla LTYPE R12 con sus patrones
+    const ltUsados = new Set(Object.keys(this.tiposLinea));
     const layerDefs = [...this.layersUsed].map(name=>{
-      const spec = DXF_LAYERS[name] || {c:7, lw:-3};
-      return "0\nLAYER\n2\n"+name+"\n70\n0\n62\n"+spec.c+"\n6\nCONTINUOUS";
+      const k = this.capas[name];
+      const spec = k ? { c:k.c } : (DXF_LAYERS[name] || {c:7, lw:-3});
+      const lt = k && k.lt && ltUsados.has(k.lt) ? k.lt : "CONTINUOUS";
+      return "0\nLAYER\n2\n"+name+"\n70\n0\n62\n"+spec.c+"\n6\n"+lt;
     }).join("\n");
+    const ltDefs = ["0\nLTYPE\n2\nCONTINUOUS\n70\n0\n3\nSolid line\n72\n65\n73\n0\n40\n0.0"].concat([...ltUsados].map(n=>{
+      const t = this.tiposLinea[n]; const p = t.p||[];
+      return "0\nLTYPE\n2\n"+n+"\n70\n0\n3\n"+dxfEsc(t.d||n)+"\n72\n65\n73\n"+p.length+"\n40\n"+dxfNum(p.reduce((a,v)=>a+Math.abs(v),0))+p.map(v=>"\n49\n"+dxfNum(v)).join("");
+    })).join("\n");
     // sección BLOCKS: solo se definen los bloques realmente usados (deduplicado vía blocksUsed). Las
     // entidades internas van en capa "0" con color 0 (ByBlock) — igual que en el plano real — para que
     // adopten el color de la capa E-SIM al insertarse. Nota R12: el tipo "LWPOLYLINE" no existe en DXF R12
@@ -768,7 +788,8 @@ class DXFDoc{
     }).join("\n");
     return [
       "0","SECTION","2","HEADER","9","$ACADVER","1","AC1009","9","$DWGCODEPAGE","3","ANSI_1252","9","$INSUNITS","70","4","0","ENDSEC",
-      "0","SECTION","2","TABLES","0","TABLE","2","LAYER","70",String(this.layersUsed.size),
+      "0","SECTION","2","TABLES","0","TABLE","2","LTYPE","70",String(ltUsados.size+1), ltDefs, "0","ENDTAB",
+      "0","TABLE","2","LAYER","70",String(this.layersUsed.size),
       layerDefs, "0","ENDTAB","0","ENDSEC",
       "0","SECTION","2","BLOCKS", blockDefs, "0","ENDSEC",
       "0","SECTION","2","ENTITIES", this.entities.join("\n"),

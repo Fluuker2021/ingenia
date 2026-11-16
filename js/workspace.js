@@ -7,6 +7,7 @@ import * as X from "./export.js";
 import { rellenarExcel, marcadoresExcel } from "./xlsx-engine.js";
 import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, dxfBytes, manifiesto, tablasEstandar, refDoc, tituloDoc, descargable } from "./docs.js";
 import { renderEditores } from "./editores.js";
+import { esPro, pantallaPro } from "./plan.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, instrumentos, r2, sistemaTag, tableros, tf, cablesFuerza, CANALIZACIONES } from "./datos.js";
 import { aciCercano } from "./cad/formato.js";
 import { parseDXF, boundsOf } from "./dxf.js";
@@ -23,22 +24,21 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
     if(e.interno){ p.documentos[id] = { rev:"A", fecha:new Date().toISOString().slice(0,10), estado:"Por elaborar", titulo:e.nombre.toUpperCase() }; S.save(); }
     else { p.entregables.push(id); S.sincronizarDocumentos(p, ENTREGABLES); }
   }
+  // documentos del plan Pro: sin el plan se muestra la pantalla de actualización
+  if(!e.interno && !esPro(state)){ pantallaPro(main, state, p, e, topbar); return; }
   const di = docInfo(p, id);
-  const tpl = def.formato!=="dxf" ? (p.documentos[id].plantilla ? await S.leerArchivo(p.documentos[id].plantilla) : null) : null;
-  const usaCliente = !!(tpl && p.documentos[id].usarPlantilla!==false);
-  const tabs = def.formato==="proceso" ? [["datos","1. Datos de entrada"],["vista","2. Resumen"],["cajetin","3. Cajetín y revisiones"]] : [["datos","1. Datos de entrada"],["vista","2. Vista previa"],["cajetin","3. Cajetín y revisiones"],["plantilla","Plantilla"]];
+  // todo se descarga en el formato estándar de Ingenia; la descarga se habilita en «Cajetín y revisiones»
+  const tabs = def.formato==="proceso" ? [["datos","1. Datos de entrada"],["vista","2. Resumen"],["cajetin","3. Cajetín y revisiones"]] : [["datos","1. Datos de entrada"],["vista","2. Vista previa"],["cajetin","3. Cajetín y descarga"]];
   tab = tabs.some(t=>t[0]===tab) ? tab : "datos";
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos", href:"#/proyectos"},{label:p.nombre, href:`#/proyecto/${p.id}/documentos`},{label:e.nombre}], title:e.nombre,
-    sub:`<span class="mono">Rev. ${esc(di.rev||"A")}</span><span>${esc(DISCIPLINAS[e.disciplina].nombre)} · ${esc(FMT[def.formato])}</span>${def.formato==="proceso" ? "" : usaCliente ? `<span class="badge badge-blue" title="${esc(tpl.nombre)}">Formato del cliente</span>` : `<span class="badge badge-neutral" title="${esc(def.ref)}">Formato estándar</span>`}`,
-    actions:`<a class="btn" href="#/proyecto/${p.id}/documentos">${ICON.back} Documentos</a>${descargable(id) ? `<button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button>` : ""}` }) +
+    sub:`<span class="mono">Rev. ${esc(di.rev||"A")}</span><span>${esc(DISCIPLINAS[e.disciplina].nombre)} · ${esc(FMT[def.formato])}</span>`,
+    actions:`<a class="btn" href="#/proyecto/${p.id}/documentos">${ICON.back} Documentos</a>` }) +
     `<div class="tabs">${tabs.map(t=>`<button data-wtab="${t[0]}" class="${t[0]===tab?"active":""}">${t[1]}</button>`).join("")}</div><div id="ws-body"></div>`;
   $$("[data-wtab]").forEach(b=>b.onclick = ()=>location.hash = `#/proyecto/${p.id}/doc/${id}/${b.dataset.wtab}`);
-  const wdl = $("#ws-dl"); if(wdl) wdl.onclick = ()=>descargarDoc(state, p, id, wdl);
   const body = $("#ws-body");
   if(tab==="datos") return tabDatos(body, p, id, def);
   if(tab==="vista") return tabVista(body, state, p, id, def);
   if(tab==="cajetin") return tabCajetin(body, state, p, id, def);
-  if(tab==="plantilla") return tabPlantilla(body, state, p, id, def, tpl);
 }
 
 /* ---------------- 1. datos ---------------- */
@@ -80,13 +80,15 @@ function cabeceraHoja(p, id, titulo){
     <tr><th>Documento</th><td>${esc(entregable(id).nombre)}</td><th>Unidad</th><td>${esc(p.unidad||"—")}</td></tr></table>`;
 }
 function fmtF(f){ const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (f||""); }
+/* columnas de texto descriptivo: alineadas a la izquierda; el resto de valores, centrados */
+const esDescripcion = c => /^descrip|descripción/i.test(c[0]) || ["descripcion","desc"].includes(c[1]);
 function tablaHTML(cols, filas, totales){
-  return `<div class="table-wrap"><table class="xl-table"><thead><tr>${cols.map(c=>`<th>${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${filas.map((f,i)=>`<tr>${cols.map(c=>{ const v = c[1]==="#" ? i+1 : f[c[1]]; return `<td class="${typeof v==="number"?"num":""}">${esc(v==null?"":String(v)).replace(/\n/g,"<br>")}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:16px">Sin registros — completa los datos de entrada.</td></tr>`}${totales||""}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="xl-table"><thead><tr>${cols.map(c=>`<th class="${esDescripcion(c)?"izq":""}">${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${filas.map((f,i)=>`<tr>${cols.map(c=>{ const v = c[1]==="#" ? i+1 : f[c[1]]; return `<td class="${typeof v==="number"?"num":""}${esDescripcion(c)?" izq":""}">${esc(v==null?"":String(v)).replace(/\n/g,"<br>")}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:16px">Sin registros — completa los datos de entrada.</td></tr>`}${totales||""}</tbody></table></div>`;
 }
 function vistaTabla(body, p, id, titulo, cols, filas, extra){
   body.innerHTML = cabeceraHoja(p, id, titulo) + tablaHTML(cols, filas) + (extra||"") + `</div>` + pieVista(p, id);
 }
-function pieVista(p, id){ return `<p class="muted mt-2" style="font-size:12px">Vista de los valores. La descarga incluye carátula, estilos, fórmulas, logos y revisiones del formato.</p>`; }
+function pieVista(p, id){ return `<div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">Vista de los valores. La descarga incluye carátula, estilos, fórmulas, logos y revisiones del formato.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`; }
 
 function vistaCargas(body, p, id){
   const calcs = calcularTodos(p);
@@ -97,7 +99,7 @@ function vistaCargas(body, p, id){
     const tot = `<tr class="xl-total"><td colspan="10" style="text-align:right">CARGA TOTAL</td><td class="num">${r2(c.installedKVA,2)}</td><td class="num">${r2(c.totalKVA,2)}</td></tr>`;
     return cabeceraHoja(p, id, "LISTADO DE CARGAS") +
       `<div class="xl-band">${esc(`${datos(p).sistema.nombre ? datos(p).sistema.nombre+" - " : ""}${t.nombre} ${t.tag}`.toUpperCase())}</div>` +
-      tablaHTML([["ÍTEM","#"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["HP","hp"],["kW","kw"],["In (A)","_in"],["FDP","fp"],["EFF","eff"],["FU","fu"],["FS","fs"],["S inst. (kVA)","_si"],["MD (kVA)","_md"]], filas, tot) +
+      tablaHTML([["ÍTEM","#"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["HP","hp"],["kW","kw"],["In (A)","_in"],["FDP","fp"],["EFF","eff"],["FU","fu"],["FS","fs"],["Potencia instalada (kVA)","_si"],["Máxima demanda (kVA)","_md"]], filas, tot) +
       `<div class="stat-row mt-2"><div class="stat"><div class="k">Potencia instalada</div><div class="v">${r2(c.installedKVA,1)} kVA</div></div><div class="stat"><div class="k">Máxima demanda</div><div class="v">${r2(c.totalKVA,1)} kVA</div></div><div class="stat"><div class="k">I máxima demanda</div><div class="v">${r2(c.demandCurrent,1)} A</div></div><div class="stat"><div class="k">Interruptor general</div><div class="v">3x${c.mainBreaker} A</div></div></div>` +
       (tb.cargas_control.length ? `<h3 class="ed-sub mt-2">Lista de cargas estabilizada</h3>` + tablaHTML([["ÍTEM","n"],["DESCRIPCIÓN","descripcion"],["FDP","fp"],["FU","fu"],["FS","fs"],["P (kW)","kw"]], tb.cargas_control) : "") + `</div>`;
   }).join('<div class="mt-2"></div>') + pieVista(p, id);
@@ -107,7 +109,7 @@ function vistaHDEq(body, p, id){
   const render = ()=>{
     const t = lista.find(x=>x.id===sel); const c = camposHDEq(p, t);
     body.innerHTML = `<div class="row mb-2"><label class="muted">Hoja</label><select id="hd-sel">${lista.map(x=>`<option value="${x.id}" ${x.id===sel?"selected":""}>${esc(x.tag)}</option>`).join("")}</select><span class="muted">${lista.length} hoja(s) + carátula + índice</span></div>` +
-      cabeceraHoja(p, id, c.titulo) + `<div class="table-wrap"><table class="xl-table"><thead><tr><th>No.</th><th>DESCRIPCIÓN</th><th>UNIDAD</th><th>INFORMACIÓN</th></tr></thead><tbody>${c.filas.map(f=> f.__var ? `<tr class="xl-sec"><td colspan="4">${esc(f.texto)}</td></tr>` : `<tr><td class="num">${f.n}</td><td>${esc(f.desc)}</td><td>${esc(f.unidad||"")}</td><td>${esc(f.valor??"")}</td></tr>`).join("")}</tbody></table></div></div>` + pieVista(p, id);
+      cabeceraHoja(p, id, c.titulo) + `<div class="table-wrap"><table class="xl-table"><thead><tr><th>No.</th><th class="izq">DESCRIPCIÓN</th><th>UNIDAD</th><th>INFORMACIÓN</th></tr></thead><tbody>${c.filas.map(f=> f.__var ? `<tr class="xl-sec"><td colspan="4" class="izq">${esc(f.texto)}</td></tr>` : `<tr><td class="num">${f.n}</td><td class="izq">${esc(f.desc)}</td><td>${esc(f.unidad||"")}</td><td>${esc(f.valor??"")}</td></tr>`).join("")}</tbody></table></div></div>` + pieVista(p, id);
     $("#hd-sel").onchange = e=>{ sel = e.target.value; render(); };
   };
   render();
@@ -127,7 +129,7 @@ async function vistaHD(body, p, id){
   const render = async ()=>{
     const inst = lista.find(i=>i.tag===sel); const c = await camposHD(p, inst);
     body.innerHTML = `<div class="row mb-2"><label class="muted">Hoja</label><select id="hd-sel">${lista.map(i=>`<option ${i.tag===sel?"selected":""}>${esc(i.tag)}</option>`).join("")}</select><span class="muted">${lista.length} hoja(s) + carátula + índice</span></div>` +
-      cabeceraHoja(p, id, c.titulo) + `<div class="table-wrap"><table class="xl-table"><thead><tr><th>No.</th><th>DESCRIPCIÓN</th><th>UNIDAD</th><th>INFORMACIÓN</th><th>NOTAS</th></tr></thead><tbody>${c.filas.map(f=> f.__var ? `<tr class="xl-sec"><td colspan="5">${esc(f.texto)}</td></tr>` : `<tr><td class="num">${f.n}</td><td>${esc(f.desc)}</td><td>${esc(f.unidad)}</td><td>${esc(f.valor??"")}</td><td>${esc(f.nota||"")}</td></tr>`).join("")}</tbody></table></div></div>` + pieVista(p, id);
+      cabeceraHoja(p, id, c.titulo) + `<div class="table-wrap"><table class="xl-table"><thead><tr><th>No.</th><th class="izq">DESCRIPCIÓN</th><th>UNIDAD</th><th>INFORMACIÓN</th><th>NOTAS</th></tr></thead><tbody>${c.filas.map(f=> f.__var ? `<tr class="xl-sec"><td colspan="5" class="izq">${esc(f.texto)}</td></tr>` : `<tr><td class="num">${f.n}</td><td class="izq">${esc(f.desc)}</td><td>${esc(f.unidad)}</td><td>${esc(f.valor??"")}</td><td>${esc(f.nota||"")}</td></tr>`).join("")}</tbody></table></div></div>` + pieVista(p, id);
     $("#hd-sel").onchange = e=>{ sel = e.target.value; render(); };
   };
   render();
@@ -135,17 +137,17 @@ async function vistaHD(body, p, id){
 
 function vistaMemoria(body, p, id, tipo){
   const m = datosMemoria(p);
-  const md = `<h3 class="ed-sub">${tipo==="md" ? "Anexo A" : "Resumen"} — Máxima demanda</h3>${tablaHTML([["Ítem","n"],["Tag","tag"],["Descripción","descripcion"],["P (kW)","kw"],["cos φ","fp"],["η","eff"],["S inst. (kVA)","si"],["FU","fu"],["FS","fs"],["MD (kVA)","md"],["In (A)","in"]], m.anexo_md)}`;
+  const md = `<h3 class="ed-sub">${tipo==="md" ? "Anexo A" : "Resumen"} — Máxima demanda</h3>${tablaHTML([["Ítem","n"],["Tag","tag"],["Descripción","descripcion"],["P (kW)","kw"],["cos φ","fp"],["η","eff"],["Potencia instalada (kVA)","si"],["FU","fu"],["FS","fs"],["Máxima demanda (kVA)","md"],["In (A)","in"]], m.anexo_md)}`;
   const cond = `<h3 class="ed-sub mt-2">Anexo A — Conductores</h3>${tablaHTML([["Circ.","circuito"],["Hasta","hasta"],["In (A)","i"],["Id (A)","id"],["L (m)","l"],["Calibre","calibre"],["Iadm (A)","iadm"],["KT","ktot"],["Ic (A)","icorr"],["ΔV (%)","dv_pct"],["EGC","egc"],["Referencia","modelo"]], m.anexo_cables)}
     <h3 class="ed-sub mt-2">Anexo B — Protecciones</h3>${tablaHTML([["Circ.","circuito"],["Descripción","descripcion"],["In (A)","i"],["Tipo","tipo"],["Dispositivo","modelo"],["Ajuste","iprot"]], m.anexo_prot)}`;
   body.innerHTML = `<div class="doc-prev"><div class="doc-cover"><div class="muted">${esc(p.cliente||"")}</div><h2>${esc(tituloDoc(p,id))}</h2></div>
     <div class="stat-row"><div class="stat"><div class="k">Potencia instalada</div><div class="v">${m.pi_total} kVA</div></div><div class="stat"><div class="k">Máxima demanda</div><div class="v">${m.md_total} kVA</div></div><div class="stat"><div class="k">I máx. demanda</div><div class="v">${m.i_md_total} A</div></div><div class="stat"><div class="k">Interruptor general</div><div class="v" style="font-size:14px">${esc(m.itm_general)}</div></div></div>
     ${tipo==="md" ? md : cond}
-    <p class="muted mt-2" style="font-size:12px">El Word incluye además generalidades, normas, procedimiento, cálculo por ${tipo==="md" ? "tablero y carga" : "cable y protección"} e índice.</p></div>`;
+    <p class="muted mt-2" style="font-size:12px">El Word incluye además generalidades, normas, procedimiento, cálculo por ${tipo==="md" ? "tablero y carga" : "cable y protección"} e índice.</p></div>` + pieVista(p, id);
 }
 function vistaTexto(body, p, id, def){
   const secs = def.secciones(p);
-  body.innerHTML = `<div class="doc-prev">${secs.map(s=>`<h3 class="ed-sub">${esc(s.titulo)}</h3>${s.texto?`<p>${esc(s.texto)}</p>`:""}${s.items.length?`<ul>${s.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`:""}`).join("")}</div>`;
+  body.innerHTML = `<div class="doc-prev">${secs.map(s=>`<h3 class="ed-sub">${esc(s.titulo)}</h3>${s.texto?`<p>${esc(s.texto)}</p>`:""}${s.items.length?`<ul>${s.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`:""}`).join("")}</div>` + pieVista(p, id);
 }
 
 /* visor de planos con zoom y desplazamiento */
@@ -158,7 +160,7 @@ async function vistaPlano(body, state, p, id){
       <button class="btn-sm" id="pl-fit">Ajustar</button><span class="muted" style="font-size:12px">Rueda del ratón: zoom · arrastrar: desplazar</span></div>
       <span class="muted">${hojas} lámina(s) A1 · ${d.entities.length} entidades · capas: ${Object.keys(d.layers).length}</span></div>
     <div class="plano-view"><canvas id="pl-cv"></canvas></div>
-    <p class="muted mt-2" style="font-size:12px">DXF R12 · capas G-, I-, E- con sus colores${r.lazos!=null?` · ${r.lazos} lazo(s)`:""}.</p>`;
+    <div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">DXF R12 · capas G-, I-, E- con sus colores${r.lazos!=null?` · ${r.lazos} lazo(s)`:""}.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`;
   const cv = $("#pl-cv");
   const view = { hoja:0 };
   const fit = ()=>{ const b = { minX: view.hoja*1000, minY:0, maxX: view.hoja*1000+841, maxY:594 }; view.b = b; view.s = null; dibujar(); };
@@ -181,7 +183,9 @@ async function vistaPlano(body, state, p, id){
       else if(e.t==="T" && e.text){
         const fs = e.h*s*1.15; if(fs<1.2) continue;
         ctx.save(); ctx.translate(X(e.x),Y(e.y)); ctx.rotate(-(e.rot||0)*Math.PI/180); ctx.font = `${fs}px "IBM Plex Sans Condensed", Arial Narrow, Arial, sans-serif`;
-        if(e.align===1){ ctx.textAlign = "center"; } ctx.fillText(e.text.replace(/%%[dD]/g,"°").replace(/%%[cC]/g,"Ø"), 0, 0); ctx.restore();
+        ctx.textAlign = e.align===1 ? "center" : e.align===2 ? "right" : "left";
+        ctx.textBaseline = e.valign===3 ? "top" : e.valign===2 ? "middle" : e.valign===1 ? "bottom" : "alphabetic";
+        ctx.fillText(e.text.replace(/%%[dD]/g,"°").replace(/%%[cC]/g,"Ø"), 0, 0); ctx.restore();
       }
     }
   };
@@ -218,7 +222,9 @@ function tabCajetin(body, state, p, id, def){
         ${d.revisiones.map((r,i)=>`<tr data-r="${i}"><td><input type="text" data-rv="rev" value="${esc(r.rev)}" style="width:50px"></td><td><input type="date" data-rv="fecha" value="${esc(r.fecha)}"></td><td><select data-rv="descripcion">${["Emitido para revisión interna","Emitido para revisión del cliente","Emitido para aprobación","Emitido para construcción","Conforme a obra"].concat(r.descripcion && !/^Emitido|^Conforme/.test(r.descripcion)?[r.descripcion]:[]).map(o=>`<option ${r.descripcion===o?"selected":""}>${esc(o)}</option>`).join("")}</select></td><td>${d.revisiones.length>1?`<button class="btn-ghost btn-sm" data-rdel>${ICON.trash}</button>`:""}</td></tr>`).join("")}
         </tbody></table></div><p class="muted mt-1" style="font-size:12px">La última fila es la vigente. Para emitir varios documentos a la vez usa «Emitir revisión» en Documentos.</p></div></div>
     </div>
-    ${def.formato==="dxf" ? `<div class="card mt-2"><div class="card-head"><h2>Planos de referencia (cajetín)</h2><button class="btn-sm" id="rf-auto">Volver a sugerir</button></div><div class="card-body" id="refs"></div></div>` : ""}`;
+    ${def.formato==="dxf" ? `<div class="card mt-2"><div class="card-head"><h2>Planos de referencia (cajetín)</h2><button class="btn-sm" id="rf-auto">Volver a sugerir</button></div><div class="card-body" id="refs"></div></div>` : ""}
+    ${descargable(id) ? `<div class="card mt-2 ws-descarga"><div class="card-body row between" style="flex-wrap:wrap"><div><h2 style="font-size:15px">Descargar el documento</h2><div class="muted" style="font-size:12.5px;margin-top:3px">Con los datos de entrada, la vista previa y el cajetín de esta pantalla, en el formato estándar de Ingenia.</div></div><button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button></div></div>` : ""}`;
+    const wdl = $("#ws-dl", body); if(wdl) wdl.onclick = ()=>descargarDoc(state, p, id, wdl);
     $$("[data-f]", body).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; S.save(); });
     $$("[data-rv]", body).forEach(i=>i.onchange = ()=>{ d.revisiones[+i.closest("tr").dataset.r][i.dataset.rv] = i.value; S.save(); });
     $$("[data-rdel]", body).forEach(b=>b.onclick = ()=>{ d.revisiones.splice(+b.closest("tr").dataset.r, 1); S.save(); render(); });
@@ -237,60 +243,6 @@ function tabCajetin(body, state, p, id, def){
   render();
 }
 export function nextRev(r){ if(/^\d+$/.test(r)) return String(+r+1); if(/^[A-Y]$/i.test(r)) return String.fromCharCode(r.toUpperCase().charCodeAt(0)+1); return "0"; }
-
-/* ---------------- plantilla ---------------- */
-async function tabPlantilla(body, state, p, id, def, tpl){
-  const d = p.documentos[id];
-  if(def.formato==="dxf"){
-    const pl = p.plantillas||{}; const has = k=>!!pl[k];
-    body.innerHTML = `<div class="grid-2"><div class="card"><div class="card-head"><h2>Formato estándar</h2></div><div class="card-body">
-      <p>Lámina A1 con cuadrícula, revisiones, referencias y rótulo, llenados con los datos del proyecto y de <a href="#/organizacion">tu organización</a>.</p>
-      <p class="muted">Base: ${esc(def.ref)}</p></div></div>
-      <div class="card"><div class="card-head"><h2>Formato del cliente</h2><span class="badge ${p.plantillaModo==="cliente" && (has("dxf_formato")||has("dxf_cajetin")) ? "badge-ok" : "badge-neutral"}">${p.plantillaModo==="cliente" && (has("dxf_formato")||has("dxf_cajetin")) ? "En uso" : "No cargado"}</span></div><div class="card-body">
-      <p>Lámina, cajetín y CTB del cliente: se cargan una vez y aplican a todos los planos.</p>
-      <ul class="muted"><li>Formato (lámina): ${has("dxf_formato")?"cargado":"—"}</li><li>Cajetín: ${has("dxf_cajetin")?"cargado":"—"}</li><li>Plumillas CTB: ${has("ctb")?"cargado":"—"}</li></ul>
-      <div class="row"><a class="btn btn-sm" href="#/proyecto/${p.id}/plantillas">Gestionar formatos del cliente</a>${has("ctb")?`<button class="btn-sm" id="dl-ctb">${ICON.download} Descargar CTB</button>`:""}</div></div></div></div>`;
-    const b = $("#dl-ctb"); if(b) b.onclick = async ()=>{ const f = await S.leerArchivo(pl.ctb); X.descargar(f.blob, f.nombre, "application/octet-stream"); };
-    return;
-  }
-  const ext = def.formato;
-  const tokensDoc = await marcadoresDisponibles(p, id, def);
-  body.innerHTML = `<div class="grid-2">
-    <div class="card"><div class="card-head"><h2>Formato estándar</h2>${!tpl || d.usarPlantilla===false ? '<span class="badge badge-ok">En uso</span>' : ""}</div><div class="card-body">
-      <p>${def.estandar || def.texto ? "Carátula y cuerpo estándar de Ingenia." : `Basada en <strong>${esc(def.ref)}</strong>, con el logo de <a href="#/organizacion">tu organización</a> y del cliente.`}</p>
-      ${def.plantilla && !def.estandar ? `<a class="btn btn-sm" href="assets/plantillas/${esc(def.plantilla)}" download>${ICON.download} Descargar formato estándar</a>` : ""}
-    </div></div>
-    <div class="card"><div class="card-head"><h2>Plantilla del cliente</h2>${tpl && d.usarPlantilla!==false ? '<span class="badge badge-ok">En uso</span>' : ""}</div><div class="card-body" id="tpl-cli"></div></div>
-  </div>
-  <div class="card mt-2"><div class="card-head"><h2>Marcadores para esta plantilla</h2><span class="muted">Cópialos en el formato del cliente</span></div><div class="card-body" style="font-size:13px">${tokensDoc}</div></div>`;
-  const cli = $("#tpl-cli");
-  if(tpl){
-    cli.innerHTML = `<div class="tpl-row"><div>${ICON.file} <strong>${esc(tpl.nombre)}</strong> <span class="muted">· ${kb(tpl.size)} · ${fmtFecha(tpl.creado)}</span><div class="tokens mt-1">${(tpl.info&&tpl.info.tokens||[]).slice(0,40).map(t=>`<span class="chip">${esc(t)}</span>`).join("") || '<span class="badge badge-warn">Sin marcadores: se descargará sin datos del proyecto</span>'}</div></div><div class="row"><label class="checkbox"><input type="checkbox" id="tpl-use" ${d.usarPlantilla!==false?"checked":""}> Usar</label><button class="btn-sm btn-danger" id="tpl-del">${ICON.trash}</button></div></div>`;
-    $("#tpl-use").onchange = e=>{ d.usarPlantilla = e.target.checked; S.save(); location.reload(); };
-    $("#tpl-del").onclick = async ()=>{ await S.borrarArchivo(d.plantilla); delete d.plantilla; S.save(); location.reload(); };
-  } else {
-    cli.innerHTML = `<p class="muted">${ext==="xlsx"?"Excel":"Word"} del cliente con los marcadores de abajo.</p><div class="dropzone" id="tpl-drop"><strong>Arrastra el .${ext}</strong> o haz clic</div>`;
-    dropzone($("#tpl-drop"), "."+ext, async file=>{
-      try{
-        const buf = await leerComoArrayBuffer(file);
-        const info = ext==="xlsx" ? await marcadoresExcel(window.ExcelJS, buf) : { tokens: X.tokensDePlantillaWord(buf) };
-        d.plantilla = await S.guardarArchivo({ tipo:"doc-"+ext, proyectoId:p.id, docId:id, nombre:file.name, size:file.size, info }, file);
-        d.usarPlantilla = true; S.save(); toast("Plantilla del cliente cargada"); location.reload();
-      }catch(err){ toast("No se pudo leer la plantilla: "+(err.message||err), true, 6000); }
-    });
-  }
-}
-async function marcadoresDisponibles(p, id, def){
-  const comunes = ["{{proyecto}}","{{cliente}}","{{unidad}}","{{etapa}}","{{disciplina}}","{{titulo}}","{{rev}}","{{fecha}}","{{org}}","{{org_corto}}","{{referencia}}","{{elaboro}}","{{reviso}}","{{aprobo}}","{{rev1.rev}} {{rev1.fecha}} {{rev1.descripcion}} {{rev1.elaboro}} …"];
-  if(def.formato==="docx") return `<p>Word (etiquetas docxtemplater): <span class="tokens">${["{proyecto}","{cliente}","{titulo}","{rev}","{fecha}","{org}","{#revisiones}{rev} {fecha} {descripcion} {elaboro} {reviso} {aprobo}{/revisiones}"].concat(def.secciones?["{#secciones}{titulo} {texto} {#items}{.}{/items}{/secciones}"]:id==="ele-md"?["{#tableros}{nombre} {tag} {#cargas}…{/cargas} {s_global} {dm_global} {i_md}{/tableros}","{#anexo_md}…{/anexo_md}","{pi_total} {md_total} {i_md_total}"]:["{#cables}…{/cables}","{#protecciones}…{/protecciones}","{#anexo_cables}…{/anexo_cables}","{#anexo_prot}…{/anexo_prot}"]).map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p><p class="muted">Lo más práctico: descarga la plantilla por defecto, copia sus etiquetas al formato del cliente y cárgalo.</p>`;
-  let tablas = "";
-  try{
-    const pay = await payloadExcel(p, id, {});
-    const ts = Object.entries(pay.tablas||{}).concat(pay.clonar ? [["campos (hoja por instrumento)", pay.clonar.instancias[0] ? pay.clonar.instancias[0].tablas.campos : []]] : []);
-    tablas = ts.map(([n, filas])=>{ const cols = new Set(); (filas||[]).slice(0,5).forEach(f=>Object.keys(f).filter(k=>!k.startsWith("_")).forEach(k=>cols.add(k))); return `<div class="mt-1"><span class="chip">{{tabla:${esc(n.split(" ")[0])}}}</span> → ${[...cols].map(c=>`<span class="chip">{{col:${esc(c)}}}</span>`).join(" ")}</div>`; }).join("");
-  }catch(e){}
-  return `<p>Celdas: <span class="tokens">${comunes.map(t=>`<span class="chip">${esc(t)}</span>`).join("")}</span></p><p class="mt-2">Filas que se repiten (pon <span class="chip">{{tabla:NOMBRE}}</span> en cualquier celda de la fila modelo y <span class="chip">{{col:clave}}</span> en cada columna; <span class="chip">{{col:clave|unir}}</span> combina celdas iguales):</p>${tablas}<p class="muted mt-2">Las fórmulas de la fila modelo se copian a cada fila y los totales del tipo SUM(fila modelo) se amplían automáticamente.</p>`;
-}
 
 /* ---------------- descarga ---------------- */
 export async function orgConLogo(state){
@@ -332,7 +284,7 @@ export async function descargarDoc(state, p, id, btn){
     const di = docInfo(p, id);
     const nombre = ext => X.nombreSeguro(`${p.nombre||"Proyecto"} - ${e.nombre} - Rev ${di.rev||"A"}`)+"."+ext;
     const dd = p.documentos[id];
-    const tplCli = dd.plantilla && dd.usarPlantilla!==false ? await S.leerArchivo(dd.plantilla) : null;
+    const tplCli = null;   // los documentos se descargan siempre en el formato estándar de Ingenia
     if(def.formato==="dxf"){
       const r = await generarPlano(p, id, org, await logosPlano(org, p));
       X.descargar(new Blob([dxfBytes(r.dxf)], { type:"application/dxf" }), nombre("dxf"), "application/dxf");

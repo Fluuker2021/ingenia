@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+# planos de referencia del usuario (DWG/DXF con datos de clientes): no se publican, solo el kit extraído
+tools/planos/*.dwg
+tools/planos/*.dxf

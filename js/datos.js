@@ -162,9 +162,15 @@ export function calcularTablero(p, t, _depth=0){
       const kva = kw/fp, amps = fases===1 ? kva*1000/g.voltage : kva*1000/(Math.sqrt(3)*g.voltage);
       c = computeCircuit(Object.assign({}, l, { kind:"feeder", feederAmps: Math.max(0.1, amps) }), i, g);
       if(c){ c.esGeneral = true; c.installedKVA = kva; c.demandKVA = kva*(c.fu)*(c.fs); c.installedCurrent = amps; c.powerKWelec = kw; c.fp = fp; c.fases = fases; c.title = l.desc || "Carga general"; }
+    } else if(l.kind==="feeder" && !String(l.id||"").startsWith("auto_")){
+      // alimentador ingresado por el usuario: la corriente se calcula con la potencia y la tensión del sistema
+      const fp = +l.fp||0.85, kw = (+l.power||0)*(l.powerUnit==="hp" ? 0.746 : 1);
+      const amps = kw/fp*1000/(Math.sqrt(3)*g.voltage);
+      c = computeCircuit(Object.assign({}, l, { feederAmps: Math.max(0.1, amps) }), i, g);
     } else {
-      const gl = l.kind==="control" && l.secV ? Object.assign({}, g, { ctrlVoltage: String(l.secV) }) : g;
-      c = computeCircuit(l, i, gl);
+      // la corriente nominal siempre se calcula (no se usa corriente de placa ingresada a mano) y el
+      // transformador de control trabaja con la tensión de control del proyecto
+      c = computeCircuit(Object.assign({}, l, { inPlaca: 0 }), i, g);
     }
     if(c){ c.load = l; c.cargaTag = l.tag || c.tag; c.descLabel = c.descLabel || l.desc || c.title; c.tablero = t; circuits.push(c); }
   });
@@ -384,7 +390,7 @@ export function derivarCircuitosControl(p, t){
   }
   if(t.controladorLimpieza) c120.push({ descripcion:"Alimentación al controlador de limpieza", proteccion:2, potencia:30 });
   c120.push({ descripcion:"Reserva", proteccion:2 }, { descripcion:"Reserva", proteccion:2 });
-  c220.push({ descripcion:"Ventilación", proteccion:4, potencia:200 });
+  c220.push({ descripcion:"Ventilación interna", proteccion:4, potencia:200 });
   c220.push({ descripcion:"Luminaria interna", proteccion:6, potencia:60 });
   c220.push({ descripcion:"Alimentación al tomacorriente", proteccion:4, diferencial:true });
   const add = (arr, barra, cable)=>arr.map((c,i)=>Object.assign({ barra, circuito:"C"+(i+1), cable }, c));

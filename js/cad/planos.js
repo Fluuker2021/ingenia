@@ -8,6 +8,7 @@ import { funcionISA, datos, calcularTablero, calcularTodos, circuitosControl, in
 import { procesarFilas } from "../modules/tablas.js";
 import { valoresDiseno, tensionControlTxt, controlEnDC } from "../modules/criterios.js";
 import { GENERADORES2 } from "./planos2.js";
+import { unifilarKit } from "./plano-unifilar.js";
 
 /* ---------- utilidades de dibujo ---------- */
 const T = (doc, x, y, h, s, layer, opt) => { if(s!=null && s!=="") doc.text(x, y, h, dxfTrunc(String(s), (opt&&opt.n)||80), layer||"G-TEXT", opt||{}); };
@@ -457,7 +458,7 @@ export function bloques({ p, valsDe, cliente }){
 
 export const GENERADORES = {
   ...GENERADORES2,
-  "ele-unifilar": { fn: unifilarFuerza, titulo:"DIAGRAMA UNIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
+  "ele-unifilar": { fn: unifilarKit, titulo:"DIAGRAMA UNIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
   "ins-unifilar-tc": { fn: unifilarControl, titulo:"DIAGRAMA UNIFILAR DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ins-lazo": { fn: lazos, titulo:"DIAGRAMA DE LAZO", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ins-arquitectura": { fn: arquitectura, titulo:"ARQUITECTURA DEL SISTEMA DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },

@@ -71,7 +71,9 @@ function toPrimitive(e){
     return [{t:"S", pts, layer, space}];
   }
   if(t==="TEXT"){
-    return [{t:"T", x:num(get(e,10)), y:num(get(e,20)), h:num(get(e,40,"2.5")), rot:num(get(e,50,"0")), text:decodeText(get(e,1,"")), align:parseInt(get(e,72,"0"),10), layer, space}];
+    // con justificación (72/73) la posición válida es el punto de alineación (11/21)
+    const ha = parseInt(get(e,72,"0"),10), va = parseInt(get(e,73,"0"),10), just = ha || va;
+    return [{t:"T", x:num(get(e, just ? 11 : 10, get(e,10))), y:num(get(e, just ? 21 : 20, get(e,20))), h:num(get(e,40,"2.5")), rot:num(get(e,50,"0")), text:decodeText(get(e,1,"")), align:ha, valign:va, layer, space}];
   }
   if(t==="MTEXT"){
     const text = (getAll(e,3).join("")+get(e,1,"")).replace(/\\P/g," ").replace(/\\[A-Za-z][^;]*;/g,"").replace(/[{}]/g,"");

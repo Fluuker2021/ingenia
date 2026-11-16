@@ -13,6 +13,7 @@ import { datos, nuevoTablero, TIPOS_TABLERO, ipRecomendado, tableros, instrument
 import { VERSION } from "./version.js";
 import { comprobarVersion } from "./actualizar.js";
 import { iniciarCopito } from "./copito.js";
+import { esPro, etiquetaDoc, screenPlan, nombrePlan } from "./plan.js";
 
 const main = $("#main");
 const state = S.load();
@@ -45,6 +46,7 @@ function route(){
   if(seg==="organizacion") return screenOrganizacion();
   if(seg==="respaldo") return screenRespaldo();
   if(seg==="estandares") return screenEstandares();
+  if(seg==="plan") return screenPlan(main, state, topbar);
   location.hash = "#/proyectos";
 }
 window.addEventListener("hashchange", route);
@@ -70,7 +72,7 @@ function menuLateral(seg, id, tab){
   if(nuevaRuta){
     if(seg==="proyecto" && id){ navAb.proyectos = true; state.proyectos.forEach(q=>{ navAb[q.id] = q.id===id; }); }
     if(seg==="catalogo") navAb.catalogo = true;
-    if(seg==="organizacion" || seg==="respaldo" || seg==="estandares") navAb.config = true;
+    if(seg==="organizacion" || seg==="respaldo" || seg==="estandares" || seg==="plan") navAb.config = true;
   }
   const p = seg==="proyecto" && id ? S.proyecto(id) : null;
   if(p) p.visto = Date.now();
@@ -86,7 +88,7 @@ function menuLateral(seg, id, tab){
   $("#nav-arbol").innerHTML =
     grupo("proyectos", IC.proy, "Proyectos", (ps.length ? ps.map(proyecto).join("") : `<span class="vacio-txt">Sin proyectos</span>`) + enlace("#/proyectos", IC.todos, "Ver todos", seg==="proyectos"), ps.length) +
     grupo("catalogo", IC.cat, "Catálogo de entregables", enlace("#/catalogo", "", "Todos", seg==="catalogo" && !id) + enlace("#/catalogo/ELE", "", "Electricidad", seg==="catalogo" && id==="ELE") + enlace("#/catalogo/INS", "", "Instrumentación y control", seg==="catalogo" && id==="INS")) +
-    grupo("config", IC.cfg, "Configuración", enlace("#/organizacion", "", "Mi organización", seg==="organizacion") + enlace("#/estandares", "", "Formatos estándar", seg==="estandares") + enlace("#/respaldo", "", "Respaldo de datos", seg==="respaldo"));
+    grupo("config", IC.cfg, "Configuración", enlace("#/plan", "", "Mi plan", seg==="plan") + enlace("#/organizacion", "", "Mi organización", seg==="organizacion") + enlace("#/estandares", "", "Formatos estándar", seg==="estandares") + enlace("#/respaldo", "", "Respaldo de datos", seg==="respaldo"));
   // grupos: abrir / cerrar
   $$("#nav-arbol [data-grp]").forEach(b=>b.onclick = ()=>{ navAb[b.dataset.grp] = !navAb[b.dataset.grp]; guardarNav(); menuLateral(); });
   // proyecto: si ya está abierto en pantalla, el clic solo pliega o despliega sus secciones
@@ -136,7 +138,7 @@ function screenProyectos(){
 }
 
 /* documentos propuestos por defecto para las disciplinas y la etapa del proyecto */
-const entregablesPorDefecto = (disc, etapa) => CATALOGO.filter(e=>disc.includes(e.disciplina) && e.etapas.includes(etapa) && e.estado!=="planificado").map(e=>e.id);
+const entregablesPorDefecto = (disc, etapa) => CATALOGO.filter(e=>disc.includes(e.disciplina) && e.etapas.includes(etapa)).map(e=>e.id);
 const ordenCatalogo = ids => CATALOGO.filter(e=>ids.includes(e.id)).map(e=>e.id);
 
 /* asistente del proyecto: 1 proyecto · 2 sitio y sistema eléctrico · 3 tableros · 4 documentos a elaborar.
@@ -162,7 +164,7 @@ function modalProyecto(p, pasoIni=0){
       ${otros.length ? `<div class="field"><label>Partir de</label><select id="f-base"><option value="">Proyecto en blanco</option>${otros.map(o=>`<option value="${o.id}">${esc(o.nombre)}</option>`).join("")}</select><span class="hint">Copia cliente, condiciones del sitio, logo, formatos y la selección de documentos.</span></div>` : ""}
       <div class="grid-2">
         <div class="field" style="grid-column:1/-1"><label>Nombre del proyecto *</label><input id="f-nombre" type="text" value="${esc(p.nombre)}" placeholder="Nombre del proyecto"></div>
-        <div class="field"><label>Cliente final</label><input id="f-cliente" type="text" value="${esc(p.cliente)}" placeholder="Razón social del cliente"></div>
+        <div class="field"><label>Cliente final</label><input id="f-cliente" type="text" value="${esc(p.cliente)}" placeholder="Nombre del cliente"></div>
         <div class="field"><label>Unidad Minera / Planta</label><input id="f-unidad" type="text" value="${esc(p.unidad)}" placeholder="Unidad minera, planta o sede"></div>
         <div class="field"><label>Sistema a implementar</label><input id="f-snom" type="text" value="${esc(sis.nombre)}" placeholder="Ej: Colector de polvo"></div>
         <div class="field"><label>Etapa</label><select id="f-etapa">${ETAPAS.map(e=>`<option value="${e.id}" ${p.etapa===e.id?"selected":""}>${e.nombre}</option>`).join("")}</select></div>
@@ -250,10 +252,11 @@ function modalProyecto(p, pasoIni=0){
         const lista = CATALOGO.filter(e=>disc.includes(e.disciplina) && (e.etapas.includes(etapa) || s.has(e.id)));
         const n = lista.filter(e=>s.has(e.id)).length;
         docsBox.innerHTML = `<div class="notice accent mb-2 wz-guia"><strong>Marca los documentos que se elaborarán en este proyecto</strong> y luego presiona «${okTxt}». Después trabajarás cada uno desde <strong>Documentos</strong>.</div>
-          <div class="row between mb-1"><span class="muted" style="font-size:12.5px">${n} seleccionado(s) · ${esc(etapaNombre(etapa))}</span><div class="row"><button class="btn-sm" data-dsel="disp">Marcar disponibles</button><button class="btn-sm" data-dsel="none">Quitar todos</button></div></div>
-          ${disc.map(d=>{ const items = lista.filter(e=>e.disciplina===d); if(!items.length) return ""; return `<h3 class="disc-title">${disciplinaNombre(d)}</h3>${items.map(e=>`<label class="deliv wz-doc ${s.has(e.id)?"selected":""}"><input type="checkbox" data-doc="${e.id}" ${s.has(e.id)?"checked":""}><div><div class="title">${esc(e.nombre)} ${badgeEstado(e.estado)} <span class="badge badge-neutral">${esc(TIPOS[e.tipo])}</span></div><div class="desc">${esc(e.finalidad)}</div></div></label>`).join("")}`; }).join("") || `<div class="empty">Marca al menos una disciplina en el paso 1.</div>`}`;
+          <div class="row between mb-1"><span class="muted" style="font-size:12.5px">${n} seleccionado(s) · ${esc(etapaNombre(etapa))}</span><div class="row"><button class="btn-sm" data-dsel="todos">Marcar todos</button><button class="btn-sm" data-dsel="none">Quitar todos</button></div></div>
+          ${esPro(state) ? "" : `<p class="muted mb-1" style="font-size:12.5px">Los documentos marcados con <span class="badge badge-pro">Pro</span> se eligen ahora y se desarrollan con el plan Profesional (<a href="#/plan">ver planes</a>).</p>`}
+          ${disc.map(d=>{ const items = lista.filter(e=>e.disciplina===d); if(!items.length) return ""; return `<h3 class="disc-title">${disciplinaNombre(d)}</h3>${items.map(e=>`<label class="deliv wz-doc ${s.has(e.id)?"selected":""}"><input type="checkbox" data-doc="${e.id}" ${s.has(e.id)?"checked":""}><div><div class="title">${esc(e.nombre)} ${etiquetaDoc(e, state)}</div><div class="desc">${esc(e.finalidad)}</div></div></label>`).join("")}`; }).join("") || `<div class="empty">Marca al menos una disciplina en el paso 1.</div>`}`;
         $$("[data-doc]", docsBox).forEach(c=>c.onchange = ()=>{ sel = new Set(seleccion()); c.checked ? sel.add(c.dataset.doc) : sel.delete(c.dataset.doc); renderDocs(); });
-        $$("[data-dsel]", docsBox).forEach(b=>b.onclick = ()=>{ sel = new Set(seleccion()); lista.forEach(e=>{ if(b.dataset.dsel==="none") sel.delete(e.id); else if(e.estado!=="planificado") sel.add(e.id); }); renderDocs(); });
+        $$("[data-dsel]", docsBox).forEach(b=>b.onclick = ()=>{ sel = new Set(seleccion()); lista.forEach(e=>{ if(b.dataset.dsel==="none") sel.delete(e.id); else sel.add(e.id); }); renderDocs(); });
       }
       ver();
       $("#f-ok", root).onclick = async ()=>{
@@ -316,8 +319,7 @@ function tabResumen(body, p){
   const paso = (ok, t, det, href, accion) => `<li class="${ok?"ok":""}"><span class="dot">${ok?ICON.check:""}</span><div><div class="t">${t}</div><div class="d">${det}</div></div><a class="btn btn-sm" href="${href}">${accion}</a></li>`;
   body.innerHTML = html`
     <div class="stat-row">
-      <div class="stat"><div class="k">Documentos</div><div class="v">${sel.length}</div></div>
-      <div class="stat hl"><div class="k">Generables</div><div class="v">${porEstado("listo")+porEstado("parcial")}</div></div>
+      <div class="stat hl"><div class="k">Documentos</div><div class="v">${sel.length}</div></div>
       <div class="stat"><div class="k">Emitidos</div><div class="v">${emit}</div></div>
       <div class="stat"><div class="k">Tableros</div><div class="v">${tbs.length}</div></div>
       <div class="stat"><div class="k">Cargas</div><div class="v">${d.cargas.length}</div></div>
@@ -370,7 +372,7 @@ function tabDocumentos(body, p){
       ${sel.map(e=>{ const d = p.documentos[e.id]; const rv = (d.revisiones && d.revisiones.length) ? d.revisiones[d.revisiones.length-1] : { rev:d.rev, fecha:d.fecha, descripcion:d.emitido };
         return `<tr data-id="${e.id}">
         <td><input type="checkbox" data-chk checked></td>
-        <td><div style="font-weight:500">${generable(e.id)?`<a href="#/proyecto/${p.id}/doc/${e.id}">${esc(e.nombre)}</a>`:esc(e.nombre)}</div><div class="muted" style="font-size:12px">${esc(DISCIPLINAS[e.disciplina].corto)} · ${esc(TIPOS[e.tipo])}</div></td>
+        <td><div style="font-weight:500">${generable(e.id)?`<a href="#/proyecto/${p.id}/doc/${e.id}">${esc(e.nombre)}</a>`:esc(e.nombre)}</div><div class="muted" style="font-size:12px">${esc(DISCIPLINAS[e.disciplina].corto)} ${etiquetaDoc(e, state)}</div></td>
         <td style="white-space:nowrap"><span class="mono">Rev. ${esc(rv.rev||"A")}</span> · <span class="mono">${esc(fmtFecha(rv.fecha))}</span><div class="muted" style="font-size:12px">${esc(String(rv.descripcion||"").replace(/^Emitido para /,"Para ")||"—")}</div></td>
         <td><select data-f="estado" style="min-width:130px">${["Por elaborar","En elaboración","Para revisión","Aprobado","Emitido"].map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select></td>
         <td style="white-space:nowrap">${accionesDoc(e, p)}</td></tr>`; }).join("")}
@@ -383,7 +385,6 @@ function tabDocumentos(body, p){
   $("#emitir").onclick = ()=>modalEmitir(p, [...marcados], ()=>tabDocumentos(body, p));
   $$("#docs-sel,#docs-sel2").forEach(b=>b.onclick = ()=>modalProyecto(p, 3));
   $("#dl-registro").onclick = ()=>{ location.hash = `#/proyecto/${p.id}/doc/gen-registro/vista`; };
-  $$("[data-dl]", body).forEach(b=>b.onclick = ()=>descargarDoc(state, p, b.dataset.dl, b));
 }
 /* emisión en lote: una sola vez la revisión, fecha, motivo y firmas para todos los documentos marcados */
 function modalEmitir(p, ids, onDone){
@@ -414,9 +415,9 @@ function modalEmitir(p, ids, onDone){
       S.save(); close(); toast(`Revisión emitida en ${ids.length} documento(s)`); onDone();
     }; } });
 }
+/* la descarga se hace dentro de cada documento, en «Cajetín y descarga» */
 function accionesDoc(e, p){
-  if(generable(e.id)){ const def = defDoc(e.id); const fmt = { xlsx:"Excel", docx:"Word", dxf:"DXF" }[def.formato];
-    return `<a class="btn btn-sm btn-primary" href="#/proyecto/${p.id}/doc/${e.id}">Abrir</a>${fmt ? ` <button class="btn-sm" data-dl="${e.id}" title="Descargar con los datos actuales">${ICON.download} ${fmt}</button>` : ""}`; }
+  if(generable(e.id)) return `<a class="btn btn-sm btn-primary" href="#/proyecto/${p.id}/doc/${e.id}">Abrir</a>`;
   return `<span class="badge badge-neutral">En desarrollo</span>`;
 }
 async function cargarLogo(){ if(state.org.logo && !state.org.logoDataURL){ const f = await S.leerArchivo(state.org.logo); if(f) state.org.logoDataURL = await S.blobToDataURL(f.blob); } }
@@ -500,7 +501,7 @@ function screenCatalogo(disc){
   const discs = ["ELE","INS"].includes(disc) ? [disc] : ["ELE","INS"];
   main.innerHTML = topbar({ crumbs:[{label:"Catálogo de entregables", href:"#/catalogo"}].concat(discs.length===1 ? [{label:disciplinaNombre(disc)}] : []), title: discs.length===1 ? disciplinaNombre(disc) : "Catálogo de entregables" }) +
     `<div class="stat-row"><div class="stat hl"><div class="k">Entregables</div><div class="v">${CATALOGO.length}</div></div><div class="stat"><div class="k">Electricidad</div><div class="v">${CATALOGO.filter(e=>e.disciplina==="ELE").length}</div></div><div class="stat"><div class="k">Instrumentación y control</div><div class="v">${CATALOGO.filter(e=>e.disciplina==="INS").length}</div></div><div class="stat"><div class="k">Planos</div><div class="v">${CATALOGO.filter(e=>e.tipo==="plano").length}</div></div></div>` +
-    discs.map(d=>`<h3 class="disc-title">${disciplinaNombre(d)}</h3>${CATALOGO.filter(e=>e.disciplina===d).map(e=>`<div class="deliv"><div class="mono muted" style="padding-top:2px">${e.n}</div><div><div class="title">${esc(e.nombre)} ${badgeEstado(e.estado)} <span class="badge badge-neutral">${esc(TIPOS[e.tipo])}</span></div><div class="desc">${esc(e.finalidad)}</div><details><summary>Datos de entrada y salida</summary><ul>${e.entradas.map(x=>`<li>${esc(x)}</li>`).join("")}</ul><div class="mt-1"><strong>Salida:</strong> ${esc(e.salida)}</div></details></div><div class="right"><span class="muted" style="font-size:11.5px">${e.etapas.map(x=>etapaNombre(x).replace("Ingeniería ","")).join(" · ")}</span></div></div>`).join("")}`).join("");
+    discs.map(d=>`<h3 class="disc-title">${disciplinaNombre(d)}</h3>${CATALOGO.filter(e=>e.disciplina===d).map(e=>`<div class="deliv"><div class="mono muted" style="padding-top:2px">${e.n}</div><div><div class="title">${esc(e.nombre)} ${etiquetaDoc(e, state)}</div><div class="desc">${esc(e.finalidad)}</div><details><summary>Datos de entrada y salida</summary><ul>${e.entradas.map(x=>`<li>${esc(x)}</li>`).join("")}</ul><div class="mt-1"><strong>Salida:</strong> ${esc(e.salida)}</div></details></div><div class="right"><span class="muted" style="font-size:11.5px">${e.etapas.map(x=>etapaNombre(x).replace("Ingeniería ","")).join(" · ")}</span></div></div>`).join("")}`).join("");
 }
 
 /* ================= organización ================= */

@@ -265,8 +265,114 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
       if(t.man.cliente && datos.logos.cliente) colocarLogo(wb, t.ws, datos.logos.cliente.dataURL, Object.assign({ aspect: datos.logos.cliente.aspect }, t.man.cliente));
     }
   }
+  calcularFormulas(wb);
+  aplicarPaletaIngenia(wb);
   wb.calcProperties = Object.assign({}, wb.calcProperties, { fullCalcOnLoad: true });
   return await wb.xlsx.writeBuffer();
+}
+
+/* Colores de INGENIA en los formatos Excel: los rellenos oscuros (encabezados) pasan a grafito con texto
+   blanco, los claros a amarillo suave o gris, el texto azul a grafito; los valores numéricos se centran
+   (los textos, como la descripción, conservan su alineación). */
+const PAL = { grafito:"FF17191D", amarillo:"FFF5C518", amarillo100:"FFFDF1C4", gris:"FFECEFF2", blanco:"FFFFFFFF" };
+const TEMA = { 0:"FFFFFF", 1:"000000", 2:"E7E6E6", 3:"44546A", 4:"4472C4", 5:"ED7D31", 6:"A5A5A5", 7:"FFC000", 8:"5B9BD5", 9:"70AD47" };
+function rgbDe(c){
+  if(!c) return null;
+  let hex = c.argb ? c.argb.slice(-6) : (c.theme!=null ? TEMA[c.theme] : null);
+  if(!hex) return null;
+  let [r,g,b] = [0,2,4].map(i=>parseInt(hex.slice(i,i+2),16));
+  const t = c.tint||0;
+  if(t) [r,g,b] = [r,g,b].map(v=> t<0 ? v*(1+t) : v+(255-v)*t);
+  return { r, g, b, lum: (0.299*r+0.587*g+0.114*b)/255, sat: Math.max(r,g,b)-Math.min(r,g,b) };
+}
+function aplicarPaletaIngenia(wb){
+  wb.eachSheet(ws=>ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:true }, cell=>{
+    const f = cell.fill;
+    if(f && f.type==="pattern" && f.pattern==="solid"){
+      const c = rgbDe(f.fgColor);
+      if(c && !(c.lum>0.97)){
+        let nuevo;
+        if(c.lum < 0.55) nuevo = PAL.grafito;                    // encabezados oscuros
+        else if(c.sat > 40) nuevo = PAL.amarillo100;            // claros con color (celeste, amarillo)
+        else nuevo = PAL.gris;                                   // grises
+        cell.fill = { type:"pattern", pattern:"solid", fgColor:{ argb:nuevo }, bgColor:{ indexed:64 } };
+        if(nuevo===PAL.grafito) cell.font = Object.assign({}, cell.font||{}, { color:{ argb:PAL.blanco } });
+      }
+    }
+    const fc = cell.font && cell.font.color && rgbDe(cell.font.color);
+    if(fc && fc.b > fc.r+40 && fc.lum < 0.75 && !(f && f.type==="pattern" && cell.fill.fgColor && cell.fill.fgColor.argb===PAL.grafito)) cell.font = Object.assign({}, cell.font, { color:{ argb:PAL.grafito } });
+    const v = cell.value;
+    const esNum = typeof v==="number" || (v && typeof v==="object" && typeof v.result==="number");
+    if(esNum) cell.alignment = Object.assign({}, cell.alignment||{}, { horizontal:"center" });
+  })));
+}
+
+/* Guarda el resultado de cada fórmula dentro del archivo. Sin él, los visores que no recalculan (Excel en
+   vista protegida, vistas previas del celular, Drive, correo) muestran vacías las columnas calculadas.
+   Evaluador mínimo para las fórmulas de los formatos: referencias (con hoja y $), rangos, + - * / ^ &,
+   comparaciones y SUM, SQRT, IF, ROW, ROUND, ROUNDUP, ROUNDDOWN, MAX, MIN, ABS, AVERAGE, AND, OR, IFERROR, PI. */
+function calcularFormulas(wb){
+  const hojas = new Map(); wb.eachSheet(ws=>hojas.set(ws.name.toUpperCase(), ws));
+  const memo = new Map(), enCurso = new Set();
+  const F = {
+    SUM: (...a)=>a.flat(Infinity).reduce((s,x)=>s+(typeof x==="number"?x:0),0),
+    AVERAGE: (...a)=>{ const n = a.flat(Infinity).filter(x=>typeof x==="number"); return n.length ? n.reduce((s,x)=>s+x,0)/n.length : 0; },
+    MAX: (...a)=>Math.max(...a.flat(Infinity).filter(x=>typeof x==="number")), MIN: (...a)=>Math.min(...a.flat(Infinity).filter(x=>typeof x==="number")),
+    SQRT: x=>Math.sqrt(num(x)), ABS: x=>Math.abs(num(x)), PI: ()=>Math.PI,
+    ROUND: (x,d=0)=>{ const k = 10**num(d); return Math.round(num(x)*k)/k; }, ROUNDUP: (x,d=0)=>{ const k = 10**num(d); return Math.ceil(num(x)*k)/k; }, ROUNDDOWN: (x,d=0)=>{ const k = 10**num(d); return Math.floor(num(x)*k)/k; },
+    IF: (c,a=true,b=false)=>c?a:b, AND: (...a)=>a.flat(Infinity).every(Boolean), OR: (...a)=>a.flat(Infinity).some(Boolean), IFERROR: (a,b)=>(typeof a==="number" && !isFinite(a)) ? b : a,
+  };
+  const num = x => typeof x==="number" ? x : (x===""||x==null||x===false) ? 0 : x===true ? 1 : (isNaN(+x) ? 0 : +x);
+  const crudo = v => { if(v==null) return ""; if(typeof v==="object"){ if(v.richText) return v.richText.map(r=>r.text).join(""); if("result" in v || "formula" in v || "sharedFormula" in v) return undefined; if(v.text!=null) return v.text; if(v instanceof Date) return v; } return v; };
+  const valor = (ws, ref)=>{
+    const k = ws.name+"!"+ref;
+    if(memo.has(k)) return memo.get(k);
+    const cell = ws.getCell(ref);
+    let v = crudo(cell.value);
+    if(v===undefined){
+      if(enCurso.has(k)) return 0;            // referencia circular: se corta
+      enCurso.add(k);
+      const f = cell.formula; v = 0;
+      try{ const r = evaluar(ws, f, cell.row); if(r!==undefined) v = r; }catch(e){ v = 0; }
+      enCurso.delete(k);
+    }
+    memo.set(k, v); return v;
+  };
+  const rango = (ws, a, b)=>{
+    const [, c1, r1] = a.match(/([A-Z]+)(\d+)/), [, c2, r2] = b.match(/([A-Z]+)(\d+)/);
+    const out = [];
+    for(let r=Math.min(+r1,+r2); r<=Math.max(+r1,+r2); r++) for(let c=Math.min(colNum(c1),colNum(c2)); c<=Math.max(colNum(c1),colNum(c2)); c++) out.push(valor(ws, ws.getCell(r,c).address));
+    return out;
+  };
+  const hojaDe = (ws, nombre)=> nombre ? (hojas.get(nombre.replace(/^'|'$/g,"").replace(/''/g,"'").toUpperCase()) || ws) : ws;
+  function evaluar(ws, formula, fila){
+    if(typeof formula!=="string" || !formula) return undefined;
+    const re = /\s*(?:("(?:[^"]|"")*")|((?:'(?:[^']|'')+'|[A-Za-z_][\w.]*)!)?(\$?[A-Z]{1,3}\$?\d+)(?::(\$?[A-Z]{1,3}\$?\d+))?|(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?%?)|([A-Za-z][A-Za-z0-9.]*)\s*\(|(<>|<=|>=|[-+*\/^&=<>(),%]))/y;
+    let js = "", m, i = 0;
+    const args = [];
+    while(i < formula.length){
+      re.lastIndex = i; m = re.exec(formula);
+      if(!m){ if(/^\s*$/.test(formula.slice(i))) break; return undefined; }
+      i = re.lastIndex;
+      if(m[1]!=null) js += JSON.stringify(m[1].slice(1,-1).replace(/""/g,'"'));
+      else if(m[3]){ const h = hojaDe(ws, m[2] && m[2].slice(0,-1)); const a = m[3].replace(/\$/g,""); if(m[4]){ const b2 = m[4].replace(/\$/g,""); args.push(()=>rango(h, a, b2)); } else { const hh = h, aa = a; args.push(()=>valor(hh, aa)); } js += `A[${args.length-1}]()`; }
+      else if(m[5]) js += m[5].endsWith("%") ? `(${parseFloat(m[5])}/100)` : m[5];
+      else if(m[6]){ const fn = m[6].toUpperCase(); if(fn==="ROW") js += `(()=>${fila})(`; else if(F[fn]) js += `F.${fn}(`; else return undefined; }
+      else if(m[7]){ const o = m[7]; js += o==="^" ? "**" : o==="=" ? "==" : o==="<>" ? "!=" : o==="&" ? '+""+' : o; }
+    }
+    // los operandos de celdas vacías valen 0 en aritmética (como en Excel)
+    const N = x => (typeof x==="string" && x!=="" && !isNaN(+x)) ? +x : x;
+    const A = args.map(fn=>()=>{ const v = fn(); return Array.isArray(v) ? v : (v==="" ? 0 : N(v)); });
+    const r = Function("A","F", `"use strict"; return (${js});`)(A, F);
+    return (typeof r==="number" && !isFinite(r)) ? undefined : r;
+  }
+  wb.eachSheet(ws=>ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:false }, cell=>{
+    const f = cell.formula; if(!f || cell.value==null || typeof cell.value!=="object") return;
+    let r; try{ r = evaluar(ws, f, cell.row); }catch(e){ r = undefined; }
+    if(r===undefined || r===null) return;
+    if(typeof r==="number") r = Math.round(r*1e10)/1e10;
+    if(cell.value.sharedFormula) cell.value = { formula: f, result: r }; else cell.value = Object.assign({}, cell.value, { result: r });
+  })));
 }
 
 export async function marcadoresExcel(ExcelJS, buffer){

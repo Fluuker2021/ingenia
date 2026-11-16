@@ -7,7 +7,8 @@
      doc:{codigo,titulo,rev,fecha,disciplina,emitidoPara}, revisiones:[{rev,fecha,descripcion,elaboro,reviso,aprobo}],
      tablas:{ NOMBRE:{columnas:[{key,titulo,ancho,num}], filas:[{...}]} }, campos:{...} } */
 
-const AZUL = "FF1D4F91", AZUL_CLARO = "FFE3EDF9", GRIS = "FFEEF1F5", BORDE = "FFB8C2D0";
+// paleta INGENIA: grafito (encabezados), amarillo suave (resaltados), gris claro
+const AZUL = "FF17191D", AZUL_CLARO = "FFFDF1C4", GRIS = "FFECEFF2", BORDE = "FFC4CBD3";
 const thin = { style:"thin", color:{argb:BORDE} };
 const bordes = { top:thin, left:thin, bottom:thin, right:thin };
 const font = (o={}) => Object.assign({ name:"Arial", size:9 }, o);

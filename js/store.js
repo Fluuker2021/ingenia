@@ -15,7 +15,7 @@ export function load(){
   if(state) return state;
   try{ const raw = localStorage.getItem(LS_KEY); state = raw ? Object.assign(defaults(), JSON.parse(raw)) : defaults(); }
   catch(e){ state = defaults(); }
-  migrar(state);
+  migrar(state); migrarVentilacion(state);
   return state;
 }
 /* datos guardados con versiones anteriores: unidades «VAC / VDC» → «Vac / Vdc» */
@@ -25,6 +25,12 @@ function migrar(s){
     : Array.isArray(v) ? v.map(fix) : (v && typeof v==="object") ? (Object.keys(v).forEach(k=>{ v[k] = fix(v[k]); }), v) : v;
   s.proyectos = fix(s.proyectos || []);
   s.migVac = 1;
+}
+/* corrección 02: el circuito «Ventilación» de los tableros de control pasa a «Ventilación interna» */
+function migrarVentilacion(s){
+  if(s.migVent) return;
+  for(const p of s.proyectos||[]) for(const lista of Object.values((p.datos||{}).circuitosCtl||{})) for(const c of lista||[]) if(c && c.descripcion==="Ventilación") c.descripcion = "Ventilación interna";
+  s.migVent = 1;
 }
 export function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ console.warn("No se pudo guardar", e); } }
 

@@ -82,31 +82,31 @@ PIEZAS_KIT = {
             'TM': '{tm}', '16A': '{tmv}', '03504.0-01': '{tmm}'}),
 
         # ---------------- hoja 5: PLC (CPU y módulos, por el centro de cada primitiva) ----------------
-        'p_cpu': dict(rects=[R(5, 80, 265, 280, 640)], ancla=A(5, 80), centro=True, textos={
+        'p_cpu': dict(simplificar=True, rects=[R(5, 80, 265, 280, 640)], ancla=A(5, 80), centro=True, textos={
             'PLC': '{tag}', 'CPU': '{desc}', '5069-L320ER': '{modelo}', 'SLOT 0': '{slot}'}),
-        'p_ana': dict(rects=[R(5, 280, 265, 324, 640)], ancla=A(5, 280), centro=True, textos={
+        'p_ana': dict(simplificar=True, rects=[R(5, 280, 265, 324, 640)], ancla=A(5, 280), centro=True, textos={
             'AI1': '{tag}', 'MÓDULO ENTRADAS ANALÓGICAS': '{desc}', '5069-IF8 8 CANALES': '{modelo}', 'SLOT 1': '{slot}'}),
-        'p_rele': dict(rects=[R(5, 412, 265, 488, 640)], ancla=A(5, 412), centro=True, textos={
+        'p_rele': dict(simplificar=True, rects=[R(5, 412, 265, 488, 640)], ancla=A(5, 412), centro=True, textos={
             'DO1': '{tag}', 'MÓDULO SALIDAS RELÉ': '{desc}', '5069-OW16 16 CANALES': '{modelo}', 'SLOT 4': '{slot}'}),
-        'p_fpd': dict(rects=[R(5, 563, 265, 608, 640)], ancla=A(5, 563), centro=True, textos={
+        'p_fpd': dict(simplificar=True, rects=[R(5, 563, 265, 608, 640)], ancla=A(5, 563), centro=True, textos={
             'CN1': '{tag}', 'SEPARADOR/ DISTRIBUIDOR DE POTENCIAL': '{desc}', '5069-FPD': '{modelo}'}),
-        'p_dig': dict(rects=[R(5, 608, 265, 652, 640)], ancla=A(5, 608), centro=True, textos={
+        'p_dig': dict(simplificar=True, rects=[R(5, 608, 265, 652, 640)], ancla=A(5, 608), centro=True, textos={
             'DI1': '{tag}', 'MÓDULO ENTRADAS DIGITALES': '{desc}', '5069-IA16 16 CANALES': '{modelo}', 'SLOT 6': '{slot}'}),
-        'p_tap': dict(rects=[R(5, 696, 265, 735, 640)], ancla=A(5, 696), centro=True, textos={
+        'p_tap': dict(simplificar=True, rects=[R(5, 696, 265, 735, 640)], ancla=A(5, 696), centro=True, textos={
             'TAP': '{tag}', 'TAPA TERMINADOR': '{desc}', '5069-ECR': '{modelo}'}),
 
         # ---------------- hoja 6: distribución de 24 Vdc ----------------
         'v_ps': dict(rects=[R(6, 0, 384, 125, 670)], ancla=A(6, 82), barras_y=B24, textos={'PS.+': '{a1}', 'PS.-': '{a2}'}),
-        'v_xf': dict(rects=[R(6, 50, 338, 76, 366)], ancla=A(6, 82), textos={'XF1': '{tb}', '4mm2': '{tbs}', 'UT 4-L/': '{tbm1}', 'HESI (5X20)': '{tbm2}', '1 A': ''}),
+        'v_xf': dict(rects=[R(6, 44, 338, 76, 366)], ancla=A(6, 82), textos={'XF1': '{tb}', '4mm2': '{tbs}', 'UT 4-L/': '{tbm1}', 'HESI (5X20)': '{tbm2}', '1 A': ''}),
         'v_par': dict(rects=[R(6, 125.5, 205, 176, 402)], ancla=A(6, 130), barras_y=B24, textos={
             '2A': '{bA}', '2B': '{bB}', '1 A': '{fv}', 'XF1.3': '{a1}', 'XF1.4': '{a2}', 'ALIMENTACIÓN ENTRADAS ANÁLOGAS 5069-IF8 -AI1': '{desc}'}),
         'v_plc': dict(rects=[R(6, 248, 490, 438, 668)], ancla=A(6, 248), textos={
             'PLC': '{tag}', 'Compact GuardLogix 5380 Controller': '{desc}', '5069-L320ER': '{modelo}', 'XF1.1': '{a1}', 'XF1.2': '{a2}', 'PE4': '{pe}'}),
         'v_hmi': dict(rects=[R(6, 503, 490, 612, 668)], ancla=A(6, 503), textos={
             'HMI': '{tag}', 'Panel View 7': '{desc}', '2711P-T7C22D9P': '{modelo}', 'XF1.9': '{a1}', 'XF1.10': '{a2}', 'PE5': '{pe}'}),
-        'v_sw': dict(rects=[R(6, 630, 385, 806, 672)], ancla=A(6, 630), textos={
+        'v_sw': dict(simplificar=True, rects=[R(6, 630, 385, 806, 672)], ancla=A(6, 630), textos={
             'SW': '{tag}', '1783-CMS10DP': '{modelo}', 'XF1.7': '{a1}', 'XF1.8': '{a2}', 'PE6': '{pe}'}),
-        'v_rut': dict(rects=[R(6, 620, 245, 806, 385)], ancla=A(6, 630), textos={
+        'v_rut': dict(simplificar=True, rects=[R(6, 620, 245, 806, 385)], ancla=A(6, 630), textos={
             'RUT': '{tag}', 'RUT956': '{modelo}', 'XF1.11': '{a1}', 'XF1.12': '{a2}', 'PE7': '{pe}'}),
 
         # ---------------- hojas 7-8: entradas analógicas (canal: ancla en el borne fusible A) ----------------
@@ -137,7 +137,7 @@ PIEZAS_KIT = {
         'do_mod': dict(rects=[R(10, 40, 640, 71, 668)], ancla=A(10, 112), centro=True, textos={'DO1': '{tag}', '5069-OW16': '{modelo}', 'slot 4': '{slot}'}),
         'do_ch': dict(rects=[R(10, 151.9, 195, 232.1, 670)], ancla=A(10, 192), barras_y=BDO, textos={
             'Comando de arranque de válvula rotativa #2': '{desc}', '1': '{t}', 'OUT1': '{out}', 'CR2': '{cr}', '4NA/NC': '{crc}', 'LZS:PT5A5S15': '{crm}'}),
-        'do_com': dict(rects=[R(10, 675, 520, 806, 600), R(10, 712.5, 600, 806, 670)], ancla=A(10, 736), textos={
+        'do_com': dict(rects=[R(10, 712.5, 520, 806, 670), R(10, 675, 520, 712.5, 560)], ancla=A(10, 736), textos={
             'CB5.2': '{a}', '8': '{t}', 'COM0': '{com}', '120 VAC': '{v}'}),
         'do_bus_izq': dict(rects=[R(10, 0, 205, 70, 228)], ancla=A(10, 112), barras_y=BDO, textos={'CB5.4': '{a}', '120VAC': '{v}'}),
         'do_bus_der': dict(rects=[R(10, 695, 205, 770, 228)], ancla=A(10, 672), barras_y=BDO, textos={'CR8.A2': '{a}', '120VAC': '{v}'}),

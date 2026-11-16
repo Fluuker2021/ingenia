@@ -285,7 +285,7 @@ function hPLC(c){
     items.push({ pz: m.tipo==="DO" ? "p_rele" : m.tipo==="DI" ? "p_dig" : "p_ana", vars:{ tag:m.tag, desc:DESC[m.tipo]||"MÓDULO", modelo:`${m.modelo}\n${m.canales} CANALES`, slot:`SLOT ${m.slot}` } });
   }
   if(plc.tapa) items.push({ pz:"p_tap", vars:{ tag:plc.tapa.tag, desc:"TAPA\nTERMINADOR", modelo:plc.tapa.modelo } });
-  P.hoja(`${nombre} - CONTROLADOR (PLC) ${up(plc.cpu.familia||"")}`.trim());
+  P.hoja(`${nombre} - CONTROLADOR (PLC) Y MÓDULOS DE E/S`);
   // el bastidor completo centrado; si no cabe en el ancho útil se reduce la escala (alrededor de su centro)
   const tot = items.reduce((a, it)=>a+W[it.pz], 0), s = Math.min(1, 740/tot);
   let x = (806 - tot*s)/2;
@@ -455,7 +455,7 @@ function hContactos(c){
   const { P, K, eq, nombre, destino, bornes } = c;
   const hojas = grupos(eq.reles, 10);
   hojas.forEach((rs, i)=>{
-    P.hoja(`${nombre} - CONTACTOS DE LOS RELÉS DE INTERFAZ${hojas.length>1 ? ` (${i+1} DE ${hojas.length})` : ""}`, 12);
+    P.hoja(`${nombre} - CONTACTOS DE RELÉS DE INTERFAZ${hojas.length>1 ? ` (${i+1} DE ${hojas.length})` : ""}`, 12);
     // una o dos filas de hasta 5 contactos, centradas en la lámina
     const filas = rs.length > 5 ? 2 : 1, porFila = Math.ceil(rs.length/filas), Wb = (porFila-1)*142 + 150, x0 = (806-Wb)/2 + 78;
     rs.forEach((r, k)=>{

@@ -13,26 +13,17 @@
 import { datos, tablerosControl, tablerosPotencia, tableroPorId, circuitosControl, desdeTxt, esFuerza, tc as tcPrincipal, instrumentos, expandirTag } from "../datos.js";
 import { valoresDiseno, tensionEstabilizada } from "../modules/criterios.js";
 import { procesarFilas } from "../modules/tablas.js";
+import { FAMILIAS, familiaPorTexto, modeloFamilia, infoModulo, terminalesCanal } from "./plc-modulos.js";
 
-/* ---------- familias de PLC (modelos de catálogo por tipo de módulo) ---------- */
-export const PLC_FAMILIAS = {
-  ab5380: { nombre:"Allen-Bradley CompactLogix 5380", marca:"Allen-Bradley", cpu:"5069-L320ER", fpd:"5069-FPD", tapa:"5069-ECR",
-    mod:{ AI:{ 8:"5069-IF8", 16:"5069-IF16" }, AO:{ 4:"5069-OF4", 8:"5069-OF8" }, DI:{ "120 Vac":{ 16:"5069-IA16" }, "24 Vdc":{ 16:"5069-IB16", 32:"5069-IB16K" } }, DO:{ 16:"5069-OW16", 8:"5069-OX4I" } },
-    hmi:"PanelView Plus 7 2711P-T7C22D9P", switch:"Stratix 1783-CMS10DP", red:"Ethernet/IP" },
-  s71500: { nombre:"Siemens SIMATIC S7-1500", marca:"Siemens", cpu:"6ES7 515-2AM02-0AB0", fpd:"", tapa:"",
-    mod:{ AI:{ 8:"6ES7 531-7KF00-0AB0" }, AO:{ 4:"6ES7 532-5HD00-0AB0", 8:"6ES7 532-5HF00-0AB0" }, DI:{ "120 Vac":{ 16:"6ES7 521-1FH00-0AA0" }, "24 Vdc":{ 16:"6ES7 521-1BH00-0AB0", 32:"6ES7 521-1BL00-0AB0" } }, DO:{ 8:"6ES7 522-5HF00-0AB0", 16:"6ES7 522-1BH01-0AB0" } },
-    hmi:"SIMATIC HMI TP700 Comfort", switch:"SCALANCE XB208", red:"PROFINET" },
-};
+/* ---------- familias de PLC (js/control/plc-modulos.js: modelos, bornes y reglas de bastidor de cada fabricante) ---------- */
+export const PLC_FAMILIAS = FAMILIAS;
+/* familia elegida en el tablero (t.familiaPlc); los proyectos antiguos la deducen del texto de marca / controlador / modelo */
 export function familiaPlc(t){
-  const txt = `${t.marcaPlc||""} ${t.plc||""} ${t.modeloPlc||""}`;
-  return /siemens|s7|simatic|6es7/i.test(txt) ? PLC_FAMILIAS.s71500 : PLC_FAMILIAS.ab5380;
+  t = t || {};
+  return FAMILIAS[t.familiaPlc] || FAMILIAS[familiaPorTexto(`${t.marcaPlc||""} ${t.plc||""} ${t.modeloPlc||""}`)];
 }
 const NOMBRE_MOD = { AI:"Módulo de entradas analógicas", AO:"Módulo de salidas analógicas", DI:"Módulo de entradas digitales", DO:"Módulo de salidas digitales (relé)" };
-function modeloModulo(fam, tipo, canales, tension){
-  const m = fam.mod[tipo] || {};
-  const tabla = tipo==="DI" ? (m[/24/.test(tension||"") ? "24 Vdc" : "120 Vac"] || {}) : m;
-  return tabla[canales] || "";
-}
+const modeloModulo = modeloFamilia;
 
 /* ---------- utilidades ---------- */
 const mcbModelo = (polos, a) => `S20${polos}-C${a}`;
@@ -127,8 +118,21 @@ export function equiposControl(p, t){
   for(const m of modulos) if(m.tipo==="AI") for(const s of m.senales) if(s.origen!=="reserva" && lazo2h(s.tag)) s.fusible = { tag:`XF2.${++nXF2}`, in:0.5, desde: fAI ? fAI.tag : "" };
   for(const m of modulos) for(const s of m.senales){ if(s.origen==="reserva" || s.fusible) continue;
     const c = circuitos.find(c=>new RegExp(`(^|[^A-Za-z0-9])${String(s.tag).replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}$`).test(c.descripcion||"")); if(c) s.alimentacionDe = c.tag; }
-  const plc = { cpu:{ tag:"PLC", tipo:"cpu", slot:0, modelo: t.modeloPlc || fam.cpu, desc: t.plc || "Controlador lógico programable (PLC)", familia:fam.nombre },
-    modulos, fpd: fam.fpd ? { tag:"CN1", tipo:"fpd", modelo:fam.fpd, desc:"Separador / distribuidor de potencial" } : null, tapa: fam.tapa ? { tag:"TAP", tipo:"tapa", modelo:fam.tapa, desc:"Tapa terminadora" } : null, red:fam.red };
+  // ficha del módulo (plc-modulos.js) y bornes de cada canal según el fabricante (AI: lazo de 2 hilos del tablero o 4 hilos)
+  for(const m of modulos){
+    m.info = infoModulo(m.modelo);
+    if(!m.modelo) m.nota = `${fam.nombre} no tiene módulo ${m.tipo} de ${m.canales} canales en el catálogo de Ingenia: cambia los canales por módulo (${Object.keys((fam.mod||{})[m.tipo]||{}).join(" / ") || "-"}).`;
+    else if(m.tipo==="DI" && fam.sinDI120 && !/24/.test(t.ioDiscreto||"")) m.nota = `${fam.nombre} no tiene entradas de 120 Vac: se usa ${m.modelo} (24 Vdc); pon las entradas digitales a 24 Vdc.`;
+    for(const s of m.senales) s.bornes = terminalesCanal(m.modelo, s.ch, m.tipo==="AI" ? (s.fusible || s.origen==="reserva" ? "2h" : "4h") : "");
+  }
+  const plc = { cpu:{ tag:"PLC", tipo:"cpu", slot:fam.slotCpu||0, modelo: t.modeloPlc || fam.cpu, desc: t.plc || "Controlador lógico programable (PLC)", familia:fam.nombre, info:infoModulo(t.modeloPlc || fam.cpu) },
+    modulos, fpd: fam.fpd ? { tag:"CN1", tipo:"fpd", modelo:fam.fpd, desc:"Separador / distribuidor de potencial", info:infoModulo(fam.fpd) } : null, tapa: fam.tapa ? { tag:"TAP", tipo:"tapa", modelo:fam.tapa, desc:"Tapa terminadora", info:infoModulo(fam.tapa) } : null, red:fam.red,
+    // fuente del bastidor (S7-1500: PM 1507 en el slot 0; M580 / M340: BMX CPS en su slot propio) y bastidor (M580 / M340)
+    ps: fam.ps ? { tag:"PS2", tipo:"fuente-plc", slot: fam.slotPs!=null ? fam.slotPs : "PS", modelo:fam.ps, desc:"Fuente / módulo de carga del PLC", info:infoModulo(fam.ps) } : null,
+    rack: fam.rack ? { tag:"RK1", tipo:"bastidor", modelo:fam.rack, desc:"Bastidor del PLC", info:infoModulo(fam.rack) } : null, familiaId:fam.id, reglas:fam.reglas };
+  // orden físico en el riel / bastidor (izquierda → derecha), para el mecánico, la arquitectura y el multifilar
+  plc.orden = [plc.ps, plc.cpu, ...modulos.slice().sort((a, b)=>a.slot-b.slot), plc.tapa].filter(Boolean);
+  if(plc.fpd){ const i = plc.orden.findIndex(x=>x.tipo==="DI"); plc.orden.splice(i<0 ? plc.orden.length-(plc.tapa ? 1 : 0) : i, 0, plc.fpd); }
   // limpieza: señales del controlador auxiliar (sin slot del PLC)
   const limpieza = t.controladorLimpieza ? { tag:t.tagLimpieza||"TCL-001", tipo:"controlador", desc:"Controlador de limpieza secuencial (pulsos de aire)", senales: io.filter(f=>f.tablero===(t.tagLimpieza||"TCL-001")) } : null;
 

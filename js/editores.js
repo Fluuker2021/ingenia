@@ -14,6 +14,7 @@ import { elementosArreglo, sugerirTableros } from "./cad/planos2.js";
 import { parseDXF, drawPreview } from "./dxf.js";
 import { cfgMecanico, arregloTablero } from "./mecanico/arreglo.js";
 import { arregloControl } from "./mecanico/arreglo-control.js";
+import { FAMILIAS, LISTA_FAMILIAS, familiaPorTexto, modeloFamilia, modulosFamilia, infoModulo } from "./control/plc-modulos.js";
 
 export const TITULOS = {
   criterios:"Criterios de diseño", cargas:"Cargas por tablero", cargasControl:"Cargas de 120 Vac de los tableros de control",
@@ -206,10 +207,18 @@ const ED = {
     if(!ctl.length){ el.innerHTML = `<div class="empty">El proyecto no tiene tableros de control. Agrégalos en <a href="#/proyecto/${p.id}/diseno">Datos generales</a>.</div>`; return; }
     let cur = el.dataset.t && ctl.find(t=>t.id===el.dataset.t) ? el.dataset.t : ctl[0].id;
     const t = ctl.find(x=>x.id===cur);
+    // familia del PLC: módulos que se usarán (por tipo, canales por módulo y tensión de las entradas digitales)
+    const fam = FAMILIAS[t.familiaPlc] || FAMILIAS[familiaPorTexto(`${t.marcaPlc||""} ${t.plc||""} ${t.modeloPlc||""}`)];
+    const modsFamilia = () => { const can = t.canales||{}, nom = m => m ? `${m}${(infoModulo(m)||{}).nombre ? " ("+infoModulo(m).nombre+")" : ""}` : "—";
+      return `<strong>Módulos ${esc(fam.nombre)}:</strong> ${[fam.ps && `Fuente ${nom(fam.ps)}`, `CPU ${nom(t.modeloPlc||fam.cpu)}`, ...["AI","AO","DI","DO"].map(k=>{ const n = +can[k]||fam.canales[k], m = modeloFamilia(fam, k, n, t.ioDiscreto);
+        return `${k} ${n} can.: ${m ? esc(nom(m)) : `<span style="color:#c0392b">sin módulo de ${n} canales (${Object.keys(fam.mod[k]||{}).filter(x=>/^\d+$/.test(x)).join(" / ") || Object.keys(Object.values(fam.mod[k]||{})[0]||{}).join(" / ")})</span>`}`; }), fam.fpd && `FPD ${fam.fpd}`, fam.tapa && `tapa ${fam.tapa}`].filter(Boolean).join(" · ")}
+        <br><span class="muted">${esc(fam.reglas||"")}${fam.sinDI120 && t.ioDiscreto!=="24 Vdc" ? " <b>Pon las entradas digitales a 24 Vdc.</b>" : ""} Primer slot de E/S sugerido: ${fam.primerSlot}.</span>`; };
     el.innerHTML = (ctl.length>1 ? `<div class="row between">${selectorTablero(ctl, cur)}<button class="btn-sm mb-2" data-todos title="Copia controlador, criterios I/O y opciones (no copia TAG ni alimentación)">Aplicar a los ${ctl.length} tableros de control</button></div>` : "") + `<div class="grid-3">
       ${campo("Alimentación de 120 Vac desde", inp("desde120", t.desde120||"", "text", 'placeholder="Vacío = tablero que lo alimenta"'))}
-      ${campo("Controlador", inp("plc", t.plc))}${campo("Modelo de controlador (opcional)", inp("modeloPlc", t.modeloPlc), "Según el fabricante")}${campo("Red externa", inp("redExterna", t.redExterna))}
-    </div><div class="row" style="gap:22px;margin-top:6px">
+      ${campo("Familia del controlador (PLC)", `<select data-fam>${LISTA_FAMILIAS.map(k=>`<option value="${k}" ${k===fam.id?"selected":""}>${esc(FAMILIAS[k].nombre)}</option>`).join("")}</select>`, "Define los módulos y el conexionado (bornes del fabricante)")}
+      ${campo("Controlador", inp("plc", t.plc))}${campo("Modelo de CPU (opcional)", `<input type="text" data-k="modeloPlc" value="${esc(t.modeloPlc||"")}" list="cpus-${esc(t.id)}" placeholder="${esc(fam.cpu)}"><datalist id="cpus-${esc(t.id)}">${modulosFamilia(fam.id, "CPU").map(m=>`<option value="${esc(m)}">${esc((infoModulo(m)||{}).nombre||"")}</option>`).join("")}</datalist>`, "Vacío = CPU de catálogo de la familia")}${campo("Red externa", inp("redExterna", t.redExterna))}
+    </div>
+    <div class="ws-note mt-1" data-mods style="font-size:12px">${modsFamilia()}</div><div class="row" style="gap:22px;margin-top:6px">
       <label class="checkbox"><input type="checkbox" data-k="switch" ${t.switch?"checked":""}> Switch Ethernet</label>
       <label class="checkbox"><input type="checkbox" data-k="hmi" ${t.hmi?"checked":""}> Pantalla HMI</label>
       <label class="checkbox"><input type="checkbox" data-k="router" ${t.router?"checked":""}> Router IIoT</label>
@@ -230,10 +239,24 @@ const ED = {
       <label class="checkbox"><input type="checkbox" data-k="listarReservas" ${t.listarReservas?"checked":""}> Listar los canales de reserva</label>
     </div>`;
     bindObj(el, t, cambio, ["primerSlot","tbOffset"]);
-    $$("[data-can]", el).forEach(i=>i.onchange = ()=>{ t.canales = t.canales || {}; t.canales[i.dataset.can] = parseInt(i.value)||16; cambio(); });
+    $$("[data-can]", el).forEach(i=>i.onchange = ()=>{ t.canales = t.canales || {}; t.canales[i.dataset.can] = parseInt(i.value)||16; cambio(); $("[data-mods]", el).innerHTML = modsFamilia(); });
+    $$('[data-k="ioDiscreto"],[data-k="modeloPlc"]', el).forEach(i=>i.addEventListener("change", ()=>{ $("[data-mods]", el).innerHTML = modsFamilia(); }));
+    // al cambiar de familia: marca y descripción del controlador, y canales por módulo / primer slot típicos de la familia
+    // (solo los que el usuario no cambió: vacíos, iguales a los de la familia anterior o sin módulo en la nueva)
+    $("[data-fam]", el).onchange = e=>{
+      const F = FAMILIAS[e.target.value], ant = fam;
+      if(!t.plc || LISTA_FAMILIAS.some(k=>FAMILIAS[k].plc===t.plc) || /programable|^controlador( del?)? (siemens|allen|schneider)/i.test(t.plc)) t.plc = F.plc;
+      t.familiaPlc = F.id; t.marcaPlc = F.marca;
+      if(t.modeloPlc && !modulosFamilia(F.id, "CPU").includes(t.modeloPlc)) t.modeloPlc = "";
+      t.canales = Object.assign({}, t.canales||{});
+      for(const k of ["AI","AO","DI","DO"]){ const v = t.canales[k]; if(v==null || v==="" || +v===+ant.canales[k] || !modeloFamilia(F, k, +v, t.ioDiscreto)) t.canales[k] = F.canales[k]; }
+      if(t.primerSlot==null || t.primerSlot==="" || +t.primerSlot===+ant.primerSlot) t.primerSlot = F.primerSlot;
+      if(F.sinDI120 && t.ioDiscreto!=="24 Vdc"){ t.ioDiscreto = "24 Vdc"; toast(`${F.nombre} no tiene entradas de 120 Vac: las entradas digitales quedan en 24 Vdc`); }
+      cambio(); ED.tablerocontrol(el, p, cambio);
+    };
     const s = $("[data-tsel]", el); if(s) s.onchange = ()=>{ el.dataset.t = s.value; ED.tablerocontrol(el, p, cambio); };
     const todos = $("[data-todos]", el); if(todos) todos.onclick = ()=>{
-      const k = ["modeloPlc","redExterna","switch","hmi","router","controladorLimpieza","ioDiscreto","vfdMando","primerSlot","tbOffset","senalesTablero","repetidores","listarReservas"];
+      const k = ["familiaPlc","marcaPlc","plc","modeloPlc","redExterna","switch","hmi","router","controladorLimpieza","ioDiscreto","vfdMando","primerSlot","tbOffset","senalesTablero","repetidores","listarReservas"];
       ctl.filter(x=>x!==t).forEach(x=>{ k.forEach(c=>{ x[c] = t[c]; }); x.canales = Object.assign({}, t.canales||{}); });
       cambio(); toast(`Configuración de ${t.tag} aplicada a ${ctl.length-1} tablero(s)`); };
   },

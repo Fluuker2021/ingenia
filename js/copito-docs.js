@@ -13,7 +13,8 @@ import * as S from "./store.js";
 import { esc } from "./ui.js";
 import { entregable } from "./catalog.js";
 import { datos, tableros, tablerosControl, tc as tcPrincipal, circuitosControl, instrumentos, expandirTag } from "./datos.js";
-import { equiposControl, indiceEquipos } from "./control/equipos.js";
+import { equiposControl, indiceEquipos, familiaPlc } from "./control/equipos.js";
+import { FAMILIAS, modeloFamilia } from "./control/plc-modulos.js";
 import { filosofiaOps, filosofiaDe, TEXTOS_FIL, TABLAS_FIL } from "./modules/filosofia.js";
 
 const norm = s => String(s||"").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
@@ -118,8 +119,10 @@ export function interpretarDoc(q, p){
     const sinTab = tagsTab.reduce((a, tg)=>a.split(tg).join(" "), t);
     const esInstrumento = /\b[a-z]{1,5}-\d{2,4}[a-z]?\b/.test(sinTab) || /(de|tipo) (nivel|presion|flujo|caudal|temperatura|velocidad|posicion|vibracion)/.test(t);
     for(const [k, re] of CFG_EQUIPO) if(re.test(t) && (!/circuito|alimentaci/.test(t) || k==="lucesPiloto") && !esInstrumento){ if(quitar) c[k] = false; else if(agregar) c[k] = true; }
-    if(/\bplc\b|controlador/.test(t) && /siemens|s7|simatic/.test(t)) Object.assign(c, { marcaPlc:"Siemens", plc:"Controlador SIMATIC S7-1500", modeloPlc:"" });
-    if(/\bplc\b|controlador/.test(t) && /allen|rockwell|compactlogix/.test(t)) Object.assign(c, { marcaPlc:"Allen-Bradley", plc:"Controlador CompactLogix 5380", modeloPlc:"" });
+    // familia del PLC (plc-modulos.js): define los módulos y el conexionado con los bornes del fabricante
+    const famPlc = !/\bplc\b|controlador|\bcpu\b/.test(t) ? "" : /s7-?1200|\b121[2457]c\b/.test(t) ? "s71200" : /siemens|s7|simatic/.test(t) ? "s71500" : /m340/.test(t) ? "m340"
+      : /schneider|modicon|m580/.test(t) ? "m580" : /5370|1769/.test(t) ? "ab5370" : /allen|rockwell|compactlogix|5380|5069/.test(t) ? "ab5380" : "";
+    if(famPlc) Object.assign(c, { familiaPlc:famPlc, marcaPlc:FAMILIAS[famPlc].marca, plc:FAMILIAS[famPlc].plc, modeloPlc:"" });
     const mm = q.match(/modelo\s+del?\s+(?:plc|controlador|cpu)\s*(?:a|por|:)\s*(.+)$/i); if(mm) c.modeloPlc = limpiar(mm[1]);
     if(/entradas (digitales|discretas)|senales discretas/.test(t) && cambiar){ const b = barraDe(t); if(b==="24 Vdc") c.ioDiscreto = "24 Vdc"; else if(/120/.test(t)) c.ioDiscreto = "120 Vac"; }
     if(/variador/.test(t) && /mando|control|comando/.test(t)){ if(/red|ethernet|comunicacion/.test(t)) c.vfdMando = "red"; else if(/cablead/.test(t)) c.vfdMando = "cableado"; }
@@ -193,7 +196,7 @@ export function describirDoc(op, p){
     case "circuito.agregar": return `${esc(op.tag)}: agregar un circuito de <b>${esc(op.barra)}</b> «${esc(op.descripcion)}» con ${op.barra==="24 Vdc" ? "fusible" : "ITM 2P"} de <b>${op.proteccion} A</b>${op.diferencial ? " y diferencial de 30 mA" : ""}${op.potencia ? `, ${op.potencia} W` : ""}`;
     case "circuito.eliminar": return `${esc(op.tag)}: quitar <b>${esc(op.tagEq)}</b> (${esc(op.circuito)} de ${esc(op.barra)} — ${esc(op.descripcion)}); los demás circuitos se renumeran y se centran en el plano`;
     case "circuito.editar": return `${esc(op.tag)}, <b>${esc(op.tagEq)}</b> (${esc(op.descripcion)}): ${Object.entries(c).map(([k, v])=>`${{ proteccion:"protección", potencia:"potencia", descripcion:"descripción", diferencial:"diferencial 30 mA", barra:"barra" }[k]||k} → <b>${k==="proteccion" ? v+" A" : k==="potencia" ? v+" W" : si(v)}</b>`).join(", ")}`;
-    case "control.editar": return `Tablero de control <b>${esc(op.tag)}</b>: ${Object.entries(c).map(([k, v])=>`${{ hmi:"pantalla HMI", switch:"switch Ethernet", router:"router IIoT", controladorLimpieza:"controlador de limpieza", lucesPiloto:"luces piloto en la puerta", marcaPlc:"marca del PLC", plc:"controlador", modeloPlc:"modelo del PLC", ioDiscreto:"tensión de entradas digitales", vfdMando:"mando de variadores", redIP:"red IP", canales:"canales por módulo", repetidores:"repetición de estados", alimAux:"acometida auxiliar de 220 Vac" }[k]||k} → <b>${k==="canales" ? esc(Object.entries(v).map(([a, b])=>`${a} ${b}`).join(", ")) : k==="vfdMando" ? (v==="red" ? "por red" : "cableado") : k==="alimAux" ? "sin acometida auxiliar" : v==="" ? "el de catálogo de la marca" : si(v)}</b>`).join(", ")}`;
+    case "control.editar": return `Tablero de control <b>${esc(op.tag)}</b>: ${Object.entries(c).map(([k, v])=>`${{ hmi:"pantalla HMI", switch:"switch Ethernet", router:"router IIoT", controladorLimpieza:"controlador de limpieza", lucesPiloto:"luces piloto en la puerta", familiaPlc:"familia del PLC", marcaPlc:"marca del PLC", plc:"controlador", modeloPlc:"modelo del PLC", ioDiscreto:"tensión de entradas digitales", vfdMando:"mando de variadores", redIP:"red IP", canales:"canales por módulo", repetidores:"repetición de estados", alimAux:"acometida auxiliar de 220 Vac" }[k]||k} → <b>${k==="canales" ? esc(Object.entries(v).map(([a, b])=>`${a} ${b}`).join(", ")) : k==="vfdMando" ? (v==="red" ? "por red" : "cableado") : k==="alimAux" ? "sin acometida auxiliar" : k==="familiaPlc" ? esc((FAMILIAS[v]||{}).nombre||v) : v==="" ? "el de catálogo de la marca" : si(v)}</b>`).join(", ")}`;
     case "documento.editar": return `${nom(op.doc)}: ${Object.entries(c).map(([k, v])=>`${{ titulo:"título", elaboro:"elaboró", reviso:"revisó", aprobo:"aprobó", dibujo:"dibujó", estado:"estado" }[k]||k} → <b>${esc(v)}</b>`).join(", ")}`;
     case "documento.emitir": return `Emitir la siguiente revisión de <b>${nom(op.doc)}</b>: «${esc(op.motivo)}»`;
     case "nota.agregar": return `${nom(op.doc)}: agregar la nota «${esc(op.texto)}»${(datos(p).notas[op.doc]||[]).length ? "" : " (reemplaza las notas del formato)"}`;
@@ -241,6 +244,13 @@ export function aplicarDoc(p, op, avisos){
         else if(k==="canales") tb.canales = Object.assign({}, tb.canales||{}, v);
         else if(k==="ioDiscreto" && ["120 Vac","24 Vdc"].includes(v)) tb.ioDiscreto = v;
         else if(k==="vfdMando" && ["red","cableado"].includes(v)) tb.vfdMando = v;
+        else if(k==="familiaPlc" && FAMILIAS[v]){
+          // canales por módulo y primer slot típicos de la nueva familia (solo los que siguen en el valor de la familia anterior o sin módulo)
+          const F = FAMILIAS[v], ant = familiaPlc(tb); tb.canales = Object.assign({}, tb.canales||{});
+          for(const x of ["AI","AO","DI","DO"]){ const n = tb.canales[x]; if(n==null || n==="" || +n===+ant.canales[x] || !modeloFamilia(F, x, +n, tb.ioDiscreto)) tb.canales[x] = F.canales[x]; }
+          if(tb.primerSlot==null || tb.primerSlot==="" || +tb.primerSlot===+ant.primerSlot) tb.primerSlot = F.primerSlot;
+          if(F.sinDI120 && tb.ioDiscreto!=="24 Vdc"){ tb.ioDiscreto = "24 Vdc"; avisos.push(`${F.nombre} no tiene entradas de 120 Vac: las entradas digitales quedan en 24 Vdc.`); }
+          tb.familiaPlc = v; }
         else if(["marcaPlc","plc","modeloPlc","redIP","redExterna","alimAux"].includes(k)) tb[k] = v;
       }
       return { regenerarIO: true }; }

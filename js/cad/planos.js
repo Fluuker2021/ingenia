@@ -11,6 +11,7 @@ import { GENERADORES2 } from "./planos2.js";
 import { unifilarKit } from "./plano-unifilar.js";
 import { unifilarControlKit } from "./plano-unifilar-control.js";
 import { arquitecturaKit } from "./plano-arquitectura.js";
+import { equiposControl } from "../control/equipos.js";
 
 /* ---------- utilidades de dibujo ---------- */
 const T = (doc, x, y, h, s, layer, opt) => { if(s!=null && s!=="") doc.text(x, y, h, dxfTrunc(String(s), (opt&&opt.n)||80), layer||"G-TEXT", opt||{}); };
@@ -193,6 +194,11 @@ export function lazos({ p, valsDe, cliente }){
   for(const tb of orden){ const ls = lazosL.filter(l=>l.tb===tb); for(let k=0;k<ls.length;k+=porHoja) paginas.push({ tb, ls: ls.slice(k,k+porHoja) }); }
   if(!paginas.length) paginas.push({ tb: tc(p), ls: [] });
   const nH = paginas.length;
+  // equipos del tablero de control (mismos TAG del unifilar / multifilar / mecánico): módulo, fusible o ITM y relé de cada lazo
+  const eqDe = new Map(); const eqT = t => { if(!eqDe.has(t.id)){ try{ eqDe.set(t.id, equiposControl(p, t)); }catch(e){ eqDe.set(t.id, null); } } return eqDe.get(t.id); };
+  const rx = tg => new RegExp(`(^|[^A-Z0-9])${tg.replace(/[.*+?^${}()|[\]\\-]/g,"\\$&")}$`, "i");
+  const ligas = lz => { const eq = eqT(lz.tb); if(!eq) return {};
+    return { mod: eq.plc.modulos.find(m=>m.senales.some(s=>s.tag===lz.tag)), circ: eq.circuitos.find(c=>rx(lz.tag).test(c.descripcion||"")), rele: eq.reles.find(r=>r.senal && r.senal.tag===lz.tag), limp: eq.limpieza && eq.limpieza.senales.some(s=>s.tag===lz.tag) ? eq.limpieza.tag : null }; };
   const doc = new DXFDoc();
   const areas = laminas(doc, nH, valsDe, cliente);
   areas.forEach((A, hi)=>{
@@ -228,12 +234,16 @@ export function lazos({ p, valsDe, cliente }){
       const capaS = lz.analog ? "I-SE-ANALO" : (ac ? "I-FZA-AC" : "I-CONTROL");
       const x1 = xF + 14, x2 = xT + 60, x3 = xT + 95;
       const dy = 4.2;
+      const lg = ligas(lz);
+      // bornes del listado I/O (p. ej. «TB6:1 / TB6:2»): los dos primeros conductores de señal van a esos bornes
+      const bornes = String((lz.io && lz.io.terminales) || "").split("/").map(x=>x.trim()).filter(x=>/:/.test(x));
+      const tbTag = bornes.length ? bornes[0].split(":")[0] : "";
       hilos.forEach((h, j)=>{
         const y = yc + 8 - j*dy;
         const capa = h==="SH"||h==="GND" ? "I-TIERRA" : capaS;
         L(doc, x1, y, x2, y, capa);
         T(doc, x1+1, y+0.6, 1.8, h, "G-TEXT");
-        T(doc, x2+1.5, y+0.6, 1.8, String(j+1), "G-TEXT");
+        T(doc, x2+1.5, y+0.6, 1.8, bornes[j] ? bornes[j].split(":")[1] : (h==="SH"||h==="GND" ? "PE" : String(j+1)), "G-TEXT");
         L(doc, x2+5, y, x3, y, capa);
       });
       const yb = yc + 8 - (hilos.length-1)*dy;
@@ -244,12 +254,14 @@ export function lazos({ p, valsDe, cliente }){
       T(doc, (x1+x2)/2 - 25, yc+11, 2.1, cableTag, "G-TEXT"); T(doc, (x1+x2)/2 - 25, yc+8.6, 1.9, spec, "G-TEXT");
       // borneras y alimentación en tablero
       const pw = lz.analog ? (ac ? lz.i.alimentacion : "24 Vdc") : (/24/.test(lz.i.alimentacion||"") ? "24 Vdc" : (lz.i.alimentacion||"120 Vac"));
-      T(doc, x3+2, yc+8.6, 2.0, pw, "G-TEXT");
+      T(doc, x3+2, yc+8.6, 2.0, pw + (lg.circ ? `  (${lg.circ.tag}${lg.circ.borne && /^XF/.test(lg.circ.borne) ? " · "+lg.circ.borne : ""})` : lg.limp ? `  (${lg.limp})` : ""), "G-TEXT");
+      if(tbTag) T(doc, x2 + 2.5, yc + 11.2, 2.0, tbTag, "G-TEXT", { halign:1 });
       T(doc, x3+2, yb+0.6, 2.0, lz.analog && !ac ? "0 Vdc" : "PE", "G-TEXT");
       // señal al controlador
       const ys = yc + 8 - dy;
       L(doc, x3, ys, xPLC-8, ys, capaS);
-      const io = lz.io; const canal = io.tipo ? (io.slot!=="" && io.slot!=null ? `${io.tipo}  S${io.slot}:CH${io.ch}` : `${io.tipo}  ${io.tablero||""}`) : (lz.analog ? "AI" : lz.salida ? "DO" : "DI");
+      const io = lz.io; const canal = io.tipo ? (io.slot!=="" && io.slot!=null ? `${lg.mod ? lg.mod.tag+"  " : io.tipo+"  "}S${io.slot}:CH${io.ch}` : `${io.tipo}  ${io.tablero||""}`) : (lz.analog ? "AI" : lz.salida ? "DO" : "DI");
+      if(lg.rele) T(doc, xPLC-36, ys-2.8, 1.9, `RELÉ ${lg.rele.tag} (${lg.rele.contacto})`, "G-TEXT");
       T(doc, xPLC-36, ys+1, 2.0, canal, "G-TEXT");
       // software: bloque de función en el controlador (cuadro con rombo)
       const xs = xS + 18, ysw = yc;

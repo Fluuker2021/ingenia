@@ -9,14 +9,16 @@
    Las referencias cruzadas a las hojas de control del plano original se retiran. */
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS } from "./formato.js";
-import { calcularTablero, calcularTodos, tf, desdeTxt, r2 } from "../datos.js";
+import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza } from "./kit.js";
 import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/componentes.js";
+import { repartirEquilibrado } from "./plano-unifilar.js";
 
-const DX = 25, DY = -112;                        // hoja del plano de referencia → área útil de la lámina A1
+const DX = 25, DY = -108;                        // hoja del plano de referencia → área útil de la lámina A1
 const BARRAS = [664.51, 648.51, 632.51], PE_Y = 616.51;
 const X_INI = 100, X_FIN = 737;                   // zona de columnas entre la entrada y la salida de barras
+const X_COL = 652;                                 // las columnas bajan hasta el pie de la lámina: no pasan del bloque reservado del cajetín (x 684 de la lámina)
 const ANCHO = { b_vfd:220, b_mcp:90, b_trafo:107, c_rama:78, c_rama_id:96 };
 const EJES = { b_vfd:[97,113,129], b_mcp:[39,55,71], b_trafo:[53,85] };
 const PE_X = { b_vfd:145, b_mcp:87, b_trafo:101 };
@@ -61,14 +63,9 @@ function columnas(calc, g){
     return { pieza:"b_mcp", omitir:["contactor","auxiliares","motor"], vars:{ q:q.devtag, qv:amps(q.val), qm:sinMarca(q.model), tb:tagBornera(c.tag), tbs:bf.replace(/^\D+/,"")+" mm2", tbm:bf, tbpe:bf+"-PE", tag:l.tag||"", desc1:d1, desc2:d2 }, awg, egc };
   });
 }
-/* reparte columnas en hojas según su ancho */
-function repartir(items, anchoDe, util){
-  const hojas = [[]]; let w = 0;
-  for(const it of items){ const a = anchoDe(it); if(hojas[hojas.length-1].length && w + a > util){ hojas.push([]); w = 0; } hojas[hojas.length-1].push(it); w += a; }
-  return hojas[0].length ? hojas : [];
-}
 
-export async function multifilarKit({ p, valsDe, cliente }){
+export async function multifilarKit({ p, valsDe, cliente, id }){
+  const notasU = datos(p).notas[id || "ele-multifilar"] || [];
   const kit = await cargarKit("multifilar");
   const calcs = calcularTodos(p);
   const lista = calcs.length ? calcs : [calcularTablero(p, tf(p))];
@@ -77,8 +74,9 @@ export async function multifilarKit({ p, valsDe, cliente }){
   // plan de hojas por tablero: acometida, fuerza (columnas) y secundarios de cada transformador
   const planes = lista.map(calc=>{
     const cols = columnas(calc, calc.g);
-    const fuerza = repartir(cols, c=>ANCHO[c.pieza], X_FIN - X_INI);
-    const sec = cols.filter(c=>c.pieza==="b_trafo").flatMap(c=>repartir(c.ramas, r=>ANCHO[r.pieza], X_FIN - 70).map(rs=>({ trafo:c, ramas:rs })));
+    // reparto equilibrado: las láminas quedan con anchos parecidos y las columnas centradas en cada una
+    const fuerza = cols.length ? repartirEquilibrado(cols, c=>ANCHO[c.pieza], X_COL - X_INI) : [];
+    const sec = cols.filter(c=>c.pieza==="b_trafo").flatMap(c=>(c.ramas.length ? repartirEquilibrado(c.ramas, r=>ANCHO[r.pieza], X_COL - 70) : []).map(rs=>({ trafo:c, ramas:rs })));
     return { calc, fuerza, sec, n: 1 + fuerza.length + sec.length };
   });
   const total = planes.reduce((a,x)=>a+x.n, 0);
@@ -94,7 +92,7 @@ export async function multifilarKit({ p, valsDe, cliente }){
     pieza(doc, kit, "h_acometida", ox+DX, DY, { lineas:{ acometida:16, notas:48 }, texto: barraTxt, vars:{
       acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}`, alim:`Alimentación\n${g.voltage} V ${g.freq} Hz 3F\n+PE`,
       q:"Q1", qv:`${calc.mainBreaker}A`, qm:`Tmax XT ${calc.mainBreaker}A 3P (Ekip LS/I)`, t1:`${g.voltage}/120Vac+T`, vp:`${g.voltage}V`, vs:"120V",
-      notas:`NOTAS :\n1.LA ACOMETIDA PARA EL ${nombre} DE ${g.voltage} Vac, 3F + T, ${g.freq} HZ ES SUMINISTRADA POR EL CLIENTE.\n2.BARRA A TIERRA FIJA DEL TABLERO DE FUERZA Y CONTROL.\n3.LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A ${v.altitud} m.s.n.m.` } });
+      notas: notasU.length ? "NOTAS :\n" + notasU.map((n, i)=>`${i+1}.${n}`).join("\n") : `NOTAS :\n1.LA ACOMETIDA PARA EL ${nombre} DE ${g.voltage} Vac, 3F + T, ${g.freq} HZ ES SUMINISTRADA POR EL CLIENTE.\n2.BARRA A TIERRA FIJA DEL TABLERO DE FUERZA Y CONTROL.\n3.LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A ${v.altitud} m.s.n.m.` } });
     k++;
     // 2) hojas de fuerza
     const hojaSec = new Map(); let ks = base + 1 + fuerza.length;
@@ -106,8 +104,8 @@ export async function multifilarKit({ p, valsDe, cliente }){
       pieza(doc, kit, "b_salida", ox+DX+737, DY, { texto: s=> s.trim()==="3.A:1" ? (i < fuerza.length-1 || sec.length ? `${sig}.A:1` : "") : barraTxt(s) });
       dibujarBarras(doc, ox, kit, true);
       // columnas repartidas en el ancho disponible (separación extra proporcional, sin pasar de 1,25)
-      const W = cols.reduce((a,c)=>a+ANCHO[c.pieza], 0), f = Math.min((X_FIN - X_INI)/W, 1.25);
-      let x = X_INI + ((X_FIN - X_INI) - W*f)/2;
+      const W = cols.reduce((a,c)=>a+ANCHO[c.pieza], 0), f = Math.min((X_COL - X_INI)/W, 1.25);
+      let x = X_INI + ((X_COL - X_INI) - W*f)/2;
       for(const c of cols){
         const a = ANCHO[c.pieza], x0 = x + (a*f - a)/2;
         const om = (c.omitir||[]).map(z=>OMITIR[z]);
@@ -131,8 +129,10 @@ export async function multifilarKit({ p, valsDe, cliente }){
       doc.line(ox+DX+30, BARRAS[1]+DY, ox+DX+x1, BARRAS[1]+DY, "E-FZA-BT-SEC");
       doc.line(ox+DX+30, BARRAS[2]+DY, ox+DX+x1, BARRAS[2]+DY, "E-TIERRA");
       doc.text(ox+DX+34, BARRAS[0]+DY+3, 2.5, `${tr.t} ${tr.vs} - ${tr.tv}`, "G-TEX");
-      let x = 70;
-      for(const r of s.ramas){ pieza(doc, kit, r.pieza, ox+DX+x, DY, { vars:r.vars, quitar:REF, lineas:{ desc:22 } }); x += ANCHO[r.pieza]; }
+      // derivaciones repartidas y centradas entre la entrada de barras y el final de la lámina
+      const Wr = s.ramas.reduce((a, r)=>a + ANCHO[r.pieza], 0), fr = Math.min((X_COL - 70)/Wr, 1.25);
+      let x = 70 + ((X_COL - 70) - Wr*fr)/2;
+      for(const r of s.ramas){ const a = ANCHO[r.pieza]; pieza(doc, kit, r.pieza, ox+DX+x + (a*fr - a)/2, DY, { vars:r.vars, quitar:REF, lineas:{ desc:22 } }); x += a*fr; }
       k++;
     });
   }

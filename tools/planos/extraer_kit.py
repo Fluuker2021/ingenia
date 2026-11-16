@@ -11,7 +11,7 @@ Uso:
 El DWG se convierte a DXF con LibreDWG (paquete npm @mlightcad/libredwg-web, función dwg_write_dxf).
 Los bloques se descomponen (con sus atributos), los MTEXT se dividen en líneas de TEXT y los HATCH sólidos
 se triangulan en SOLID, para que el resultado sea DXF R12 puro (el que abre AutoCAD sin problemas)."""
-import sys, json, math
+import sys, json, math, re
 from ezdxf import recover, path as ezpath
 from ezdxf.math import Vec3
 from ezdxf.math.triangulation import mapbox_earcut_2d
@@ -33,8 +33,14 @@ def resolver_lt(e):
     return None if lt.upper() in ('BYLAYER', 'BYBLOCK') else lt
 
 
+def limpio(nombre):
+    """nombre de capa válido en DXF R12 (letras, dígitos, $, - y _)"""
+    import re
+    return re.sub(r'[^A-Za-z0-9_$-]', '_', nombre)
+
+
 def capa(e, padre_capa=None):
-    l = e.dxf.get('layer', '0')
+    l = limpio(e.dxf.get('layer', '0'))
     return padre_capa if (l == '0' and padre_capa) else l
 
 
@@ -280,8 +286,8 @@ def todas(doc, region=None):
 def tablas(doc, usados):
     capas = {}
     for l in doc.layers:
-        if l.dxf.name in usados:
-            capas[l.dxf.name] = dict(c=abs(l.dxf.color), lt=l.dxf.linetype)
+        if limpio(l.dxf.name) in usados:
+            capas[limpio(l.dxf.name)] = dict(c=abs(l.dxf.color), lt=l.dxf.linetype)
     lts = {}
     for name in set([c['lt'] for c in capas.values()]):
         if name.upper() in ('CONTINUOUS', 'BYLAYER', 'BYBLOCK'):
@@ -338,6 +344,10 @@ def extraer(tipo, entrada, salida):
                 norm = ' '.join(t.split())
                 repl = {' '.join(k.split()): v for k, v in repl.items()}
                 t = norm
+                # claves «re:<patrón>»: el texto de la referencia se reconoce sin escribir sus códigos en el repositorio
+                for k_re, v_re in list(repl.items()):
+                    if k_re.startswith('re:') and re.search(k_re[3:], t):
+                        repl = dict(repl); repl[t] = v_re; break
                 if t in repl:
                     if repl[t] == '':
                         continue
@@ -348,6 +358,9 @@ def extraer(tipo, entrada, salida):
             if not pz.get('compartida'):
                 asignado.add(i)
             usados.add(p[1])
+        if pz.get('simplificar'):
+            from simplificar import simplificar
+            sel = simplificar(sel, **(pz['simplificar'] if isinstance(pz['simplificar'], dict) else {}))
         if pz.get('centrar'):
             # las coordenadas ya están relativas al ancla: se llevan las cajas al mismo sistema
             cz = dict(pz['centrar'])

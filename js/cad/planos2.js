@@ -6,10 +6,10 @@ import { DXFDoc, dxfTrunc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS } from "./formato.js";
 import { datos, calcularTablero, instrumentos, expandirTag, tipoInstrumento, esAnalogico, esSalida, sistemaTag,
   tableros, tablerosPotencia, tablerosControl, tableroDeInstrumento, ipRecomendado } from "../datos.js";
-import { procesarFilas } from "../modules/tablas.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { parseDXF } from "../dxf.js";
 import { multifilarKit } from "./plano-multifilar.js";
+import { multifilarControlKit } from "./plano-multifilar-control.js";
 import { mecanicoKit } from "./plano-mecanico.js";
 import * as S from "../store.js";
 
@@ -185,155 +185,6 @@ export function multifilarFuerza({ p, valsDe, cliente }){
 }
 
 /* =====================================================================================
-   MULTIFILAR / CONEXIONADO DE E/S DEL TABLERO DE CONTROL: módulo → bornera → instrumento de campo
-   ===================================================================================== */
-export function multifilarControl({ p, valsDe, cliente }){
-  const d = datos(p), st = sistemaTag(p);
-  const filas = procesarFilas("ins-io", d["ins-io"]||[], p).filter(f=>f.slot!=="" && f.slot!=null && f.tipo!=="COM");
-  const mods = new Map();
-  for(const f of filas){ const k = (f.tablero||"PLC")+"|"+f.slot; if(!mods.has(k)) mods.set(k, { tablero:f.tablero||"PLC", slot:f.slot, tipo:f.tipo, filas:[] }); mods.get(k).filas.push(f); }
-  const lista = [...mods.values()].sort((a,b)=>a.tablero.localeCompare(b.tablero) || (+a.slot)-(+b.slot));
-  const doc = new DXFDoc();
-  const pags = trozos(lista, 6);
-  const As = laminas(doc, pags.length, valsDe, cliente);
-  pags.forEach((ms, h)=>{
-    const A = As[h];
-    if(!ms.length){ T(doc, A.x0+20, A.y1-40, 3, "SIN SEÑALES ASIGNADAS: COMPLETA EL LISTADO I/O.", "G-TEXT"); return; }
-    ms.forEach((m, k)=>{
-      const col = k % 3, fila = Math.floor(k/3);
-      const x0 = A.x0 + 6 + col*258, y0 = A.y1 - 18 - fila*250;
-      const capa = /A[IO]/.test(m.tipo) ? "I-SE-ANALO" : "I-CONTROL";
-      R(doc, x0, y0-18-m.filas.length*12, 36, 18+m.filas.length*12, "I-EQ");
-      T(doc, x0+18, y0-6, 2.4, m.tablero, "G-TEXT", { halign:1, n:16 });
-      T(doc, x0+18, y0-11, 2.4, `SLOT ${m.slot}`, "G-TEXT", { halign:1 });
-      T(doc, x0+18, y0-15.5, 2.2, m.tipo, "G-TEXT", { halign:1 });
-      T(doc, x0+80, y0-6, 2.0, "BORNES", "G-TEXT", { halign:1 });
-      T(doc, x0+170, y0-6, 2.0, "CAMPO", "G-TEXT", { halign:1 });
-      m.filas.forEach((f, i)=>{
-        const y = y0 - 24 - i*12;
-        T(doc, x0+31, y-0.8, 1.8, "CH"+f.ch, "G-TEXT", { halign:1 });
-        const bornes = String(f.terminales||"").split(/[\/,;]| y /).map(s=>s.trim()).filter(Boolean);
-        const b1 = bornes[0]||"+", b2 = bornes[1]||"-";
-        // dos conductores por canal
-        [[y+2, b1],[y-2, b2]].forEach(([yy, b])=>{
-          L(doc, x0+36, yy, x0+74, yy, capa); C(doc, x0+76, yy, 1.4, "I-SIM"); L(doc, x0+77.4, yy, x0+130, yy, capa);
-          T(doc, x0+80, yy+0.4, 1.5, b, "G-TEXT", { n:14 });
-        });
-        const reserva = !f.tag || /reserva|spare/i.test(f.tag+" "+(f.descripcion||""));
-        if(reserva){ T(doc, x0+134, y-0.8, 1.8, "RESERVA", "G-TEXT"); return; }
-        L(doc, x0+130, y+2, x0+134, y, capa); L(doc, x0+130, y-2, x0+134, y, capa);
-        R(doc, x0+134, y-4, 38, 8, "I-EQ"); T(doc, x0+153, y-1, 1.9, f.tag, "G-TEXT", { halign:1, n:22 });
-        Tw(doc, x0+174, y+1.2, 1.5, String(f.descripcion||"").toUpperCase(), 40, "G-TEXT", {}, 2);
-        T(doc, x0+100, y+4.2, 1.4, (st ? st.replace(/-/g,"")+"-" : "")+String(f.tag).replace(/-/g,"")+"-C01", "G-TEXT", { n:28 });
-      });
-    });
-    if(h===0) T(doc, A.x0+4, A.y0+40, 1.9, "NOTA: CONEXIONADO GENERADO DESDE EL LISTADO I/O (SLOT, CANAL Y BORNES). CABLES DE INSTRUMENTACIÓN APANTALLADOS CON PANTALLA ATERRADA SOLO EN EL TABLERO.", "G-TEXT", { n:160 });
-  });
-  return { dxf: doc.toDXF(), hojas: pags.length };
-}
-
-/* =====================================================================================
-   DISPOSICIÓN DE EQUIPOS DE LOS TABLEROS (MECÁNICO): vista frontal, placa de montaje, vista lateral y lista
-   ===================================================================================== */
-const ANCHOS = [600, 800, 1000, 1200, 1600, 2000], ALTOS = [800, 1000, 1200, 1600, 2000, 2200];
-function medidas(c){   // ancho × alto aproximado (mm) de un componente según su tipo y su valor nominal
-  const comp = String(c.comp||""), a = parseFloat(String(c.val||"").replace(/^.*?x/,"")) || 0;
-  if(/Variador|VDF/i.test(comp)){ const kw = a; return kw<=7.5 ? [100,300] : kw<=22 ? [150,400] : kw<=55 ? [250,550] : [350,700]; }
-  if(/Transformador/i.test(comp)) return [120,140];
-  if(/Filtro/i.test(comp)) return [180,160];
-  if(/^ITM|Interruptor/i.test(comp)) return a<=63 ? [54,90] : a<=160 ? [105,160] : a<=250 ? [105,180] : a<=630 ? [140,260] : [210,280];
-  if(/Contactor/i.test(comp)) return a<=40 ? [45,85] : a<=95 ? [55,120] : [90,160];
-  if(/Guardamotor/i.test(comp)) return [45,100];
-  if(/Fusible|Portafusible/i.test(comp)) return [36,80];
-  if(/Rel[eé]/i.test(comp)) return [18,80];
-  if(/PLC|CPU|M[oó]dulo/i.test(comp)) return [c.ancho||35, 135];
-  if(/Fuente/i.test(comp)) return [65,125];
-  if(/Switch|Router/i.test(comp)) return [45,130];
-  if(/Bornera/i.test(comp)) return [Math.max(30, (c.cant||10)*6.2), 50];
-  return [45,90];
-}
-/* borneras en tramos de 40 bornes para que entren en la placa */
-function borneras(comps, desc, pref, n){ for(let i=0;i<n;i+=40) comps.push({ comp:desc, devtag:pref+(i/40+1), val:"", cant:Math.min(40, n-i) }); }
-function dispone(comps, anchoUtil){   // filas sobre la placa de montaje separadas por canaletas de 60 mm
-  const filas = []; let f = { items:[], w:0, h:0 };
-  for(const c of comps){ const [w,h] = medidas(c); if(f.items.length && f.w + w + 10 > anchoUtil){ filas.push(f); f = { items:[], w:0, h:0 }; } f.items.push({ c, w, h }); f.w += w + 10; f.h = Math.max(f.h, h); }
-  if(f.items.length) filas.push(f);
-  return filas;
-}
-function elegir(comps){
-  for(const H of ALTOS) for(const W of ANCHOS){ const filas = dispone(comps, W-100); const alto = filas.reduce((a,f)=>a+f.h+60, 60); if(alto <= H-100) return { W, H, filas }; }
-  const W = 2000, filas = dispone(comps, W-100); return { W, H: Math.max(2200, filas.reduce((a,f)=>a+f.h+60, 160)), filas };
-}
-function hojaDisposicion(doc, A, titulo, comps, puerta, nota){
-  const { W, H, filas } = elegir(comps);
-  const prof = comps.some(c=>/Variador|VDF/i.test(c.comp||"") && medidas(c)[0]>=250) ? 600 : comps.some(c=>/Variador|VDF/i.test(c.comp||"")) ? 500 : 400;
-  // escala normalizada que hace entrar las tres vistas y la lista de componentes en la lámina
-  const esc = [5,10,15,20,25,30,40,50].find(e=>H/e <= (A.y1-A.y0-90) && (2*W+prof)/e + 70 + 260 <= (A.x1-A.x0)) || 50;
-  const k = 1/esc;
-  T(doc, A.x0+4, A.y1-12, 3.2, titulo, "G-TEXT", { n:90 });
-  T(doc, A.x0+4, A.y1-18, 2.2, `DIMENSIONES ESTIMADAS: ${W} (ANCHO) x ${H} (ALTO) x ${prof} (PROF.) mm · ESC. 1:${esc}`, "G-TEXT", { n:120 });
-  const yBase = Math.max(A.y0 + 40, A.y1 - 40 - H*k);
-  // vista frontal exterior (puerta)
-  const x1 = A.x0 + 10;
-  R(doc, x1, yBase, W*k, H*k, "E-EQ"); R(doc, x1+2, yBase+2, W*k-4, H*k-4, "G-VARIOS");
-  L(doc, x1+W*k-6, yBase+H*k/2-8, x1+W*k-6, yBase+H*k/2+8, "G-VARIOS");   // manija
-  (puerta||[]).forEach((e, i)=>{ const xx = x1 + 12 + (i % 4)*16, yy = yBase + H*k - 18 - Math.floor(i/4)*16;
-    if(e.hmi){ R(doc, xx-4, yy-10, 26, 18, "E-SIM"); T(doc, xx+9, yy-2, 1.8, "HMI", "G-TEXT", { halign:1 }); } else { C(doc, xx, yy, 3.2, "E-SIM"); T(doc, xx, yy-7, 1.4, e.tag, "G-TEXT", { halign:1, n:10 }); } });
-  T(doc, x1 + W*k/2, yBase-8, 2.2, "VISTA FRONTAL (PUERTA)", "G-TEXT", { halign:1 });
-  // placa de montaje con componentes
-  const x2 = x1 + W*k + 30;
-  R(doc, x2, yBase, W*k, H*k, "E-EQ"); R(doc, x2+50*k, yBase+50*k, (W-100)*k, (H-100)*k, "G-VARIOS");
-  let y = yBase + H*k - 50*k - 30*k; let n = 0;
-  for(const f of filas){
-    L(doc, x2+50*k, y, x2+(W-50)*k, y, "G-VARIOS"); L(doc, x2+50*k, y-6*k, x2+(W-50)*k, y-6*k, "G-VARIOS");   // canaleta superior
-    y -= 30*k; let x = x2 + 50*k + 10*k;
-    for(const it of f.items){ n++; R(doc, x, y - it.h*k, it.w*k, it.h*k, "E-SIM"); T(doc, x + it.w*k/2, y - it.h*k/2 - 0.8, Math.min(1.8, Math.max(1.0, it.w*k/5)), String(n), "G-TEXT", { halign:1 }); it.n = n; x += (it.w+10)*k; }
-    y -= f.h*k + 30*k;
-  }
-  L(doc, x2+50*k, y, x2+(W-50)*k, y, "G-VARIOS");
-  T(doc, x2 + W*k/2, yBase-8, 2.2, "PLACA DE MONTAJE", "G-TEXT", { halign:1 });
-  // vista lateral
-  const x3 = x2 + W*k + 30;
-  R(doc, x3, yBase, prof*k, H*k, "E-EQ"); R(doc, x3, yBase-100*k, prof*k, 100*k, "G-VARIOS");
-  T(doc, x3 + prof*k/2, yBase-8, 2.2, "VISTA LATERAL", "G-TEXT", { halign:1 });
-  T(doc, x3 + prof*k + 4, yBase + 4, 1.8, "ZÓCALO 100 mm", "G-TEXT");
-  // lista de componentes
-  const xl = Math.max(x3 + prof*k + 40, A.x1 - 250), yl = A.y1 - 30;
-  const cols = [[0,"N°"],[12,"TAG"],[42,"DESCRIPCIÓN"],[150,"VALOR"],[200,"CANT."]];
-  const lista = []; let m = 0; for(const f of filas) for(const it of f.items) lista.push({ n:++m, c:it.c });
-  const rh = 6.5, filasL = lista.slice(0, Math.floor((yl - A.y0 - 30)/rh) - 1);
-  R(doc, xl, yl - rh*(filasL.length+1), 215, rh*(filasL.length+1));
-  cols.forEach(([dx, t])=>T(doc, xl+dx+2, yl-4.5, 2.0, t, "G-TEXT"));
-  filasL.forEach((r, i)=>{ const yy = yl - rh*(i+2); L(doc, xl, yy+rh, xl+215, yy+rh); T(doc, xl+2, yy+2, 1.8, r.n, "G-TEXT"); T(doc, xl+14, yy+2, 1.7, r.c.devtag||"", "G-TEXT", { n:14 }); T(doc, xl+44, yy+2, 1.7, String(r.c.comp||"").toUpperCase(), "G-TEXT", { n:52 }); T(doc, xl+152, yy+2, 1.7, r.c.val && r.c.val!=="—" ? r.c.val : "", "G-TEXT", { n:22 }); T(doc, xl+204, yy+2, 1.7, r.c.cant||1, "G-TEXT"); });
-  if(lista.length > filasL.length) T(doc, xl, yl - rh*(filasL.length+1) - 5, 1.8, `(+${lista.length-filasL.length} componentes adicionales en la hoja de datos del tablero)`, "G-TEXT", { n:90 });
-  if(nota) Tw(doc, A.x0+4, A.y0+28, 1.9, nota, 170, "G-TEXT", {}, 3);
-}
-export function mecanicoControl({ p, valsDe, cliente }){
-  const v = valoresDiseno(p), ip = ipRecomendado(v), d = datos(p);
-  const filas = procesarFilas("ins-io", d["ins-io"]||[], p);
-  const ctls = tablerosControl(p);
-  const doc = new DXFDoc();
-  const As = laminas(doc, ctls.length || 1, valsDe, cliente, i=>({ TITULO2: ctls[i] ? `${(ctls[i].nombre||"").toUpperCase()} ${ctls[i].tag}` : "" }));
-  ctls.forEach((t, h)=>{
-    const propias = filas.filter(f=>(f.tablero||"")===t.tag && f.slot!=="" && f.slot!=null);
-    const slots = [...new Set(propias.map(f=>f.slot))].sort((a,b)=>a-b);
-    const comps = [{ comp:"Interruptor principal de control", devtag:"Q1", val:"2x16A" }, { comp:"Fuente de alimentación 24 Vdc", devtag:"PS1", val:"10 A" },
-      { comp:"PLC — CPU", devtag:t.plc||"CPU", val:t.modeloPlc||"", ancho:70 }];
-    slots.forEach(s=>{ const tipo = (propias.find(f=>f.slot===s)||{}).tipo||""; comps.push({ comp:`Módulo ${tipo} (slot ${s})`, devtag:"SLOT "+s, val:tipo, ancho:35 }); });
-    if(t.switch) comps.push({ comp:"Switch Ethernet", devtag:"SW1", val:"" });
-    if(t.router) comps.push({ comp:"Router IIoT", devtag:"RT1", val:"" });
-    const dos = propias.filter(f=>f.tipo==="DO").length;
-    for(let i=0;i<Math.min(dos, 24);i++) comps.push({ comp:"Relé de interposición", devtag:"KA"+(i+1), val:t.ioDiscreto||"" });
-    borneras(comps, "Bornera de señales", "TB", Math.max(10, propias.length*2));
-    const puerta = [t.hmi && { hmi:true }, t.senalesTablero && { tag:"PE (SETA)" }, t.senalesTablero && { tag:"RESET" }, t.senalesTablero && { tag:"L/R" }].filter(Boolean);
-    hojaDisposicion(doc, As[h], `DISPOSICIÓN DE EQUIPOS — ${(t.nombre||"TABLERO DE CONTROL").toUpperCase()} ${t.tag}`, comps, puerta,
-      `NOTAS: 1) GABINETE ${ip}. 2) ${slots.length} MÓDULO(S) DE E/S SEGÚN EL LISTADO I/O, CON LA RESERVA DEL PROYECTO. 3) SEPARAR CANALETAS DE SEÑALES ANALÓGICAS, DISCRETAS Y DE FUERZA. 4) DIMENSIONES ESTIMADAS; CONFIRMAR CON EL FABRICANTE.`);
-  });
-  if(!ctls.length) T(doc, As[0].x0+20, As[0].y1-40, 3, "EL PROYECTO NO TIENE TABLEROS DE CONTROL.", "G-TEXT");
-  return { dxf: doc.toDXF(), hojas: ctls.length || 1 };
-}
-
-/* =====================================================================================
    ARREGLO GENERAL (equipos eléctricos o instrumentos) sobre la planta del cliente (DXF) con coordenadas
    ===================================================================================== */
 export function elementosArreglo(p, disciplina){
@@ -411,9 +262,9 @@ export const arregloInstrumentos = ctx => arreglo(ctx, "INS");
 export const GENERADORES2 = {
   "ins-pid": { fn: pid, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN (P&ID)", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-multifilar": { fn: multifilarKit, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
-  "ins-multifilar-tc": { fn: multifilarControl, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE CONTROL - CONEXIONADO DE E/S", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
+  "ins-multifilar-tc": { fn: multifilarControlKit, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE CONTROL - CONEXIONADO DE E/S", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-mecanico": { fn: mecanicoKit, titulo:"PLANO MECÁNICO DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
-  "ins-mecanico-tc": { fn: mecanicoControl, titulo:"DISPOSICIÓN DE EQUIPOS DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
+  "ins-mecanico-tc": { fn: ctx => mecanicoKit(ctx, "control"), titulo:"PLANO MECÁNICO DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-arreglo": { fn: arregloEquipos, titulo:"ARREGLO GENERAL DE EQUIPOS ELÉCTRICOS", disciplina:"ELECTRICIDAD" },
   "ins-arreglo": { fn: arregloInstrumentos, titulo:"ARREGLO GENERAL DE INSTRUMENTOS", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
 };

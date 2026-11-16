@@ -76,3 +76,14 @@ export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas=
     }
   }
 }
+
+/* caja de una pieza en coordenadas relativas a su ancla: [x0, y0, x1, y1] (para ubicar imágenes de equipos) */
+const _cajas = new WeakMap();
+export function cajaPieza(kit, nombre){
+  const pz = kit.piezas[nombre]; if(!pz) return [0, 0, 0, 0];
+  let m = _cajas.get(pz); if(m) return m;
+  m = [Infinity, Infinity, -Infinity, -Infinity];
+  for(const e of pz.e){ if(e[0]==="T") continue; const b = caja(e); if(!b) continue; m = [Math.min(m[0], b[0]), Math.min(m[1], b[1]), Math.max(m[2], b[2]), Math.max(m[3], b[3])]; }
+  if(!isFinite(m[0])) m = [0, 0, 0, 0];
+  _cajas.set(pz, m); return m;
+}

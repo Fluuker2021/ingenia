@@ -11,7 +11,10 @@ const COL_TIPO = {
   interruptor:0x3b3f46, xlp:0x4a4f57, variador:0x2b2f36, arrancador:0xe6e7e9, reactancia:0x6b5236, trafo:0x5d6670, fuente:0xd9dadc,
   guardamotor:0xe9eaec, contactor:0xe9eaec, sobrecarga:0xdedfe1, mcb:0xf2f2f2, diferencial:0xf2f2f2, fusible:0xe4e4e4, rele:0xe6e6e6,
   spd:0xe9eaec, resistencia:0x9da3aa, peine:0xc8783a,
+  // tablero de control
+  cpu:0x2f3338, modulo:0x2f3338, fpd:0x3b3f46, tapa:0x3b3f46, switch:0x2b2f36, router:0x50555d, termostato:0xe6e7e9, tomacorriente:0xf4f5f6, luminaria:0xf4f5f6, finpuerta:0x3b3f46,
 };
+const COL_IO = { AI:0x2b6cb0, AO:0x2e9e4f, DI:0xf5a623, DO:0xd2312b };
 const FASE = { L1:0x8b5a2b, L2:0x1c1c1c, L3:0x8a8f96, U:0x8b5a2b, V:0x1c1c1c, W:0x8a8f96, "L1-L2-L3":0x444444 };
 
 let actual = null;   // visor activo (uno a la vez)
@@ -88,7 +91,7 @@ export async function visor3D(cont, modelo, opciones){
   if(m.techo) caja(-40, H, -40, W + 80, 30, D + 80, mat(RAL7035), capas.envolvente);
   for(const [xe, ze] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ const t = new THREE.Mesh(new THREE.TorusGeometry(16*k, 4*k, 8, 20), mat(0x8a8f96)); t.position.set(xe*k, (H + (m.techo ? 30 : 0) + 30)*k, ze*k); capas.envolvente.add(t); }
   // prensaestopas en la base
-  for(const c of m.base){ const zc = c.fila ? D*0.32 : D*0.6; const g = cil(c.x, -6, zc, (c.agujero||25)/2 + 3, 18, c.ref==="RESERVA" ? 0x9aa0a8 : 0x2b2f36, capas.envolvente); g.userData.info = { tag:c.ref, desc:c.desc, modelo:`Prensaestopa ${c.rosca}${c.awg ? " · cable "+c.awg : ""}`, dim:`Agujero Ø${c.agujero} mm` }; }
+  for(const c of m.base){ const zc = c.zb ?? (c.fila ? D*0.32 : D*0.6); const g = cil(c.x, m.tipo==="control" && m.entrada==="superior" ? H + 6 : -6, zc, (c.agujero||25)/2 + 3, 18, c.ref==="RESERVA" ? 0x9aa0a8 : 0x2b2f36, capas.envolvente); g.userData.info = { tag:c.ref, desc:c.desc, modelo:`Prensaestopa ${c.rosca}${c.awg ? " · cable "+c.awg : ""}`, dim:`Agujero Ø${c.agujero} mm` }; }
 
   // ===== placas, canaletas, rieles =====
   for(const p of m.placas) caja(p.x, p.y, 22, p.w, p.h, 3, mat(GALV, { metalness:0.35, roughness:0.45 }));
@@ -107,18 +110,18 @@ export async function visor3D(cont, modelo, opciones){
   // ===== equipos =====
   const piezas = [];
   for(const c of m.comps){
-    const z0 = c.montaje==="din" || c.montaje==="contactor" ? 32 : 25;
-    const col = COL_TIPO[c.tipo] || 0xdddddd;
+    const z0 = c.z0 ?? (c.montaje==="din" || c.montaje==="contactor" ? 32 : 25);
+    const col = c.color || COL_TIPO[c.tipo] || 0xdddddd;
     const g = caja(c.x, c.y, z0, c.w, c.h, c.d || 60, mat(col));
     g.userData.info = { tag:c.tag, desc:c.desc, modelo:c.modelo, dim:`${r1(c.w)} × ${r1(c.h)} × ${r1(c.d||0)} mm`, montaje:c.montaje, fuente:c.fuente, val:c.val };
     g.userData.base = g.position.clone(); g.userData.comp = c;
     piezas.push(g);
     detalle(c, z0 + (c.d||60));
-    if(c.tag) etiqueta(c.tag, c.x + c.w/2, c.y + c.h + 10, z0 + (c.d||60), c.tipo==="variador" || c.tipo==="interruptor" ? "" : "v3d-tag-chico");
+    if(c.tag) etiqueta(c.tag, c.x + c.w/2, c.y + c.h + 10, z0 + (c.d||60), c.tipo==="variador" || c.tipo==="interruptor" || c.tipo==="cpu" ? "" : "v3d-tag-chico");
   }
   // bornes
   for(const b of m.bornes){
-    for(const x of b.bornes){ const g = caja(x.x, b.y - x.h/2, 32, x.w - 0.4, x.h, x.d, mat(x.pe ? 0xc9bf2b : 0x8a9099)); g.userData.info = { tag:`${b.grupo}:${x.n}`, desc:b.desc, modelo:x.modelo, dim:`${x.w} × ${x.h} × ${x.d} mm` }; g.userData.base = g.position.clone(); piezas.push(g); }
+    for(const x of b.bornes){ const g = caja(x.x, b.y - x.h/2, 32, x.w - 0.4, x.h, x.d, mat(x.color || (x.pe ? 0xc9bf2b : 0x8a9099))); g.userData.info = { tag:`${b.grupo}:${x.n}`, desc:b.desc, modelo:x.modelo, dim:`${x.w} × ${x.h} × ${x.d} mm` }; g.userData.base = g.position.clone(); piezas.push(g); }
     etiqueta(b.grupo, (b.x0 + b.x1)/2, b.y + 45, 90, "v3d-tag-chico");
   }
   // ===== cableado de fuerza =====
@@ -142,7 +145,7 @@ export async function visor3D(cont, modelo, opciones){
       const pg = new THREE.Group(); piv.add(pg); pg.position.set(-xp*k, 0, -D*k);
       const hoja = caja(x0, 3, D, x1 - x0, H - 6, 20, mat(RAL7035), pg);
       hoja.userData.info = { tag:s.id, desc:`Puerta de la sección ${s.id.slice(1)} (${s.rol==="potencia" ? "fuerza" : s.rol==="control" ? "control" : "fuerza y control"})`, modelo:"Plancha de acero, RAL 7035", dim:`${r1(x1 - x0)} × ${r1(H - 6)} mm` };
-      const xm = bis==="izq" ? x1 - 45 : x0 + 25; caja(xm, 900, D + 20, 20, 160, 30, mat(0x2b2f36), pg);
+      const xm = bis==="izq" ? x1 - 45 : x0 + 25; caja(xm, m.manijaY ?? 900, D + 20, 20, 160, 30, mat(0x2b2f36), pg);
       hojas.push({ piv, bis, x0, x1, abierto:0, objetivo:0, grupo:pg });
     }
   }
@@ -154,6 +157,11 @@ export async function visor3D(cont, modelo, opciones){
     else if(d.tipo==="panelvfd"){ obj = caja(d.x - d.w/2, d.y - d.h/2, z, d.w, d.h, 18, mat(0x2b2f36), g); caja(d.x - d.w/2 + 10, d.y + d.h*0.12, z + 18, d.w - 20, d.h*0.26, 1, mat(0x7fb3d5, { emissive:0x1d3c52 }), g, null, false); }
     else if(d.tipo==="ventilador" || d.tipo==="rejilla"){ obj = caja(d.x - d.w/2, d.y - d.h/2, z, d.w, d.h, 16, mat(0x5d6670), g); for(let yy = d.y - d.h/2 + 20; yy < d.y + d.h/2 - 12; yy += 14) caja(d.x - d.w/2 + 16, yy, z + 16, d.w - 32, 5, 3, mat(0x3b3f46), g, null, false); }
     else if(d.tipo==="aa"){ obj = caja(d.x - d.w/2, d.y - d.h/2, z, d.w, d.h, 160, mat(0xe9eaec), g); }
+    else if(d.tipo==="hmi"){   // pantalla: marco frontal, pantalla encendida y cuerpo hacia el interior (atraviesa la puerta)
+      obj = caja(d.x - d.w/2, d.y - d.h/2, z, d.w, d.h, 8, mat(0x2b2f36), g);
+      caja(d.x - d.w/2 + 12, d.y - d.h/2 + 22, z + 8, d.w - 24, d.h - 34, 1, mat(0x7fb3d5, { emissive:0x1d3c52 }), g, null, false);
+      caja(d.x - d.recorteW/2 + 8, d.y - d.recorteH/2 + 8, D - d.prof, d.recorteW - 16, d.recorteH - 16, d.prof, mat(0x3b3f46), g);
+    }
     else {
       const cMap = { verde:0x2e9e4f, rojo:0xd2312b, ambar:0xf5a623, azul:0x2b6cb0, negro:0x1c1c1c, amarillo:0xf5c518 };
       if(d.tipo==="seta"){ obj = cil(d.x, d.y, z + 4, 30, 8, 0xf5c518, g, "z"); const hg = cil(d.x, d.y, z + 22, 20, 28, 0xd2312b, g, "z"); hg.userData.info = { tag:d.tag, desc:d.desc, modelo:d.modelo }; }
@@ -162,7 +170,7 @@ export async function visor3D(cont, modelo, opciones){
     if(obj) obj.userData.info = { tag:d.tag, desc:d.desc || d.leyenda, modelo:d.modelo || (C.PUERTA[d.tipo]||{}).modelo || "", dim: d.w ? `${d.w} × ${d.h} mm` : "" };
   }
   // placa de identificación
-  { const s1 = m.secciones[0], cx = (s1.x0 + s1.x1)/2, h = hojaDe(cx); caja(cx - 150, H - 170, D + 20, 300, 90, 2, mat(0xc9ced4, { metalness:0.6 }), h.grupo); }
+  { const s1 = m.secciones[0], cx = m.placaX ?? (s1.x0 + s1.x1)/2, h = hojaDe(cx); caja(cx - 150, H - 170, D + 20, 300, 90, 2, mat(0xc9ced4, { metalness:0.6 }), h.grupo); }
   // capa de dispositivos de puerta = todo lo que cuelga de las puertas menos la hoja
   const ocultarPuertas = v => hojas.forEach(h=>h.grupo.children.forEach((ch, i)=>{ if(i>0) ch.visible = v; }));
 
@@ -177,6 +185,16 @@ export async function visor3D(cont, modelo, opciones){
     else if(c.tipo==="xlp"){ for(let i=0;i<3;i++){ const cx = x + w*(i+0.5)/3, cw = w/3 - 10; caja(cx - cw/2, y + h*0.2, zf, cw, h*0.56, 14, mat(0x2b2f36)); } }
     else if(c.tipo==="reactancia"){ for(let i=0;i<3;i++){ const cx = x + w*(i+0.5)/3; cil(cx, y + h*0.45, 25 + (c.d||100)/2, Math.min(w/7, (c.d||100)*0.42), h*0.56, 0xb06a2c, capas.interior, null); } }
     else if(c.tipo==="trafo"){ caja(x + w*0.18, y + h*0.12, zf, w*0.64, h*0.66, 4, mat(0x2b2f36), capas.interior, null, false); }
+    // tablero de control: franja de color por tipo de E/S, bornera enchufable, pantalla de la CPU, puertos de red, LED de relés
+    else if(c.tipo==="modulo" || c.tipo==="fpd"){ caja(x + 1.5, y + h*0.86, zf, w - 3, h*0.09, 2, mat(COL_IO[c.io] || 0x8a9099), capas.interior, null, false); caja(x + 2, y + h*0.06, zf, w - 4, h*0.74, 8, mat(0x1c1c1c), capas.interior, null, false); }
+    else if(c.tipo==="cpu"){ caja(x + w*0.12, y + h*0.8, zf, w*0.76, h*0.1, 2, mat(0x7fb3d5, { emissive:0x1d3c52 }), capas.interior, null, false); for(let i=0;i<2;i++) caja(x + w*0.14, y + h*(0.2 + i*0.15), zf, w*0.34, h*0.11, 3, mat(0x9aa0a8), capas.interior, null, false); caja(x + w*0.6, y + h*0.06, zf, w*0.28, h*0.22, 6, mat(0x2e9e4f), capas.interior, null, false); }
+    else if(c.tipo==="switch"){ for(let r=0;r<4;r++) for(let i=0;i<2;i++) caja(x + w*(0.12 + i*0.42), y + h*(0.2 + r*0.14), zf, w*0.34, h*0.1, 2, mat(0x9aa0a8), capas.interior, null, false); caja(x + w*0.1, y + h*0.84, zf, w*0.8, h*0.08, 2, mat(0x2b6cb0), capas.interior, null, false); }
+    else if(c.tipo==="router"){ for(let i=0;i<2;i++) cil(x + w*(0.3 + i*0.4), y + h + 7, zf - (c.d||60)/2, 3, 14, 0xc9a227, capas.interior, null); }
+    else if(c.tipo==="rele"){ caja(x + 0.6, y + h*0.3, zf, w - 1.2, h*0.42, 4, mat(0xd2312b, { transparent:true, opacity:0.7 }), capas.interior, null, false); }
+    else if(c.tipo==="fuente" && c.etqJusta){ caja(x + w*0.2, y + h*0.4, zf, w*0.6, h*0.2, 2, mat(0x2e9e4f), capas.interior, null, false); }
+    else if(c.tipo==="termostato"){ cil(x + w/2, y + h*0.55, zf + 3, Math.min(w, h)*0.28, 6, 0x2b6cb0, capas.interior, "z"); }
+    else if(c.tipo==="tomacorriente"){ for(let i=0;i<2;i++) caja(x + w*(0.1 + i*0.46), y + h*0.3, zf, w*0.34, h*0.42, 3, mat(0xd9dadc), capas.interior, null, false); }
+    else if(c.tipo==="luminaria"){ caja(x + 6, y - 1, (c.z0 ?? 25) + 4, w - 12, 2, (c.d||40) - 8, mat(0xfff7d6, { emissive:0x8a7a3a }), capas.interior, null, false); }
   }
 
   // ===== cámara y vistas =====

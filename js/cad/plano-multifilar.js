@@ -13,6 +13,7 @@ import { calcularTablero, calcularTodos, tf, desdeTxt, r2 } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza } from "./kit.js";
 import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/componentes.js";
+import { repartirEquilibrado } from "./plano-unifilar.js";
 
 const DX = 25, DY = -112;                        // hoja del plano de referencia → área útil de la lámina A1
 const BARRAS = [664.51, 648.51, 632.51], PE_Y = 616.51;
@@ -61,12 +62,6 @@ function columnas(calc, g){
     return { pieza:"b_mcp", omitir:["contactor","auxiliares","motor"], vars:{ q:q.devtag, qv:amps(q.val), qm:sinMarca(q.model), tb:tagBornera(c.tag), tbs:bf.replace(/^\D+/,"")+" mm2", tbm:bf, tbpe:bf+"-PE", tag:l.tag||"", desc1:d1, desc2:d2 }, awg, egc };
   });
 }
-/* reparte columnas en hojas según su ancho */
-function repartir(items, anchoDe, util){
-  const hojas = [[]]; let w = 0;
-  for(const it of items){ const a = anchoDe(it); if(hojas[hojas.length-1].length && w + a > util){ hojas.push([]); w = 0; } hojas[hojas.length-1].push(it); w += a; }
-  return hojas[0].length ? hojas : [];
-}
 
 export async function multifilarKit({ p, valsDe, cliente }){
   const kit = await cargarKit("multifilar");
@@ -77,8 +72,9 @@ export async function multifilarKit({ p, valsDe, cliente }){
   // plan de hojas por tablero: acometida, fuerza (columnas) y secundarios de cada transformador
   const planes = lista.map(calc=>{
     const cols = columnas(calc, calc.g);
-    const fuerza = repartir(cols, c=>ANCHO[c.pieza], X_FIN - X_INI);
-    const sec = cols.filter(c=>c.pieza==="b_trafo").flatMap(c=>repartir(c.ramas, r=>ANCHO[r.pieza], X_FIN - 70).map(rs=>({ trafo:c, ramas:rs })));
+    // reparto equilibrado: las láminas quedan con anchos parecidos y las columnas centradas en cada una
+    const fuerza = cols.length ? repartirEquilibrado(cols, c=>ANCHO[c.pieza], X_FIN - X_INI) : [];
+    const sec = cols.filter(c=>c.pieza==="b_trafo").flatMap(c=>(c.ramas.length ? repartirEquilibrado(c.ramas, r=>ANCHO[r.pieza], X_FIN - 70) : []).map(rs=>({ trafo:c, ramas:rs })));
     return { calc, fuerza, sec, n: 1 + fuerza.length + sec.length };
   });
   const total = planes.reduce((a,x)=>a+x.n, 0);
@@ -131,8 +127,10 @@ export async function multifilarKit({ p, valsDe, cliente }){
       doc.line(ox+DX+30, BARRAS[1]+DY, ox+DX+x1, BARRAS[1]+DY, "E-FZA-BT-SEC");
       doc.line(ox+DX+30, BARRAS[2]+DY, ox+DX+x1, BARRAS[2]+DY, "E-TIERRA");
       doc.text(ox+DX+34, BARRAS[0]+DY+3, 2.5, `${tr.t} ${tr.vs} - ${tr.tv}`, "G-TEX");
-      let x = 70;
-      for(const r of s.ramas){ pieza(doc, kit, r.pieza, ox+DX+x, DY, { vars:r.vars, quitar:REF, lineas:{ desc:22 } }); x += ANCHO[r.pieza]; }
+      // derivaciones repartidas y centradas entre la entrada de barras y el final de la lámina
+      const Wr = s.ramas.reduce((a, r)=>a + ANCHO[r.pieza], 0), fr = Math.min((X_FIN - 70)/Wr, 1.25);
+      let x = 70 + ((X_FIN - 70) - Wr*fr)/2;
+      for(const r of s.ramas){ const a = ANCHO[r.pieza]; pieza(doc, kit, r.pieza, ox+DX+x + (a*fr - a)/2, DY, { vars:r.vars, quitar:REF, lineas:{ desc:22 } }); x += a*fr; }
       k++;
     });
   }

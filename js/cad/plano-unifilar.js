@@ -63,17 +63,25 @@ const ancho = col => col.tipo==="trafo" ? (col.n-1)*PASO_RAMA + ANCHO_COL : ANCH
 const OMITIR = { fusible:[-4,-62.7,16,-48.5], filtro:[-22,-114.3,12,-85.9], vfd:[-9,-134,21,-117.7], motor:[-6.5,-284,17,-267.6] };
 const PUENTES = { fusible:[-48.6,-62.6], filtro:[-86,-106], vfd:[-117.8,-133.8], motor:null };
 
-/* reparte las columnas en láminas: cada lámina admite el ancho útil del tablero con escala ≥ 0,75 */
-function repartir(cols){
-  const util = LIM_DER - LIM_IZQ, hojas = [[]];
-  let w = 0;
-  for(const c of cols){
-    const a = ancho(c);
-    if(hojas[hojas.length-1].length && (w + a) > util/0.75){ hojas.push([]); w = 0; }
+/* reparte las columnas en láminas de forma equilibrada: primero cuántas láminas hacen falta (cada una admite el
+   ancho útil con escala ≥ 0,75; la primera reserva el hueco de la acometida) y luego se reparten los circuitos
+   para que todas las láminas queden con un ancho parecido (sin una última lámina casi vacía) */
+export function repartirEquilibrado(items, anchoDe, capacidad, extraPrimera=0){
+  const total = items.reduce((a, c)=>a + anchoDe(c), 0) + extraPrimera;
+  let n = 1, w = extraPrimera;
+  for(const c of items){ const a = anchoDe(c); if(w > extraPrimera*(n===1) && w + a > capacidad){ n++; w = 0; } w += a; }
+  if(n===1) return [items.slice()];
+  const meta = total/n, hojas = [[]]; w = extraPrimera;
+  items.forEach((c, i)=>{
+    const a = anchoDe(c), quedan = items.length - i, hojasRestantes = n - hojas.length;
+    if(hojas[hojas.length-1].length && hojasRestantes > 0 && (w + a/2 > meta || w + a > capacidad || quedan <= hojasRestantes)){ hojas.push([]); w = 0; }
     hojas[hojas.length-1].push(c); w += a;
-  }
+  });
   return hojas;
 }
+const GAP_ACOM = ANCHO_COL;   // hueco de la barra donde baja la acometida: el ancho de un circuito (separación uniforme)
+const FMAX = 1.5;       // separación máxima entre circuitos cuando sobra espacio (×)
+function repartir(cols){ return repartirEquilibrado(cols, ancho, (LIM_DER - LIM_IZQ)/0.75, GAP_ACOM); }
 
 export async function unifilarKit({ p, valsDe, cliente }){
   const kit = await cargarKit("unifilar");
@@ -106,59 +114,81 @@ function descripcion(doc, x, yIni, textos, s, anchoDisp){
 }
 
 function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
-  // ancho y escala: las columnas llenan el tablero (hasta 1,3 veces su separación) o se reducen si no entran
   const util = LIM_DER - LIM_IZQ;
-  const W = cols.reduce((a,c)=>a+ancho(c), 0) || ANCHO_COL;
-  const s = W > util ? util/W : 1;
-  const f = W > util ? 1 : Math.min(util/W, 1.3);
-  // coordenadas del plano de referencia → lámina (escala s alrededor del inicio de la barra)
-  const SX = x => ox + DX + EJE0 + (x-EJE0)*s, SY = y => DY + BUS + y*s;        // y relativo a la barra
-  const FX = x => ox + DX + x, FY = y => DY + y;                                  // piezas fijas (escala 1)
-  // posiciones de los ejes en coordenadas del plano de referencia
-  let borde = LIM_IZQ; const ejes = [];
-  for(const c of cols){
-    const a = ancho(c)*f;
-    if(c.tipo==="trafo"){ c.ramasX = c.ramas.map((_,i)=>borde + f*(ANCHO_COL/2 + i*PASO_RAMA)); c.eje = c.ramasX[Math.max(0, Math.min(c.n-1, c.n-2))]; }
-    else c.eje = borde + a/2;
-    ejes.push(c.eje); borde += a;
-  }
   const acc = primera ? (t.accesorios||{}) : {};
-  const xIni = Math.min(ejes[0] ?? EJE0, primera ? X_ACOM : Infinity), xFin = Math.max(ejes[ejes.length-1] ?? EJE0, primera ? X_ACOM : -Infinity);
-  const derTablero = Math.max(DER, borde + 8);   // en coordenadas del plano de referencia (SX aplica la escala)
-  const xRet = (acc.luces || acc.spd) ? X_RETORNO : -Infinity;
+  // hueco de la acometida (primera lámina): entre los dos circuitos más cercanos al centro de la barra
+  const anchos = cols.map(ancho), W = anchos.reduce((a, b)=>a + b, 0) || ANCHO_COL;
+  let kAcom = -1;
+  if(primera){
+    if(cols.length < 2) kAcom = cols.length;
+    else { let acu = 0, mejor = 1e9; for(let k=1; k<cols.length; k++){ acu += anchos[k-1]; const d = Math.abs(acu - W/2); if(d < mejor){ mejor = d; kAcom = k; } } }
+  }
+  const WT = W + (kAcom >= 0 ? GAP_ACOM : 0);
+  // escala (si no entran) y separación (si sobra espacio): el conjunto queda centrado en el ancho útil
+  const s = WT > util ? util/WT : 1;
+  const f = WT > util ? 1 : Math.min(util/WT, FMAX);
+  const FX = x => ox + DX + x, FY = y => DY + y;                     // coordenadas del plano de referencia (escala 1)
+  const SY = y => DY + BUS + y*s;                                    // y relativo a la barra, con la escala
+  let borde = LIM_IZQ + (util - WT*f*s)/2, xAcom = null;
+  cols.forEach((c, i)=>{
+    if(i===kAcom){ xAcom = borde + GAP_ACOM*f*s/2; borde += GAP_ACOM*f*s; }
+    const a = anchos[i]*f*s;
+    if(c.tipo==="trafo"){ c.ramasX = c.ramas.map((_, j)=>borde + f*s*(ANCHO_COL/2 + j*PASO_RAMA)); c.eje = c.ramasX[Math.max(0, Math.min(c.n-1, c.n-2))]; }
+    else c.eje = borde + a/2;
+    c.izq = borde; c.der = borde + a; borde += a;
+  });
+  if(kAcom===cols.length){ xAcom = borde + GAP_ACOM*f*s/2; borde += GAP_ACOM*f*s; }
+  // la acometida y sus accesorios (sobre la barra) no deben salirse del tablero por la derecha
+  const conRet = !!(acc.luces || acc.spd);
+  const ejes = cols.map(c=>c.eje);
+  const xIni = Math.min(ejes[0] ?? xAcom, xAcom ?? Infinity), xFin = Math.max(ejes[ejes.length-1] ?? xAcom, xAcom ?? -Infinity);
+  const derCols = cols.length ? cols[cols.length-1].der : borde;
+  // retorno a tierra de luces piloto y supresor: baja a la derecha, fuera de la barra y de las columnas
+  const xRet = conRet ? Math.max(xAcom + 265.43*s, derCols + 6) : null;
+  const derTablero = Math.max(DER, (xRet ?? derCols) + 10, derCols + 8);
 
   // tablero (envolvente), título y potencias
-  doc.polyline([[FX(IZQ), SY(FONDO)], [FX(IZQ), FY(BUS+TECHO)], [SX(derTablero), FY(BUS+TECHO)], [SX(derTablero), SY(FONDO)], [FX(IZQ), SY(FONDO)]], "E-EQ");
+  doc.polyline([[FX(IZQ), SY(FONDO)], [FX(IZQ), FY(BUS+TECHO)], [FX(derTablero), FY(BUS+TECHO)], [FX(derTablero), SY(FONDO)], [FX(IZQ), SY(FONDO)]], "E-EQ");
   pieza(doc, kit, "titulo", FX(IZQ), FY(BUS+TECHO), { vars:{ tit1:`${t.nombre||"Tablero"} ${t.tag||""}`.toUpperCase(), tit2:`${g.voltage} Vac, 3F+T, ${g.freq}Hz` } });
-  pieza(doc, kit, "pimd", SX(derTablero), FY(BUS+TECHO), { vars:{ pi:`PI: ${r2(calc.installedKVA,1)} kVA`, md:`MD: ${r2(calc.totalKVA,2)} kVA` } });
+  pieza(doc, kit, "pimd", FX(derTablero), FY(BUS+TECHO), { vars:{ pi:`PI: ${r2(calc.installedKVA,1)} kVA`, md:`MD: ${r2(calc.totalKVA,2)} kVA` } });
   pieza(doc, kit, "leyenda", FX(656.5), FY(631.8));
 
-  // barra principal y su rotulado
-  doc.line(SX(xIni), SY(0), SX(xFin), SY(0), "E-FZA-BT-PRI");
-  pieza(doc, kit, "barra_txt", SX(Math.min(ejes[0] ?? EJE0, EJE0)), SY(0), { s, vars:{ barra1:`R,S,T ${g.voltage} Vac, 3F, ${g.freq}Hz, ${g.faultLevel} kA`, barra2: barraCu(calc.mainBreaker) } });
-  if(!primera) doc.text(SX(xIni)-2, SY(0)+3*s, 2.2*s, `VIENE DE LA HOJA ${ih}`, "G-TEX", { halign:2 });
-  if(ih < nh-1) doc.text(SX(xFin)+2, SY(0)+3*s, 2.2*s, `CONTINÚA EN LA HOJA ${ih+2}`, "G-TEX");
+  // barra principal y su rotulado (dos líneas sobre la barra, desde su inicio)
+  doc.line(FX(xIni), SY(0), FX(xFin), SY(0), "E-FZA-BT-PRI");
+  const hb = 2.5*s;
+  doc.text(FX(xIni) + 3*s, SY(0) + 2.4*s + hb*1.6, hb, `R,S,T ${g.voltage} Vac, 3F, ${g.freq}Hz, ${g.faultLevel} kA`, "G-TEX");
+  doc.text(FX(xIni) + 3*s, SY(0) + 2.4*s, hb, barraCu(calc.mainBreaker), "G-TEX");
+  if(!primera) doc.text(FX(xIni)-2, SY(0)+3*s, 2.2*s, `VIENE DE LA HOJA ${ih}`, "G-TEX", { halign:2 });
+  if(ih < nh-1) doc.text(FX(xFin)+2, SY(0)+3*s, 2.2*s, `CONTINÚA EN LA HOJA ${ih+2}`, "G-TEX");
 
   // acometida y accesorios (primera lámina del tablero)
   if(primera){
-    const ax = SX(X_ACOM), ay = SY(0);
+    const ax = FX(xAcom), ay = SY(0);
     pieza(doc, kit, "acometida", ax, ay, { s, lineas:{ acometida:26 }, vars:{ q:"Q1", qv:`3x${calc.mainBreaker}A`, barra: barraCu(calc.mainBreaker), acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}` } });
     let nf = 0; const fus = n=>{ const a = Array.from({length:n},(_,i)=>"F"+(++nf)); return a.join(","); };
     if(acc.luces) pieza(doc, kit, "acc_lt", ax, ay, { s, vars:{ f:fus(3), fv:"1X4A", fm:"E91/32", cable:"3C#14AWG+14AWG(N) 0.6/1kV", dev:"LT1,LT2,LT3", rango:"40-600Vac" } });
     if(acc.spd) pieza(doc, kit, "acc_spd", ax, ay, { s, vars:{ f:"-FS1", fv:"3x125A", cable:"3C#10AWG+10AWG(T) 0.6/1kV", dev:"SPD1,SPD2,SPD3", tipo:"TIPO 1 y 2", mod:`OVR T1 T2 3L 12.5-${g.voltage>440 ? 600 : 440} P QS` } });
     if(acc.releFase) pieza(doc, kit, "acc_rf", ax, ay, { s, vars:{ f:fus(3), fv:"1X2A", fm:"E91/32", cable:"3C#14AWG+14AWG(T) 0.6/1kV", dev:"RF", mod:"CM-MPS.41S" } });
-    if(acc.luces || acc.spd) pieza(doc, kit, "retorno", ax, ay, { s });
+    // retorno a tierra (mismo trazado del plano de referencia, llevado a la derecha de la última columna)
+    if(conRet){
+      const xr = FX(xRet), yT = SY(TIERRA), pts = [];
+      if(acc.luces){ doc.line(ax + 133.9*s, ay + 92.78*s, xr, ay + 92.78*s, "E-TIERRA"); pts.push(ay + 92.78*s); }
+      if(acc.spd){ doc.line(ax + 159.17*s, ay + 33.1*s, ax + 159.17*s, ay + 17.6*s, "E-TIERRA"); doc.line(ax + 159.17*s, ay + 17.6*s, xr, ay + 17.6*s, "E-TIERRA"); pts.push(ay + 17.6*s); }
+      doc.line(xr, Math.max(...pts), xr, yT, "E-TIERRA");
+      if(pts.length > 1) doc.circle(xr, ay + 17.6*s, 0.8*s, "E-TIERRA");
+      doc.circle(xr, yT, 0.8*s, "E-TIERRA");
+    }
   }
 
   // columnas
   for(const c of cols){
-    const x = SX(c.eje), y = SY(0);
+    const x = FX(c.eje), y = SY(0);
     if(c.tipo==="trafo"){
       pieza(doc, kit, "trafo", x, y, { s, vars:c.vars });
-      const x0 = SX(c.ramasX[0]), x1 = SX(c.ramasX[c.ramasX.length-1]);
+      const x0 = FX(c.ramasX[0]), x1 = FX(c.ramasX[c.ramasX.length-1]);
       doc.line(Math.min(x0, x), SY(SUB), Math.max(x1, x), SY(SUB), "E-FZA-BT-SEC");
       pieza(doc, kit, "trafo_txt", x0, SY(SUB), { s, vars:{ sb:`L,N ${g.ctrlVoltage} ${g.ctrlTipo==="Vdc" ? "Vdc" : "Vac"}, 1F, ${g.freq}Hz` } });
-      c.ramas.forEach((r,i)=>{ pieza(doc, kit, r.tipo, SX(c.ramasX[i]), SY(SUB), { s, vars:r.vars }); descripcion(doc, SX(c.ramasX[i]), SY(-271), [r.vars.desc], s, PASO_RAMA*f*s); });
+      c.ramas.forEach((r,i)=>{ pieza(doc, kit, r.tipo, FX(c.ramasX[i]), SY(SUB), { s, vars:r.vars }); descripcion(doc, FX(c.ramasX[i]), SY(-271), [r.vars.desc], s, PASO_RAMA*f*s); });
     } else {
       const om = (c.omitir||[]);
       pieza(doc, kit, c.tipo, x, y, { s, vars:c.vars, omitir: om.map(k=>OMITIR[k]) });
@@ -169,7 +199,7 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
   }
 
   // barra de tierra y pozo a tierra
-  const xT = Math.max(ejes[ejes.length-1] ?? EJE0, xRet);
+  const xT = Math.max(...cols.flatMap(c=>c.tipo==="trafo" ? [c.eje, ...c.ramasX] : [c.eje]), xRet ?? -Infinity, 40);
   pieza(doc, kit, "tierra", FX(20.8), SY(TIERRA), { s });
-  doc.line(FX(20.8), SY(TIERRA), SX(Math.max(xT, xRet===-Infinity ? xT : xRet)), SY(TIERRA), "E-TIERRA");
+  doc.line(FX(20.8), SY(TIERRA), FX(xT), SY(TIERRA), "E-TIERRA");
 }

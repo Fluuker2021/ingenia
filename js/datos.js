@@ -27,7 +27,7 @@ export function nuevoTablero(tipo, n){
   return t;
 }
 /* configuración de E/S de un tablero de control (valores por defecto = práctica del formato de referencia) */
-export const IO_DEF = () => ({ ioDiscreto:"120 Vac", vfdMando:"cableado", senalesTablero:true, repetidores:false, listarReservas:true, primerSlot:1, tbOffset:5, canales:{ AI:16, AO:8, DI:16, DO:16 }, tagLimpieza:"TCL-001" });
+export const IO_DEF = () => ({ ioDiscreto:"120 Vac", vfdMando:"cableado", senalesTablero:true, repetidores:false, listarReservas:true, primerSlot:1, tbOffset:5, canales:{ AI:8, AO:8, DI:16, DO:16 }, tagLimpieza:"TCL-001" });
 
 const conDef = (o, def) => { o = o || {}; for(const k in def) if(!(k in o)) o[k] = def[k]; return o; };
 /* ---------------- estructura base (con migración de proyectos anteriores) ---------------- */

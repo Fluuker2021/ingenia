@@ -90,3 +90,13 @@ MULTIFILAR = {
     },
 }
 PIEZAS['multifilar'] = MULTIFILAR
+
+# ---------------------------------------------------------------------------------------------------------
+# Kits de los planos del tablero de control y de instrumentación: cada uno en su propio archivo
+# (piezas_<kit>.py con la variable PIEZAS_KIT) para que se puedan mantener por separado.
+import importlib as _il
+for _mod, _nombre in (('piezas_ufc', 'unifilar_control'), ('piezas_mfc', 'multifilar_control'), ('piezas_pid', 'pid'), ('piezas_arq', 'arquitectura'), ('piezas_lazo', 'lazo')):
+    try:
+        PIEZAS[_nombre] = _il.import_module(_mod).PIEZAS_KIT
+    except ModuleNotFoundError:
+        pass

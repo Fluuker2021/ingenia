@@ -229,7 +229,7 @@ const ED = {
       ${campo("Tensión de entradas digitales", sel("ioDiscreto", t.ioDiscreto, ["120 Vac","24 Vdc"]))}
       ${campo("Mando de variadores", sel("vfdMando", t.vfdMando, [["cableado","Cableado (listo, marcha, falla, arranque, reset y referencia 4-20 mA)"],["red","Por red (Ethernet/IP)"]]))}
       ${campo("TAG del controlador de limpieza", inp("tagLimpieza", t.tagLimpieza))}
-      ${campo("Primer slot de E/S", inp("primerSlot", t.primerSlot, "number"), "Slot 0 = CPU")}
+      ${campo("Primer slot de E/S", inp("primerSlot", t.primerSlot, "number"), `CPU en el slot ${fam.slotCpu}${fam.slotPs!=null ? ", fuente en el "+fam.slotPs : ""}${fam.id==="m580" ? " (doble ancho: 0-1)" : ""}`)}
       ${campo("Desplazamiento de borneras", inp("tbOffset", t.tbOffset, "number"), "Bornera TB = slot + desplazamiento")}
       ${campo("Canales por módulo AI / AO / DI / DO", ["AI","AO","DI","DO"].map(k=>`<input type="number" data-can="${k}" value="${esc((t.canales||{})[k]??"")}" style="width:58px">`).join(" "))}
     </div>

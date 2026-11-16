@@ -132,6 +132,7 @@ export function equiposControl(p, t){
     rack: fam.rack ? { tag:"RK1", tipo:"bastidor", modelo:fam.rack, desc:"Bastidor del PLC", info:infoModulo(fam.rack) } : null, familiaId:fam.id, reglas:fam.reglas };
   // orden físico en el riel / bastidor (izquierda → derecha), para el mecánico, la arquitectura y el multifilar
   plc.orden = [plc.ps, plc.cpu, ...modulos.slice().sort((a, b)=>a.slot-b.slot), plc.tapa].filter(Boolean);
+  if(modulos.length && Math.min(...modulos.map(m=>+m.slot)) < (fam.primerSlot||1)) plc.aviso = `En ${fam.nombre} los módulos de E/S empiezan en el slot ${fam.primerSlot} (CPU en el slot ${fam.slotCpu||0}): cambia el «Primer slot de E/S» del tablero.`;
   if(plc.fpd){ const i = plc.orden.findIndex(x=>x.tipo==="DI"); plc.orden.splice(i<0 ? plc.orden.length-(plc.tapa ? 1 : 0) : i, 0, plc.fpd); }
   // limpieza: señales del controlador auxiliar (sin slot del PLC)
   const limpieza = t.controladorLimpieza ? { tag:t.tagLimpieza||"TCL-001", tipo:"controlador", desc:"Controlador de limpieza secuencial (pulsos de aire)", senales: io.filter(f=>f.tablero===(t.tagLimpieza||"TCL-001")) } : null;

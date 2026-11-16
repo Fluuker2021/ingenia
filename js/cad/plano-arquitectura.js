@@ -119,7 +119,7 @@ function dibujarHoja(doc, kit, ox, p, pl, filas, ih){
     if(hmi){ rot(hmi, ["PANTALLA HMI", red.hmi.tag]); doc.text(hmi.cx, hmi.y0 - 2.5, 2.1, ip(20), "G-TEX", { halign:1, valign:3 }); }
     rot(plc, ["CONTROLADOR (PLC)", eq.plc.cpu.modelo || ""].filter(Boolean));
     // módulos del rack (cambian con el listado I/O): CPU y cada módulo con su slot
-    const mods = ["CPU (0)", ...eq.plc.modulos.map(m=>`${m.tag} (${m.slot})`)].join(" · ");
+    const mods = [eq.plc.ps && eq.plc.ps.slot!=="PS" ? `PM (${eq.plc.ps.slot})` : "", `CPU (${eq.plc.cpu.slot||0})`, ...eq.plc.modulos.map(m=>`${m.tag} (${m.slot})`)].filter(Boolean).join(" · ");
     envolver(mods, 44).forEach((ln, i)=>doc.text(plc.cx, plc.y0 - 3 - i*3.6, 2, ln, "G-TEX", { halign:1, valign:3 }));
     doc.text(plc.x0 - 2, plc.y0 + 4, 2.1, ip(11), "G-TEX", { halign:2 });
     if(lim) textoCentrado(doc, lim.cx, lim.y0 - 2.5, envolver("CONTROLADOR DE LIMPIEZA "+eq.limpieza.tag, 16), 2.3);

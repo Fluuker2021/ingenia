@@ -113,7 +113,10 @@ function tableroControl(P, p, eq){
   const reL = eq.limpieza ? new RegExp(eq.limpieza.tag.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")+"|limpieza", "i") : null;
   const deLimpieza = s => !!reL && s.origen!=="reserva" && reL.test(`${s.alimentacion||""} ${s.descripcion||""}`);
   const bornes = s => String(s.terminales||"").split("/").map(x=>x.trim().replace(/^.*:/,""));
-  const ctx = { P, p, eq, t, v, pre, K, nombre, est, aux, c24, c120, c220, cbDI, cbDO, cbL, bornera, modBorne, inst, ps, cb3, hmi, sw, rut, peDev, peDe, c24De, fA, fB, destino, deLimpieza, bornes };
+  // CompactLogix 5380 se dibuja con las piezas 5069 del plano de referencia; las demás familias con el símbolo genérico
+  // del módulo y los bornes del fabricante (js/control/plc-modulos.js)
+  const gen = !!eq.plc.familiaId && eq.plc.familiaId!=="ab5380";
+  const ctx = { P, p, eq, t, v, pre, K, nombre, est, aux, c24, c120, c220, cbDI, cbDO, cbL, bornera, modBorne, inst, ps, cb3, hmi, sw, rut, peDev, peDe, c24De, fA, fB, destino, deLimpieza, bornes, gen };
   hAcometidas(ctx); hDistribucion(ctx); if(c220.length) hServicios(ctx); hPLC(ctx); if(c24.length) hVdc(ctx);
   for(const m of eq.plc.modulos.filter(m=>m.tipo==="AI")) hAI(ctx, m);
   for(const m of eq.plc.modulos.filter(m=>m.tipo==="AO")) hAO(ctx, m);
@@ -323,6 +326,7 @@ function hServicios(c){
 
 /* ---------- 4) PLC: CPU, módulos por slot, distribuidor de potencial y tapa ---------- */
 function hPLC(c){
+  if(c.gen) return hPLCGen(c);
   const { P, eq, nombre } = c, plc = eq.plc;
   const W = { p_cpu:200, p_ana:44, p_rele:76, p_fpd:45, p_dig:44, p_tap:32 };
   const DESC = { AI:"MÓDULO\nENTRADAS\nANALÓGICAS", AO:"MÓDULO\nSALIDAS\nANALÓGICAS", DI:"MÓDULO\nENTRADAS\nDIGITALES", DO:"MÓDULO\nSALIDAS RELÉ" };
@@ -390,60 +394,86 @@ function hVdc(c){
   });
 }
 
-/* ---------- 6) entradas analógicas (8 canales por hoja) ---------- */
+/* ---------- 6) entradas analógicas (8 canales por hoja) ----------
+   Lazo de 2 hilos alimentado desde el tablero: un solo fusible por transmisor, el fusible-borne XF2.k (0,5 A) en la pata de
+   +24 Vdc, desde la barra «Alimentación a las entradas analógicas»; el retorno 4-20 mA entra al borne (+) del módulo y el (−)
+   va a 0 V. Instrumento de 4 hilos: +24 Vdc desde su propio fusible de XF1 (flecha). Reservas y señales retransmitidas: sin
+   fusible. Bornes del módulo según el fabricante (terminalesCanal). */
 function hAI(c, m){
-  const { P, K, nombre, c24, c24De, fA, fB, inst, deLimpieza, bornes } = c;
-  const cAI = c24De(/entradas anal/i), partes = trozos(m.senales, 8);
+  const { P, K, nombre, c24, c24De, fA, fB, inst, deLimpieza, bornes, gen } = c;
+  const cAI = c24De(/entradas anal/i), partes = trozos(m.senales, 8), info = m.info || {};
+  const alimMod = gen ? ((info.bornes||{}).alim||[]).slice(0, 2) : [];          // L+ / M del módulo (p. ej. S7-1500: 41 / 44)
+  const SIN_FUS = [[-2.5, 484, 2.5, 493.5]], SIN_24 = [[-5, 336, 14, 493.6]];
+  const puenteFus = x => P.linea(x, 484.85, x, 492.85, ["EPLAN300"]);
   let nClp = 0;
   partes.forEach((sen, i)=>{
     P.hoja(`${nombre} - ENTRADAS ANALÓGICAS ${m.tag} (SLOT ${m.slot})${partes.length>1 ? ` (${i+1} DE ${partes.length})` : ""}`, 8);
-    const n = sen.length, X0 = (806 - (n*80+132))/2 + 56, xs = sen.map((_, k)=>X0 + 80*k);
+    const n = sen.length, X0 = (806 - (n*80+132))/2 + 56, xs = sen.map((_, k)=>X0 + 80*k), ultima = i===partes.length-1;
     P.pz("ai_div", 0);
     const a1 = fA(cAI), a2 = fB(cAI);
     P.pz("ai_bus", X0, { vars:{ a1, a2 } });
     flecha(P, K, a1, "e", X0-22, 338, X0-22, 338.4, "izq"); flecha(P, K, a2, "e", X0-22, 314, X0-22, 314.4, "izq");
-    P.pz("ai_xf", X0, { vars:{ tb:m.tb, tbs:"4mm2", tbm1:"UT 4-L/", tbm2:"HESI (5X20)", fv:"0,5 A" } });
-    P.pz("ai_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
+    // leyenda de la bornera a la izquierda: los fusibles-borne XF2 (si la hoja tiene lazos de 2 hilos) o la bornera del módulo
+    P.pz("ai_xf", X0, { vars: sen.some(s=>s.fusible) ? { tb:"XF2", tbs:"4mm2", tbm1:"UT 4-HESI", tbm2:"(5X20)", fv:"0,5 A" } : { tb:m.tb, tbs:"4mm2", tbm1:"UT 4", tbm2:"", fv:"" } });
+    if(gen) cabModulo(P, X0-3, 259.16, m); else P.pz("ai_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
     let ult24 = X0, ult0 = X0+56;
     sen.forEach((s, k)=>{
-      const x = xs[k], [bA, bB] = bornes(s), ch = s.ch;
-      const base = { bA, bB, t1:String(2*ch), t2:String(2*ch+1), in1:`IN${ch}+`, in2:`IN${ch}-`, desc:s.origen==="reserva" ? "Reserva" : s.descripcion, fv: k ? "0,5 A" : "" };
+      const x = xs[k], [bA, bB] = bornes(s), b = s.bornes || {}, p1 = pinTxt(b, "pos", `${s.ch}`), p2 = pinTxt(b, "neg", `${s.ch}`);
+      const base = { bA: s.fusible ? s.fusible.tag : `${m.tb}.${bA}`, bB:`${m.tb}.${bB}`, t1:p1.n, t2:p2.n, in1:p1.nom, in2:p2.nom,
+        desc:s.origen==="reserva" ? "Reserva" : s.descripcion, fv: s.fusible && k ? "0,5 A" : "" };
       ult0 = x+56;
       if(deLimpieza(s)){
-        // señal retransmitida por el controlador de limpieza (llega por flechas desde su hoja)
+        // señal retransmitida por el controlador de limpieza (llega por flechas desde su hoja), sin fusible
         const b = { a1:"CLP.+", a2:"CLP.-", a3:`SHIELD.${++nClp}` };
-        P.pz("ai_clp", x, { lineas:{ desc:30 }, vars:Object.assign(base, b) });
+        P.pz("ai_clp", x, { lineas:{ desc:30 }, vars:Object.assign(base, b, { fv:"" }), omitir:SIN_FUS }); puenteFus(x);
         flecha(P, K, b.a1, "e", x, 650, x+0.45, 646.85, "arriba"); flecha(P, K, b.a2, "e", x+24, 650, x+24.45, 646.85, "arriba"); flecha(P, K, b.a3, "e", x-22, 650, x-21.55, 646.85, "arriba");
         return;
       }
-      ult24 = x;
-      if(s.origen==="reserva"){ P.pz("ai_tx", x, { lineas:{ desc:30 }, vars:base, omitir:[[-60, 498, 70, 800]] }); return; }
+      // reserva: bornes listos, sin fusible ni +24 Vdc (se agrega el XF2 al usarla)
+      if(s.origen==="reserva"){ P.pz("ai_tx", x, { lineas:{ desc:30 }, vars:base, omitir:[[-60, 498, 70, 800]].concat(SIN_24) }); return; }
       const ins = inst.get(s.tag), tx = `${up(ins ? ins.descripcion : s.descripcion)}\n${s.senal||s.tag}`;
-      P.pz("ai_tx", x, { lineas:{ desc:30, tx:32 }, vars:Object.assign(base, { tx }) });
-      // fusible propio del transmisor en XF1 (si el listado de circuitos lo tiene): su flecha de 24 Vdc apunta a este canal
-      const cT = c24.find(q=>!q.reserva && s.tag && String(q.descripcion||"").includes(s.tag));
-      if(cT){ P.marca(K(fA(cT)+"<"), x, 660); P.marca(K(fB(cT)+"<"), x+24, 660); }
+      const cT = !s.fusible && s.alimentacionDe ? c24.find(q=>q.tag===s.alimentacionDe) : null;
+      if(cT){
+        // 4 hilos: +24 Vdc desde su fusible propio de XF1 (flecha), sin fusible en este canal
+        P.pz("ai_tx", x, { lineas:{ desc:30, tx:32 }, vars:Object.assign(base, { tx }), omitir:SIN_24 });
+        P.linea(x, 492.85, x, 446, BUS.v24); flechaV(P, x, 446);
+        P.texto(x+0.45, 439.5, 4.52, fA(cT), { capa:"EPLAN403", c:5, rot:90, ha:2, va:2 }); flecha(P, K, fA(cT), "e", x, 440, x+0.45, 439.5, "abajo");
+        P.texto(x-3, 452, 2.35, `0 V: ${fB(cT)}`, { c:7, ha:2, va:2 }); P.marca(K(fB(cT)+"<"), x+24, 660);
+        return;
+      }
+      ult24 = x;
+      P.pz("ai_tx", x, { lineas:{ desc:30, tx:32 }, vars:Object.assign(base, { tx }), omitir: s.fusible ? [] : SIN_FUS });
+      if(!s.fusible) puenteFus(x);
     });
+    // alimentación del módulo (L+ / M del fabricante) a la derecha, desde las mismas barras de 24 Vdc
+    const xsh = X0 + n*80;
+    if(alimMod.length && ultima){
+      const pn = alimMod.map(a=>a[0]===a[1] ? [a[0], ""] : [a[0], a[1]]);
+      P.pz("ai_sh", xsh, { texto: textos([[27, 257.85, pn[0][0]], [51, 257.85, (pn[1]||[""])[0]], [27, 265.85, pn[0][1]], [51, 265.85, (pn[1]||["",""])[1]]]) });
+      P.linea(xsh+24, 264.85, xsh+24, 338.85, BUS.v24); P.linea(xsh+48, 264.85, xsh+48, 314.85, BUS.v0); ult24 = xsh+24; ult0 = xsh+48;
+      P.texto(xsh+30, 280, 2.35, "ALIMENTACIÓN DEL MÓDULO", { c:7, ha:0, va:2 });
+    } else if(ultima && !gen) P.pz("ai_sh", xsh, { texto: textos([[27, 257.85, String(2*m.canales)], [51, 257.85, String(2*m.canales+1)]]) });
     P.linea(X0-16, 338.85, ult24, 338.85, BUS.v24); P.linea(X0-16, 314.85, ult0, 314.85, BUS.v0);
-    if(i===partes.length-1) P.pz("ai_sh", X0 + n*80, { texto: textos([[27, 257.85, String(2*m.canales)], [51, 257.85, String(2*m.canales+1)]]) });
+    if(gen) pieModulo(P, X0, 205, m, xsh + (alimMod.length && ultima ? 60 : 4));
   });
 }
 
 /* ---------- 7) salidas analógicas ---------- */
 function hAO(c, m){
-  const { P, K, nombre, c24De, fA, fB, destino, bornes } = c;
+  const { P, K, nombre, c24De, fA, fB, destino, bornes, gen } = c;
   const partes = trozos(m.senales, 8), cAO = c24De(/salidas anal/i);
   partes.forEach((sen, i)=>{
     P.hoja(`${nombre} - SALIDAS ANALÓGICAS ${m.tag} (SLOT ${m.slot})${partes.length>1 ? ` (${i+1} DE ${partes.length})` : ""}`);
     const n = sen.length, X0 = (806 - (n*80+114))/2 + 62, xs = sen.map((_, k)=>X0 + 80*k);
     P.pz("ao_div", 0);
-    P.pz("ao_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
+    if(gen) cabModulo(P, X0-25, 658.85, m); else P.pz("ao_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
     P.pz("ao_tb", X0, { vars:{ tb:m.tb, tbs:"4mm2", tbm:c.modBorne(m.tb, 0) } });
     if(cAO && !i){ P.marca(K(fA(cAO)+"<"), X0-36, 658); P.marca(K(fB(cAO)+"<"), X0-36, 658); }
     let libre = true, primero = true;
     sen.forEach((s, k)=>{
       const x = xs[k], [bA, bB] = bornes(s), ch = s.ch;
-      const base = { bA, bB, t1:String(2*ch), t2:String(2*ch+1), o1:`OUT${ch}+`, o2:`OUT${ch}-`, desc:s.origen==="reserva" ? "Reserva" : s.descripcion };
+      const b = s.bornes || {}, p1 = pinTxt(b, "pos", String(2*ch)), p2 = pinTxt(b, "neg", String(2*ch+1));
+      const base = { bA, bB, t1:p1.n, t2:p2.n, o1:p1.nom || `OUT${ch}+`, o2:p2.nom || (p2.n ? "" : `OUT${ch}-`), desc:s.origen==="reserva" ? "Reserva" : s.descripcion };
       if(s.origen==="reserva") P.pz("ao_res", x, { lineas:{ desc:30 }, vars:base });
       else {
         if(x > 120 && x < 330) libre = false;
@@ -455,14 +485,15 @@ function hAO(c, m){
     });
     const xsh = X0 + n*80;
     P.linea(X0+62, 512.85, xsh, 512.85, BUS.sh);
-    P.pz("ao_sh", xsh, { texto: textos([[3, 623.2, String(2*m.canales)], [27, 623.2, String(2*m.canales+1)]]) });
+    if(gen){ P.linea(xsh, 512.85, xsh+10, 512.85, BUS.sh); P.textoN(xsh+12, 514, 2.35, `PANTALLAS: ${up((m.info||{}).pantalla || "barra de tierra del tablero")}`, Math.max(12, Math.floor((800 - xsh - 12)/1.7)), { c:7 }); pieModulo(P, X0-60, 184, m, X0+n*80); }
+    else P.pz("ao_sh", xsh, { texto: textos([[3, 623.2, String(2*m.canales)], [27, 623.2, String(2*m.canales+1)]]) });
     if(libre) P.pz("leyenda", X0+80, { dy:34 });
   });
 }
 
 /* ---------- 8) salidas digitales y bobinas de los relés de interfaz ---------- */
 function hDO(c){
-  const { P, K, eq, nombre, cbDO } = c;
+  const { P, K, eq, nombre, cbDO, gen } = c;
   const hojas = [];
   for(const m of eq.plc.modulos.filter(m=>m.tipo==="DO")) trozos(m.senales, 8).forEach((sen, j, all)=>hojas.push({ m, sen, j, nj:all.length }));
   const cb = cbDO ? cbDO.tag : "";
@@ -471,14 +502,15 @@ function hDO(c){
     const { m, sen, j } = h, sigue = i < hojas.length-1;
     P.hoja(`${nombre} - SALIDAS DIGITALES ${m.tag} (SLOT ${m.slot})${h.nj>1 ? ` (${j+1} DE ${h.nj})` : ""}`, 18);
     const n = sen.length, X0 = (806 - ((n-1)*80+231))/2 + 104, xs = sen.map((_, k)=>X0 + 80*k), xl = xs[n-1];
-    P.pz("do_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
+    if(gen) cabModulo(P, X0-42, 658.54, m); else P.pz("do_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
     // retorno común de las bobinas (N) con sus flechas de entrada y salida
     const kI = i ? `do:${i}:N` : izq, kC = i ? `do:${i}:L` : `${cb}.2`;
     P.pz("do_bus_izq", X0, { vars:{ a:izq, v:"120 VAC" } });
     P.marca(K(kI+"<"), X0-70, 216); P.refEt(X0-70, 216.4, izq, K(kI+">"), "izq");
     sen.forEach((s, k)=>{
       const x = xs[k], r = eq.reles.find(r=>r.modulo===m.tag && r.ch===s.ch) || {}, cr = r.tag||"";
-      P.pz("do_ch", x, { lineas:{ desc:30 }, vars:{ desc:s.origen==="reserva" ? "Reserva" : s.descripcion, t:String(s.ch + j), out:`OUT${s.ch}`, cr,
+      const pt = pinTxt(s.bornes || {}, "pos", String(s.ch + j));
+      P.pz("do_ch", x, { lineas:{ desc:30 }, vars:{ desc:s.origen==="reserva" ? "Reserva" : s.descripcion, t:pt.n, out:pt.nom || (gen ? "" : `OUT${s.ch}`), cr,
         crc:(String(r.modelo||"").match(/\d*NA\/?N?C?/)||["1NA"])[0], crm:r.bobina ? `BOBINA ${up(r.bobina)}` : "" } });
       P.marca(K(cr+"@b"), x, 306);
       const rf = P.ref(K(cr+"@c")); if(rf) P.texto(x+14.48, 203.23, 3.25, "/"+rf, { capa:"EPLAN440", c:73, ha:0, va:2 });
@@ -492,7 +524,12 @@ function hDO(c){
     izq = der;
     // común de los contactos (L) del grupo de 8 salidas
     const xc = xl + 64;
-    P.pz("do_com", xc, { vars:{ a:`${cb}.2`, t:String(8*(j+1)+j), com:`COM${j}`, v:"120 VAC" }, omitir: sigue ? [] : [[4, 525, 90, 550]] });
+    // común del grupo según el fabricante (varios comunes / raíces de la hoja: puenteados entre sí)
+    const cms = [...new Map(sen.map(s=>{ const p = pinTxt(s.bornes || {}, "com", ""); return [p.n + "|" + p.nom, p]; })).values()].filter(p=>p.n || p.nom);
+    const rango = a => a.length > 2 ? `${a[0]}…${a[a.length-1]}` : a.join("/");
+    const comT = gen && cms.length ? { t: rango(cms.map(p=>p.n).filter(Boolean)) || " ", com: rango(cms.map(p=>p.nom).filter(Boolean)) } : { t:String(8*(j+1)+j), com:`COM${j}` };
+    P.pz("do_com", xc, { vars:{ a:`${cb}.2`, t:comT.t, com:comT.com, v:"120 VAC" }, omitir: sigue ? [] : [[4, 525, 90, 550]] });
+    if(gen) pieModulo(P, X0-40, 196, m, xl+40, cms.length > 1 ? [`COMUNES ${cms.map(p=>p.nom||p.n).join(", ")} PUENTEADOS EN EL CONECTOR DEL MÓDULO.`] : []);
     P.marca(K(kC+"<"), xc-26, 536); P.refEt(xc-26, 536.4, `${cb}.2`, K(kC+">"), "izq");
     if(sigue){ P.marca(K(`do:${i+1}:L>`), xc+30, 536); P.refEt(xc+30, 536.4, `${cb}.2`, K(`do:${i+1}:L<`), "der"); }
   });
@@ -521,7 +558,7 @@ function hContactos(c){
 
 /* ---------- 10) entradas digitales (8 canales por hoja, alimentación común desde el distribuidor de potencial) ---------- */
 function hDI(c){
-  const { P, K, eq, nombre, cbDI, inst, destino, deLimpieza, bornes } = c;
+  const { P, K, eq, nombre, cbDI, inst, destino, deLimpieza, bornes, gen } = c;
   const hojas = [];
   for(const m of eq.plc.modulos.filter(m=>m.tipo==="DI")) trozos(m.senales, 8).forEach((sen, j, all)=>hojas.push({ m, sen, j, nj:all.length }));
   const fpd = eq.plc.fpd, cb = cbDI ? cbDI.tag : "";
@@ -545,10 +582,11 @@ function hDI(c){
     const xs = sen.map((_, k)=>X0 + 80*k), xl = xs[n-1];
     P.pz("di_xfb", X0, { vars:{ tb:m.tb, tbm1:"UT 4-L/", tbm2:"HESI (5X20)", tbs:"4mm2" } });
     P.pz("di_xfa", X0, { vars:{ tb:m.tb, tbs:"4mm2", tbm1:"UT 4-L/", tbm2:"HESI (5X20)", fv:"0,5 A" } });
-    P.pz("di_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
+    if(gen) cabModulo(P, X0-42, 256.85, m); else P.pz("di_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
     sen.forEach((s, k)=>{
       const x = xs[k], [b1, b2] = bornes(s);
-      const base = { bB:b1, bA:b2, t:String(s.ch+1), inn:`In-${s.ch}`, fv: k ? "0,5 A" : "", desc:s.origen==="reserva" ? "Reserva" : s.descripcion };
+      const pt = pinTxt(s.bornes || {}, "pos", String(s.ch+1));
+      const base = { bB:b1, bA:b2, t:pt.n, inn: gen ? pt.nom : `In-${s.ch}`, fv: k ? "0,5 A" : "", desc:s.origen==="reserva" ? "Reserva" : s.descripcion };
       if(deLimpieza(s)){
         // estado del controlador de limpieza: el contacto está en su tarjeta (hoja del controlador)
         const a1 = `${m.tb}.${b1}`, a2 = `${m.tb}.${b2}`;
@@ -560,6 +598,12 @@ function hDI(c){
       P.pz("di_ch", x, { lineas:{ desc:30, dest:28 }, vars:Object.assign(base, { dest }) });
     });
     P.linea(xIni, 664.85, sigue ? xl+26 : xl, 664.85, BUS.di);
+    if(gen){
+      // común de las entradas según el fabricante (neutro o 0 V) a la derecha del módulo, con su flecha
+      const cms = [...new Map(sen.map(s=>{ const p = pinTxt(s.bornes || {}, "com", ""); return [p.n + "|" + p.nom, p]; })).values()].filter(p=>p.n || p.nom);
+      const ret = /24/.test(eq.tablero.ioDiscreto||"") ? "0 V" : `N (${cb}.4)`;
+      pieModulo(P, X0-40, 204, m, xl+40, cms.length ? [`COMÚN DE LAS ENTRADAS: ${cms.map(p=>p.n && p.nom ? `${p.nom} (borne ${p.n})` : p.nom || p.n).join(", ")} → ${ret}.`] : []);
+    }
     const der = `${m.tb}.${bornes(sen[n-1])[0]}`;
     if(sigue){
       P.pz("di_bus_der", xl, { vars:{ a:der, v:"120 VAC" } });
@@ -617,3 +661,82 @@ function hLimpieza(c){
     const xp = x + 8*sv; P.linea(xp, yb, xp, yN+1.5, BUS.campo); P.arco(xp, yN, 1.5, -90, 90, BUS.campo); P.linea(xp, yN-1.5, xp, yPE, BUS.campo);
   }
 }
+
+/* ======================= controladores con símbolo genérico (S7-1500, S7-1200, M580 / M340, CompactLogix 5370) =======================
+   Bornes, alimentación, comunes y conector de cada módulo desde js/control/plc-modulos.js; «*» = numeración por confirmar. */
+const MODB = ["EPLAN102", 140];
+/* número y nombre de un borne de canal (k = pos | neg | com); sin número se escribe el nombre */
+function pinTxt(b, k, def=""){
+  const n = (b.pin||{})[k] || "", nom = b[k] || "";
+  if(!n && !nom) return { n:def, nom:"" };
+  if(!n) return { n:nom, nom:"" };
+  return { n: n + (b.verificado===false ? "*" : ""), nom: n===nom ? "" : nom };
+}
+function rect(P, x1, y1, x2, y2, est=MODB){ P.linea(x1, y1, x2, y1, est); P.linea(x2, y1, x2, y2, est); P.linea(x2, y2, x1, y2, est); P.linea(x1, y2, x1, y1, est); }
+/* punta de flecha de entrada (hacia arriba) al final de una línea vertical */
+function flechaV(P, x, y){ const X = P.ox+DX+x, Y = DY+P.dy+y; P.doc.solid([[X-2, Y-5.5], [X+2, Y-5.5], [X, Y]], "EPLAN311", {}); P.linea(x, y, x, y-5.5, BUS.v24); }
+/* TAG, modelo, nombre y slot del módulo alineados a la derecha (terminan en x) */
+function cabModulo(P, x, y, m){
+  const i = m.info || {};
+  P.texto(x, y, 4.52, m.tag, { c:5, ha:2, va:1 });
+  P.texto(x, y-6, 3.25, m.modelo || "(SIN MODELO)", { c:1, ha:2, va:1 });
+  const nom = String(i.nombre||"").replace(/\s*\(.*\)\s*$/, ""), max = Math.max(8, Math.floor((x - 2)/1.7));
+  if(nom) P.texto(x, y-11, 2.35, nom.length > max ? nom.slice(0, max-1)+"…" : nom, { c:7, ha:2, va:1 });
+  P.texto(x, y-16, 3.25, `slot ${m.slot}`, { c:7, ha:2, va:1 });
+}
+/* notas del módulo bajo el plano: conector, alimentación, pantallas, comunes y aviso de verificación (antes del cajetín) */
+function pieModulo(P, x, y, m, xFin, extra=[]){
+  const i = m.info || {}, nInc = (m.senales||[]).some(s=>s.bornes && s.bornes.verificado===false);
+  const l = [`${m.tag} ${m.modelo || ""}${i.nombre ? " — "+i.nombre : ""}${i.conector ? ". CONECTOR: "+i.conector : ""}.`,
+    i.alimentacion && `ALIMENTACIÓN: ${i.alimentacion}.`, i.pantalla && `PANTALLAS: ${i.pantalla}.`, ...extra, m.nota,
+    nInc && `* NUMERACIÓN DE BORNES POR CONFIRMAR CON EL MANUAL DEL FABRICANTE${/^https?:/.test(i.fuente||"") ? "" : " ("+(i.fuente||"")+")"}.`].filter(Boolean);
+  const n = Math.max(40, Math.floor((Math.min(655, Math.max(xFin, x+300)) - x)/1.75));
+  P.textoN(x, y, 2.35, up(l.join("\n")), n, { c:7 });
+}
+
+/* ---------- 4b) bastidor del PLC con símbolo genérico: fuente, CPU, módulos y tapa con sus bornes ---------- */
+function hPLCGen(c){
+  const { P, eq, nombre } = c, plc = eq.plc;
+  P.hoja(`${nombre} - CONTROLADOR (PLC) Y MÓDULOS DE E/S`);
+  const DESC = { AI:"ENTRADAS ANALÓGICAS", AO:"SALIDAS ANALÓGICAS", DI:"ENTRADAS DIGITALES", DO:"SALIDAS DIGITALES", "fuente-plc":"FUENTE DEL PLC", cpu:"CPU", fpd:"DISTRIBUIDOR DE POTENCIAL", tapa:"TAPA TERMINADORA" };
+  const items = plc.orden.map(o=>{
+    const i = o.info || {}, tipo = o.tipo==="cpu" || o.tipo==="fuente-plc" || o.tipo==="tapa" || o.tipo==="fpd" ? o.tipo : o.tipo;
+    const filas = [];
+    for(const [n, nom, d] of ((i.bornes||{}).alim||[])) filas.push([n, nom, d]);
+    for(const [n, nom, d] of ((i.bornes||{}).com||[])) filas.push([n, nom, d]);
+    if(o.senales) o.senales.forEach(s=>{ const b = s.bornes || {}, a = pinTxt(b, "pos"), z = pinTxt(b, "neg");
+      filas.push([`CH${s.ch}`, [a.n && `${a.n}${a.nom ? " "+a.nom : ""}`, z.n && `${z.n}${z.nom ? " "+z.nom : ""}`].filter(Boolean).join(" / "), s.origen==="reserva" ? "reserva" : s.tag]); });
+    return { o, i, filas, w: o.tipo==="tapa" ? 24 : o.tipo==="cpu" ? 82 : 66, desc: DESC[o.tipo] || "" };
+  });
+  // ancho del bastidor ajustado a la lámina (se amplía si sobra espacio) y centrado en el alto útil junto con las notas
+  const tot = items.reduce((a, it)=>a+it.w, 0), s = Math.min(1.5, 760/tot), f = Math.max(0.8, Math.min(1.35, s)), rh = 4.2*f;
+  let x = (806 - tot*s)/2;
+  const h = 40 + Math.max(...items.map(it=>it.filas.length))*rh + 16, yTop = Math.min(640, 420 + (h + 50)/2);
+  for(const it of items){
+    const w = it.w*s, o = it.o, xc = x + w/2, ys = yTop - h;
+    rect(P, x, ys, x+w, yTop);
+    P.texto(xc, yTop+9, 4.52, o.tag, { c:5, ha:1, va:2 });
+    P.textoN(xc, yTop-2.5, 2.5, it.desc, Math.floor(w/1.9), { c:7, ha:1 });
+    P.texto(xc, yTop-12, 2.8*Math.min(1, s+0.2), o.modelo || "(SIN MODELO)", { c:1, ha:1, va:2 });
+    if(it.i.nombre && o.tipo!=="tapa") P.textoN(xc, yTop-15.5, 2.1, it.i.nombre, Math.floor(w/1.6), { c:7, ha:1 });
+    const sl = o.tipo==="tapa" || o.tipo==="fpd" ? "" : o.slot!=null && o.slot!=="" ? (o.slot==="PS" ? "SLOT PS" : `SLOT ${o.slot}`) : "";
+    if(sl){ rect(P, xc-11, yTop-30, xc+11, yTop-23.5); P.texto(xc, yTop-26.75, 2.8, sl, { c:5, ha:1, va:2 }); }
+    // bornes: alimentación / comunes y un renglón por canal (número y nombre del fabricante)
+    let y = yTop - 36;
+    for(const [n, nom, d] of it.filas){
+      P.texto(x+2, y, 1.9*f, String(n), { c:7, ha:0, va:2 });
+      P.texto(x+11*f, y, 1.9*f, `${nom===n ? "" : nom}${d && w > 50 ? "  "+d : ""}`.trim().slice(0, Math.floor((w-11*f-1)/(1.37*f))), { c:/^ch/i.test(n) ? 7 : 1, ha:0, va:2 });
+      y -= rh;
+    }
+    if(it.i.conector && it.i.conector!=="—" && o.tipo!=="tapa") P.textoN(xc, ys+11, 1.7*f, it.i.conector, Math.floor(w/(1.25*f)), { c:7, ha:1 });
+    x += w;
+  }
+  // bastidor (M580 / M340) bajo los módulos
+  if(plc.rack){ const x0 = (806 - tot*s)/2, yr = yTop - h - 8; rect(P, x0, yr, x0 + tot*s, yTop - h - 2); P.texto(x0 + 4, yr+3, 2.8, `${plc.rack.tag}  ${plc.rack.modelo}${(plc.rack.info||{}).nombre ? " — "+plc.rack.info.nombre : ""}`, { c:5, ha:0, va:2 }); }
+  const nInc = plc.orden.some(o=>(o.senales||[]).some(s=>s.bornes && s.bornes.verificado===false) || (o.info && o.info.verificado===false));
+  const notas = ["NOTAS:", `1. ${up(eq.familia.nombre)}: ${up(plc.reglas || "")}`,
+    `2. BORNES DE CADA MÓDULO SEGÚN LA HOJA DE DATOS / MANUAL DEL FABRICANTE (BASE DE CONTROLADORES DE INGENIA).${nInc ? " LOS MARCADOS CON * SE DEBEN CONFIRMAR CON EL MANUAL ANTES DE CONSTRUIR." : ""}`,
+    ...[...new Set(plc.modulos.filter(m=>m.nota).map(m=>m.nota).concat(plc.aviso ? [plc.aviso] : []))].map((n, k)=>`${3+k}. ${up(n)}`)];
+  P.textoN((806 - tot*s)/2, yTop - h - (plc.rack ? 16 : 8), 3, notas.join("\n"), Math.floor(Math.min(620, tot*s)/2.2), { c:7 });
+}
+

@@ -6,6 +6,7 @@
    balance térmico del gabinete.
    Pensada para crecer: cada entrada es independiente y se puede reemplazar por datos de un servidor del
    fabricante (ETIM / BMEcat / catálogos EPLAN) sin cambiar el motor de arreglo. */
+import { infoModulo } from "../control/plc-modulos.js";
 
 export const FUENTES = {
   tmax:"ABB Tmax XT — catálogo técnico (dimensiones generales, ejecución fija, 3P)",
@@ -227,6 +228,9 @@ export const COLOR = {
 Object.assign(FUENTES, {
   ab5069:"Allen-Bradley CompactLogix 5380 / Compact 5000 I/O — 5069-TD002 y 5069-TD001 (H × W × D aprox.)",
   s71500:"Siemens SIMATIC S7-1500 — manual de sistema y manuales de producto (ancho 35 mm por módulo estándar)",
+  s71200:"Siemens SIMATIC S7-1200 — manual de sistema (CPU 1214C 110×100×75, SM 45×100×75 mm)",
+  x80:"Schneider Electric Modicon M580 / M340 con E/S X80 — fichas de producto (módulo de 32 mm, medidas referenciales)",
+  ab1769:"Allen-Bradley CompactLogix 5370 / Compact I/O 1769 — 1769-TD006 (módulo 35 × 118 × 87 mm)",
   ab1606:"Allen-Bradley 1606-XL / XLB / XLE — 1606-TD002 (fuentes de 24 Vdc, pérdidas a ~60 % de carga)",
   plcrsc:"Phoenix Contact PLC-RSC (relé REL-MR + base PLC-BSC, 6,2 mm) — catálogo",
   hesi:"Phoenix Contact UT 4-HESI (5x20) — borne portafusible con indicador LED",
@@ -250,9 +254,12 @@ const PLC_DIM = {
 };
 /* CPU, módulo de E/S, distribuidor de potencial o tapa terminadora del PLC (se montan en un mismo riel, por slot) */
 export function plcModulo(modelo, tipo){
-  const m = String(modelo||"").trim(), sie = /^6ES7/i.test(m);
-  const r = PLC_DIM[m] || (sie ? (tipo==="cpu" ? [70,147,129,6.3] : [35,147,129,3.5]) : tipo==="cpu" ? [80,147,105,7] : tipo==="tapa" ? [9,145,105,0] : [22,145,105,3]);
-  return { w:r[0], h:r[1], d:r[2], montaje:"din", perdidas:r[3], libreArriba:50, libreAbajo:50, fuente: sie ? FUENTES.s71500 : FUENTES.ab5069 };
+  const m = String(modelo||"").trim(), sie = /^6ES7/i.test(m), info = infoModulo(m);
+  // sin medida propia: la de la base de controladores (js/control/plc-modulos.js: S7-1200, S7-1500, X80, 1769…)
+  const r = PLC_DIM[m] || (info && info.dim ? [...info.dim, info.perdidas ?? (info.tipo==="CPU" ? 6 : info.tipo==="TAP" || info.tipo==="RACK" ? 0 : 3)] : null)
+    || (sie ? (tipo==="cpu" ? [70,147,129,6.3] : [35,147,129,3.5]) : tipo==="cpu" ? [80,147,105,7] : tipo==="tapa" ? [9,145,105,0] : [22,145,105,3]);
+  const fam = info ? info.familia : "", fuente = fam==="s71200" ? FUENTES.s71200 : sie ? FUENTES.s71500 : /^(m580|m340|x80)$/.test(fam) ? FUENTES.x80 : fam==="ab5370" ? FUENTES.ab1769 : FUENTES.ab5069;
+  return { w:r[0], h:r[1], d:r[2], montaje:"din", perdidas:r[3], libreArriba:50, libreAbajo:50, fuente };
 }
 const FUENTES_24 = { "1606-XLE60E":[32,124,102,5], "1606-XLE120E":[39,124,117,9], "1606-XLB240E":[60,124,117,18], "1606-XLE480EP":[82,124,127,30] };
 export function fuente24(modelo){ const r = FUENTES_24[String(modelo||"").trim()] || [60,124,117,18]; return { w:r[0], h:r[1], d:r[2], montaje:"din", perdidas:r[3], fuente:FUENTES.ab1606 }; }

@@ -75,7 +75,7 @@ export const MODULOS = {
 
   // ---------- Allen-Bradley CompactLogix 5370 / Compact I/O 1769 ----------
   "1769-L33ER": { marca:"Allen-Bradley", familia:"ab5370", tipo:"CPU", nombre:"CompactLogix 5370 L3", canales:0, alimentacion:"24 Vdc (fuente integrada, alimenta el bus 1769; máx. 16 módulos)",
-    conector:"Bornes +24 Vdc / COM / tierra", dim:[55,118,105], bornes:{ alim:[["+24","+24 VDC","alimentación"],["COM","COM","0 V"],["GND","⏚","tierra"]] }, red:"2 puertos EtherNet/IP",
+    conector:"Bornes +24 Vdc / COM / tierra", dim:[55,118,105], bornes:{ alim:[["+24","+24 VDC","alimentación"],["COM","COM","0 V"],["GND","GND","tierra"]] }, red:"2 puertos EtherNet/IP",
     verificado:false, notas:"Dimensiones aproximadas: verificar con 1769-UM021.", fuente:FUENTES_PLC.ab5370 },
   "1769-IF8": { marca:"Allen-Bradley", familia:"ab5370", tipo:"AI", nombre:"Entradas analógicas 8 canales", canales:8, senal:"±10 V, 0…10 V, 0…20 / 4…20 mA",
     alimentacion:"Desde el bus 1769 (5 V y 24 V)", conector:"Bornera extraíble del módulo", dim:[35,118,87], bornes:{ com:[["","ANLG Com","común analógico"]] },
@@ -148,16 +148,16 @@ export const MODULOS = {
 
   // ---------- Siemens SIMATIC S7-1200 (bornes extraíbles; nombres impresos en el módulo) ----------
   ...Object.fromEntries([["6ES7 214-1AG40-0XB0","CPU 1214C DC/DC/DC",110,"24 Vdc"],["6ES7 214-1BG40-0XB0","CPU 1214C AC/DC/Rly",110,"120/230 Vac"],["6ES7 215-1AG40-0XB0","CPU 1215C DC/DC/DC",130,"24 Vdc"],["6ES7 215-1BG40-0XB0","CPU 1215C AC/DC/Rly",130,"120/230 Vac"]]
-    .map(([m, n, w, v])=>[m, { marca:"Siemens", familia:"s71200", tipo:"CPU", nombre:n, canales:0, alimentacion:`${v} (${/ac/i.test(v) ? "L1 / N / ⏚" : "L+ / M / ⏚"}); salida de 24 Vdc para sensores (L+ / M, 400 mA)`,
+    .map(([m, n, w, v])=>[m, { marca:"Siemens", familia:"s71200", tipo:"CPU", nombre:n, canales:0, alimentacion:`${v} (${/ac/i.test(v) ? "L1 / N / PE" : "L+ / M / tierra funcional"}); salida de 24 Vdc para sensores (L+ / M, 400 mA)`,
       conector:"Bornes extraíbles incluidos", dim:[w,100,75], red:"PROFINET", e:"14 DI 24 Vdc, 10 DQ, 2 AI 0…10 V integradas",
-      bornes:{ alim: /ac/i.test(v) ? [["L1","L1","fase"],["N","N","neutro"],["⏚","⏚","tierra"]] : [["L+","L+","+24 Vdc"],["M","M","0 V"],["⏚","⏚","tierra"]] }, verificado:true, notas:"Máximo 8 módulos de señales (SM) a la derecha.", fuente:SIE(m) }])),
+      bornes:{ alim: /ac/i.test(v) ? [["L1","L1","fase"],["N","N","neutro"],["PE","PE","tierra"]] : [["L+","L+","+24 Vdc"],["M","M","0 V"],["FE","FE","tierra funcional"]] }, verificado:true, notas:"Máximo 8 módulos de señales (SM) a la derecha.", fuente:SIE(m) }])),
   "6ES7 231-4HF32-0XB0": { marca:"Siemens", familia:"s71200", tipo:"AI", nombre:"SM 1231 AI 8x13 bit", canales:8, senal:"±10 V, ±5 V, ±2,5 V, 0…20 / 4…20 mA",
-    alimentacion:"24 Vdc en X10: L+ / M (⏚ tierra funcional)", conector:"4 bornes extraíbles (X10…X14)", dim:[45,100,75], perdidas:1.5,
-    bornes:{ alim:[["L+","L+","+24 Vdc"],["M","M","0 V"],["⏚","⏚","tierra funcional"]] },
+    alimentacion:"24 Vdc en X10: L+ / M (y tierra funcional)", conector:"4 bornes extraíbles (X10…X14)", dim:[45,100,75], perdidas:1.5,
+    bornes:{ alim:[["L+","L+","+24 Vdc"],["M","M","0 V"],["FE","FE","tierra funcional"]] },
     canal:(ch, cx)=>aiDif(`${ch}+`, `${ch}-`, `${ch}+`, `${ch}-`, "Pantalla a la barra de tierra", "", { notas: (cx==="2h" ? `Lazo alimentado desde el tablero: +24 Vdc → transmisor (+); transmisor (−) → ${ch}+; ${ch}− → M.` : `Transmisor de 4 hilos: salida (+) → ${ch}+; salida (−) → ${ch}−.`) + " Entradas sin uso: puentear n+ con n−." })(cx),
     verificado:true, notas:"Nombres de bornes impresos en el módulo (0+ / 0−…7+ / 7−).", fuente:SIE("6ES7231-4HF32-0XB0") },
   "6ES7 232-4HD32-0XB0": { marca:"Siemens", familia:"s71200", tipo:"AO", nombre:"SM 1232 AQ 4x14 bit", canales:4, senal:"±10 V, 0…20 / 4…20 mA",
-    alimentacion:"24 Vdc en X10: L+ / M", conector:"Bornes extraíbles", dim:[45,100,75], perdidas:1.5, bornes:{ alim:[["L+","L+","+24 Vdc"],["M","M","0 V"],["⏚","⏚","tierra funcional"]] },
+    alimentacion:"24 Vdc en X10: L+ / M", conector:"Bornes extraíbles", dim:[45,100,75], perdidas:1.5, bornes:{ alim:[["L+","L+","+24 Vdc"],["M","M","0 V"],["FE","FE","tierra funcional"]] },
     canal:(ch)=>R({ pos:String(ch), neg:`${ch}M`, sh:"Pantalla a la barra de tierra", pin:{ pos:String(ch), neg:`${ch}M` }, notas:"Carga entre n y nM." }), verificado:false, notas:"Nombres «n» / «nM» por confirmar con el manual del sistema S7-1200.", fuente:SIE("6ES7232-4HD32-0XB0") },
   "6ES7 221-1BH32-0XB0": { marca:"Siemens", familia:"s71200", tipo:"DI", nombre:"SM 1221 DI 16x24VDC", canales:16, senal:"24 Vdc (sink/source), 2 grupos de 8",
     alimentacion:"Común 1M (bornes a) y 2M (bornes b)", conector:"Bornes extraíbles", dim:[45,100,75], perdidas:2.5, bornes:{ com:[["1M","1M","común byte a"],["2M","2M","común byte b"]] },
@@ -173,10 +173,10 @@ export const MODULOS = {
     verificado:false, notas:"Grupos 1L (.0….3) y 2L (.4….7): confirmar con el manual del sistema S7-1200.", fuente:SIE("6ES7222-1HF32-0XB0") },
 
   // ---------- Schneider Electric Modicon M580 / M340 con E/S X80 (bornera de 20 polos BMX FTB 20•0) ----------
-  "BMXCPS3500": { marca:"Schneider Electric", familia:"m580", tipo:"PS", nombre:"Fuente BMX CPS 3500 (100…240 Vac, 36 W)", canales:0, alimentacion:"100…240 Vac (L, N, ⏚); relé de alarma",
-    conector:"Bornera de la fuente", dim:[64,100,93], perdidas:7, bornes:{ alim:[["L","L","fase"],["N","N","neutro"],["⏚","⏚","tierra"]] }, verificado:false, notas:"Va en el slot de fuente (izquierda del bastidor).", fuente:SE("BMXCPS3500") },
-  "BMXCPS2000": { marca:"Schneider Electric", familia:"m340", tipo:"PS", nombre:"Fuente BMX CPS 2000 (100…240 Vac, 20 W)", canales:0, alimentacion:"100…240 Vac (L, N, ⏚)",
-    conector:"Bornera de la fuente", dim:[64,100,93], perdidas:5, bornes:{ alim:[["L","L","fase"],["N","N","neutro"],["⏚","⏚","tierra"]] }, verificado:false, fuente:SE("BMXCPS2000") },
+  "BMXCPS3500": { marca:"Schneider Electric", familia:"m580", tipo:"PS", nombre:"Fuente BMX CPS 3500 (100…240 Vac, 36 W)", canales:0, alimentacion:"100…240 Vac (L, N, PE); relé de alarma",
+    conector:"Bornera de la fuente", dim:[64,100,93], perdidas:7, bornes:{ alim:[["L","L","fase"],["N","N","neutro"],["PE","PE","tierra"]] }, verificado:false, notas:"Va en el slot de fuente (izquierda del bastidor).", fuente:SE("BMXCPS3500") },
+  "BMXCPS2000": { marca:"Schneider Electric", familia:"m340", tipo:"PS", nombre:"Fuente BMX CPS 2000 (100…240 Vac, 20 W)", canales:0, alimentacion:"100…240 Vac (L, N, PE)",
+    conector:"Bornera de la fuente", dim:[64,100,93], perdidas:5, bornes:{ alim:[["L","L","fase"],["N","N","neutro"],["PE","PE","tierra"]] }, verificado:false, fuente:SE("BMXCPS2000") },
   "BMEP582020": { marca:"Schneider Electric", familia:"m580", tipo:"CPU", nombre:"CPU M580 BME P58 2020", canales:0, alimentacion:"Desde el bastidor (fuente BMX CPS)", conector:"—",
     dim:[64,100,93], red:"Ethernet (DIO)", verificado:false, notas:"CPU de doble ancho en los slots 0 y 1 del bastidor BME XBP.", fuente:SE("BMEP582020") },
   "BMXP342020": { marca:"Schneider Electric", familia:"m340", tipo:"CPU", nombre:"CPU M340 BMX P34 2020", canales:0, alimentacion:"Desde el bastidor (fuente BMX CPS)", conector:"—",

@@ -2,7 +2,7 @@
    el cajetín / historial de revisiones y la plantilla con la que se descarga (por defecto o del cliente). */
 import { entregable, DISCIPLINAS, TIPOS, ESTADOS } from "./catalog.js";
 import * as S from "./store.js";
-import { $, $$, esc, html, ICON, toast, modal, dropzone, leerComoArrayBuffer, kb, fmtFecha } from "./ui.js";
+import { $, $$, esc, html, ICON, toast, modal, dropzone, leerComoArrayBuffer, kb, fmtFecha, spinner } from "./ui.js";
 import * as X from "./export.js";
 import { rellenarExcel, marcadoresExcel } from "./xlsx-engine.js";
 import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, dxfBytes, manifiesto, tablasEstandar, refDoc, tituloDoc, descargable } from "./docs.js";
@@ -54,7 +54,7 @@ function tabDatos(body, p, id, def){
 
 /* ---------------- 2. vista previa ---------------- */
 async function tabVista(body, state, p, id, def){
-  body.innerHTML = `<div class="muted">Calculando…</div>`;
+  body.innerHTML = spinner(def.formato==="dxf" ? "Generando el plano…" : "Calculando…");
   try{
     const base = def.aliasDe || id;
     if(def.formato==="dxf") return vistaPlano(body, state, p, id);
@@ -207,7 +207,7 @@ async function vistaPlano(body, state, p, id){
 
 /* ---------------- vista previa 3D (plano mecánico del tablero) ---------------- */
 async function tabVista3D(body, p, id){
-  body.innerHTML = `<div class="muted">Armando el tablero en 3D…</div>`;
+  body.innerHTML = spinner("Armando el tablero en 3D…");
   try{
     const { arreglosProyecto } = await import("./mecanico/arreglo.js");
     const lista = arreglosProyecto(p);
@@ -225,6 +225,7 @@ async function tabVista3D(body, p, id){
     const ts = $("#v3-t"); if(ts) ts.onchange = ()=>{ body.dataset.t = ts.value; tabVista3D(body, p, id); };
     const pedir = (txt, enviar)=>{ if(window.copito) window.copito.abrir(txt, enviar); else toast("Copito no está disponible", true); };
     $$("[data-cp]", body).forEach(b=>b.onclick = ()=>b.dataset.cp ? pedir(b.dataset.cp, true) : pedir(`En ${t.tag}, `, false));
+    $("#v3-cont").innerHTML = spinner("Cargando el visor 3D…");
     const { visor3D } = await import("./mecanico/visor3d.js");
     await visor3D($("#v3-cont"), sel, { copito:(d, m)=>pedir(`En ${m.tablero.tag}${d.tag ? `, para ${d.tag}` : ""}, `, false) });
   }catch(err){ console.error(err); body.innerHTML = `<div class="notice warn">No se pudo armar la vista 3D: ${esc(err.message||err)}</div>`; }

@@ -17,6 +17,18 @@ export const ICON = {
   edit:'<svg class="icon" viewBox="0 0 24 24"><path d="M4 20h4l10-10-4-4L4 16v4Z"/><path d="m13 7 4 4"/></svg>',
 };
 
+/* indicador de carga sobre un elemento (o la pantalla): devuelve la función que lo quita */
+export function cargando(texto, el){
+  const ov = document.createElement("div"); ov.className = "carga-ov"; ov.setAttribute("role", "status"); ov.setAttribute("aria-live", "polite");
+  ov.innerHTML = `<div class="carga-caja"><span class="spin" aria-hidden="true"></span><span>${String(texto||"Actualizando…").replace(/[<>&]/g, "")}</span></div>`;
+  const ubicar = ()=>{ if(!el) return; const r = el.getBoundingClientRect(); const top = Math.max(0, r.top), bottom = Math.min(window.innerHeight, r.bottom);
+    Object.assign(ov.style, { left: Math.max(0, r.left)+"px", top: top+"px", width: Math.min(window.innerWidth, r.right) - Math.max(0, r.left)+"px", height: Math.max(80, bottom - top)+"px" }); };
+  ubicar(); document.body.appendChild(ov);
+  window.addEventListener("resize", ubicar);
+  const t0 = Date.now();
+  return ()=>{ const quitar = ()=>{ window.removeEventListener("resize", ubicar); ov.classList.add("fuera"); setTimeout(()=>ov.remove(), 220); }; setTimeout(quitar, Math.max(0, 350 - (Date.now() - t0))); };
+}
+export const spinner = texto => `<div class="carga-inline"><span class="spin" aria-hidden="true"></span><span>${texto||"Cargando…"}</span></div>`;
 export function toast(msg, err=false, ms=3200){
   const t = document.createElement("div"); t.className = "toast"+(err?" err":""); t.textContent = msg; document.body.appendChild(t);
   setTimeout(()=>t.remove(), ms);

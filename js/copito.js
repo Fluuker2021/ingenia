@@ -4,12 +4,12 @@
    2) Modo IA opcional (Claude): para preguntas abiertas; envía la pregunta y los datos del proyecto a la API
       de Anthropic con la clave que el usuario guarda en este navegador. */
 import * as S from "./store.js";
-import { esc } from "./ui.js";
+import { esc, cargando } from "./ui.js";
 import { entregable, ETAPAS, DISCIPLINAS } from "./catalog.js";
 import { datos, calcularTablero, tableros, tablerosPotencia, instrumentos, expandirTag, cablesFuerza, ipRecomendado, r2 } from "./datos.js";
 import { valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { tablasIO } from "./docs.js";
-import { esOrden, interpretar, describir, aplicar, deshacer, HERRAMIENTA } from "./copito-editar.js";
+import { esOrden, interpretar, describir, aplicar, deshacer, HERRAMIENTA, pareceAjuste, ayudaEquipo, infoEquipo } from "./copito-editar.js";
 
 export const AVATAR = `<img class="cp-img" src="assets/copito.png" alt="" width="160" height="160">`;
 
@@ -138,7 +138,7 @@ function rBuscar(p, q){
   return `Esto es lo que encontré en <b>${esc(p.nombre)}</b>:<ul>${hits.slice(0,8).map(h=>`<li><a href="${h.href}">${esc(h.etq)}</a></li>`).join("")}</ul>`;
 }
 const AYUDA = `Soy <b>Copito</b>, el asistente de tus proyectos. Conozco todo lo que ingresas en Ingenia. Pregúntame, por ejemplo:
-  <ul><li>¿Cuál es la máxima demanda del proyecto?</li><li>¿Qué cable tiene el motor M-101?</li><li>¿Qué cables superan la caída de tensión?</li><li>¿Cuántas señales I/O hay y cuántos módulos?</li><li>¿Qué documentos faltan emitir?</li><li>¿Cuáles son las condiciones del sitio?</li></ul>También puedo <b>cambiar datos</b> (te pido confirmación antes):<ul><li>Cambia la potencia de M-101 a 50 HP</li><li>Agrega una bomba de 15 kW con variador</li><li>Pon el arranque de M-102 con variador</li><li>Cambia la altitud a 3500 m</li><li>Elimina el instrumento PIT-101</li><li>Emite todos los documentos para revisión del cliente</li></ul>`;
+  <ul><li>¿Cuál es la máxima demanda del proyecto?</li><li>¿Qué cable tiene el motor M-101?</li><li>¿Qué cables superan la caída de tensión?</li><li>¿Cuántas señales I/O hay y cuántos módulos?</li><li>¿Qué documentos faltan emitir?</li><li>¿Cuáles son las condiciones del sitio?</li></ul>También puedo <b>cambiar datos</b> (te pido confirmación antes):<ul><li>Cambia la potencia de M-101 a 50 HP</li><li>Agrega una bomba de 15 kW con variador</li><li>Pon el arranque de M-102 con variador</li><li>Cambia la altitud a 3500 m</li><li>Elimina el instrumento PIT-101</li><li>Emite todos los documentos para revisión del cliente</li></ul>Y <b>reacomodar el tablero</b> en el plano mecánico (2D y 3D):<ul><li>Mueve VDFC1 a la derecha</li><li>Intercambia GCC2 con GCC3</li><li>Sube la fila de TC5</li><li>Pon el interruptor general a la izquierda</li><li>Cambia el gabinete de TF-001 a 1200x2000x600</li></ul>Todo se hace aquí mismo, en tu navegador.`;
 
 export function responderLocal(q, ruta){
   const t = norm(q);
@@ -305,21 +305,37 @@ export function iniciarCopito(rutaActual, alCambiar){
   msgs.addEventListener("click", ev=>{
     const b = ev.target.closest("[data-aplicar],[data-cancelar],[data-deshacer]"); if(!b) return;
     if(b.dataset.aplicar){ const id = b.dataset.aplicar, pr = pendientes.get(id); pendientes.delete(id); const p = pr && S.proyecto(pr.pid); if(!p) return;
-      const r = aplicar(p, pr.ops); hechos.set(id, { pid: p.id, copia: r.copia }); cerrar(id, "Aplicado.");
-      chat.push({ de:"bot", hecho:id, h:`Listo, cambios aplicados.${r.impacto.length ? `<br>Impacto en el proyecto:<ul>${r.impacto.map(x=>`<li>${x}</li>`).join("")}</ul>` : " No cambia el cálculo de los tableros."}${r.avisos.length ? `<div class="cp-nota">${r.avisos.map(esc).join("<br>")}</div>` : ""}` });
-      if(alCambiar) alCambiar(); }
+      cerrar(id, `<span class="cp-pensando">Aplicando…</span>`); guardar(); pintar();
+      // el cambio se hace aquí mismo, en el navegador: se aplica, se recalcula y se regenera la pantalla abierta
+      actualizarCon("Aplicando el cambio y actualizando el plano…", ()=>{
+        const r = aplicar(p, pr.ops); hechos.set(id, { pid: p.id, copia: r.copia });
+        const m = chat.find(x=>x.h && x.h.includes("cp-pensando\">Aplicando")); if(m) m.h = m.h.replace(`<span class="cp-pensando">Aplicando…</span>`, "Aplicado.");
+        chat.push({ de:"bot", hecho:id, h:`Listo, cambios aplicados.${r.impacto.length ? `<br>Impacto en el proyecto:<ul>${r.impacto.map(x=>`<li>${x}</li>`).join("")}</ul>` : " No cambia el cálculo de los tableros."}${r.avisos.length ? `<div class="cp-nota">${r.avisos.map(esc).join("<br>")}</div>` : ""}` });
+      });
+      return; }
     else if(b.dataset.cancelar){ pendientes.delete(b.dataset.cancelar); cerrar(b.dataset.cancelar, "Cancelado: no se cambió nada."); }
-    else if(b.dataset.deshacer){ const h = hechos.get(b.dataset.deshacer); hechos.delete(b.dataset.deshacer); const p = h && S.proyecto(h.pid); if(p){ deshacer(p, h.copia); chat.push({ de:"bot", h:"Cambios deshechos: el proyecto quedó como antes." }); if(alCambiar) alCambiar(); } }
+    else if(b.dataset.deshacer){ const h = hechos.get(b.dataset.deshacer); hechos.delete(b.dataset.deshacer); const p = h && S.proyecto(h.pid); if(p){ actualizarCon("Deshaciendo el cambio…", ()=>{ deshacer(p, h.copia); chat.push({ de:"bot", h:"Cambios deshechos: el proyecto quedó como antes." }); }); return; } }
     guardar(); pintar();
   });
+  // muestra el indicador de carga sobre la pantalla abierta mientras se aplica el cambio y se regenera la vista
+  const actualizarCon = (texto, fn)=>{
+    if(window.innerWidth < 700) abrir(false);       // en el celular se ve la pantalla que se actualiza
+    const fin = cargando(texto, document.getElementById("main"));
+    setTimeout(async ()=>{
+      try{ fn(); guardar(); pintar(); if(alCambiar) await alCambiar(); }
+      catch(err){ console.error(err); chat.push({ de:"bot", h:`No se pudo aplicar: ${esc(err.message||err)}` }); }
+      finally{ fin(); guardar(); pintar(); }
+    }, 60);
+  };
   const preguntar = async q=>{
     q = q.trim(); if(!q) return;
     chat.push({ de:"yo", t:q }); pintar();
     const ruta = rutaActual();
-    if(esOrden(q)){
+    const forzar = !esOrden(q) && pareceAjuste(q);
+    if(esOrden(q) || forzar){
       const { p } = proyectoDe(q, ruta);
       if(!p){ chat.push({ de:"bot", h:"Primero crea un proyecto; luego puedo cambiar sus datos." }); guardar(); pintar(); return; }
-      const ops = interpretar(q, p);
+      const ops = interpretar(q, p, forzar);
       const c = leerIA();
       if(ops && ops.length) proponer(p, ops, false);
       else if(c.activo && c.clave){
@@ -328,9 +344,11 @@ export function iniciarCopito(rutaActual, alCambiar){
           if(r.ops && r.ops.length) proponer(r.p || p, r.ops, true, r.resumen); else chat.push({ de:"bot", h: md(r.texto || "No identifiqué un cambio concreto."), ia:true }); }
         catch(err){ chat.pop(); chat.push({ de:"bot", h:`No se pudo usar la IA (${esc(err.status===401 ? "clave inválida" : (err.message||"sin conexión"))}).` }); }
       }
-      else chat.push({ de:"bot", h:`No identifiqué qué cambiar. Prueba, por ejemplo: «Cambia la potencia de M-101 a 50 HP», «Agrega una bomba de 15 kW con variador en TF-001», «Cambia la altitud a 3500 m» o «Elimina el instrumento PIT-101». Con la IA activa (ajustes ⚙) entiendo órdenes más libres.` });
+      else chat.push({ de:"bot", h: ayudaEquipo(q, p) || `No identifiqué qué cambiar. Prueba, por ejemplo: «Mueve VDFC1 a la derecha», «Intercambia GCC2 con GCC3», «Sube la fila de TC5», «Cambia el gabinete de TF-001 a 1200x2000x600», «Cambia la potencia de M-101 a 50 HP» o «Agrega una bomba de 15 kW con variador en TF-001».` });
       guardar(); pintar(); return;
     }
+    // preguntas sobre un equipo del plano mecánico (ubicación, medidas, vecinos)
+    { const { p } = proyectoDe(q, ruta); const ie = p && infoEquipo(q, p); if(ie){ chat.push({ de:"bot", h: ie }); guardar(); pintar(); return; } }
     const loc = responderLocal(q, ruta);
     const c = leerIA();
     if(c.activo && c.clave && (!loc.ok || /\b(por que|porque|explica|recomienda|recomendacion|compara|deberia|como mejoro|analiza|resume)\b/.test(norm(q)))){

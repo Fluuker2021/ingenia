@@ -9,7 +9,7 @@ import { datos, tableros, tablerosPotencia, instrumentos, expandirTag, tipoInstr
 import { valoresDiseno } from "./modules/criterios.js";
 import { docInfo } from "./docs.js";
 import { nextRev } from "./workspace.js";
-import { cfgMecanico, arregloTablero } from "./mecanico/arreglo.js";
+import { cfgMecanico, arregloTablero, ACCIONES_MOVER } from "./mecanico/arreglo.js";
 
 /* ---------- texto ---------- */
 // normaliza (minúsculas, sin tildes) conservando la posición de cada carácter en el texto original
@@ -54,7 +54,7 @@ NOMBRE_DISENO.ubicacion = ["Ubicación del proyecto", ""];
 NOMBRE_DISENO.tensionControlTipo = ["Tipo de tensión de control", ""];
 const MOTIVOS = [[/interna/, "Emitido para revisión interna"], [/cliente/, "Emitido para revisión del cliente"], [/aprobacion/, "Emitido para aprobación"], [/construccion/, "Emitido para construcción"], [/conforme a obra|as built/, "Conforme a obra"]];
 
-const VERBO = /\b(cambia|cambiar|cambie|cambiale|modifica|modificar|pon|ponle|poner|actualiza|actualizar|ajusta|ajustar|establece|asigna|agrega|agregar|anade|anadir|incluye|incluir|crea|crear|elimina|eliminar|borra|borrar|quita|quitar|emite|emitir|renombra|sube|baja|aumenta|reduce|haz|hacer|duplica|reemplaza|sustituye|mueve|configura|define|fija)\b/;
+const VERBO = /\b(cambia|cambialo|cambiala|cambiar|cambiarlo|cambie|cambiale|modifica|modificar|pon|ponlo|ponla|ponle|ponles|poner|ponerlo|actualiza|actualizar|ajusta|ajustar|establece|asigna|agrega|agregar|anade|anadir|incluye|incluir|crea|crear|elimina|eliminar|borra|borrar|quita|quitar|quitale|emite|emitir|renombra|sube|subelo|subela|subir|subirlo|baja|bajalo|bajala|bajar|bajarlo|aumenta|reduce|haz|hazlo|hacer|duplica|reemplaza|sustituye|mueve|muevelo|muevela|muevelos|mover|moverlo|muevas|configura|define|fija|coloca|colocalo|colocala|colocar|ubica|ubicalo|ubicala|reubica|reubicalo|pasa|pasalo|pasala|pasar|lleva|llevalo|llevala|desplaza|desplazalo|traslada|trasladalo|intercambia|intercambialo|intercambiar|permuta|invierte|ordena|reordena|separa|junta|agranda|amplia|achica|disminuye|usa|usar|utiliza|utilizar|deja|dejalo|alinea|centra|acerca|aleja|restablece|restablecer|reinicia)\b/;
 const PREGUNTA = /^\s*¿?\s*(que|cual|cuales|cuanto|cuantos|cuantas|como|donde|por que|quien|es|hay)\b/;
 export const esOrden = q => { const t = normMapa(q).t; return VERBO.test(t) && !PREGUNTA.test(t); };
 
@@ -73,9 +73,9 @@ function siguienteTag(lista, pref){
 }
 
 /* ---------- interpretar una orden (motor propio) ---------- */
-export function interpretar(q, p){
+export function interpretar(q, p, forzar){
   const M = normMapa(q), t = M.t, d = datos(p), ops = [];
-  if(!VERBO.test(t) || PREGUNTA.test(t)) return null;
+  if(!forzar && (!VERBO.test(t) || PREGUNTA.test(t))) return null;
   const tags = etiquetas(p).filter(e=>reTag(e.tag).test(t));
   const borrar = /\b(elimina|eliminar|borra|borrar|quita|quitar)\b/.test(t);
   const agregar = /\b(agrega|agregar|anade|anadir|incluye|incluir|crea|crear)\b/.test(t);
@@ -156,8 +156,92 @@ export function interpretar(q, p){
   }
   return null;
 }
-const MEC = /gabinete|envolvente|entrada de cables|ingreso de cables|ventilacion|ventilador|aire acondicionado|montaje (mural|de piso|autosoportado)|\bmural\b|autosoportado|mandos? (en|de) (la )?puerta|pulsadores en (la )?puerta|botonera|calefaccion|resistencia calefactora|temperatura interior|reserva de espacio|arreglo mecanico|dimensiones del tablero|alto del tablero|ancho del tablero|fondo del tablero/;
+const MEC = /canaleta|gabinete|envolvente|entrada de cables|ingreso de cables|ventilacion|ventilador|aire acondicionado|montaje (mural|de piso|autosoportado)|\bmural\b|autosoportado|mandos? (en|de) (la )?puerta|pulsadores en (la )?puerta|botonera|calefaccion|resistencia calefactora|temperatura interior|reserva de espacio|arreglo mecanico|dimensiones del tablero|alto del tablero|ancho del tablero|fondo del tablero/;
+/* ---------- reubicación de equipos del arreglo mecánico ---------- */
+const DIR = /izquierda|derecha|arriba|abajo|\bsub(e|elo|ela|ir|irlo)\b|\bbaj(a|alo|ala|ar|arlo)\b|encima|debajo|mas alto|mas bajo|intercambi|permuta|de lugar|de posicion|en (lugar|vez) de|antes de|despues de|luego de|al lado de|junto a|al inicio|al principio|al final|primer lugar|ultimo lugar|restablec|reinicia|arreglo (automatico|original)|allen|rockwell|powerflex|\babb\b|acs880|puerta de (fuerza|control)|seccion de (fuerza|control)|placa de (fuerza|control)/;
+export const pareceAjuste = q => { const t = normMapa(q).t; return DIR.test(t) && !PREGUNTA.test(t) && !/\?/.test(q); };
+function arreglos(p){ return tablerosPotencia(p).map(t=>{ try{ const c = calcularTablero(p, t); return c.circuits.length ? { t, m: arregloTablero(p, t, c) } : null; }catch(e){ return null; } }).filter(Boolean); }
+function equiposDe(m){
+  const out = new Map();
+  for(const c of m.comps) if(c.tag) out.set(c.tag, { tag:c.tag, tipo:c.tipo, carga:c.circ && c.circ.carga });
+  for(const b of m.bornes) out.set(b.grupo, { tag:b.grupo, tipo:"bornera", carga:b.circ && b.circ.carga });
+  for(const d of m.puerta) if(d.tag && !out.has(d.tag)) out.set(d.tag, { tag:d.tag, tipo:"puerta" });
+  return [...out.values()].sort((a, b)=>b.tag.length - a.tag.length);
+}
+const posTag = (t, tag) => { const m = reTag(tag).exec(t); return m ? m.index : -1; };
+function interpretarAjuste(t, p, tabTag){
+  if(!DIR.test(t)) return null;
+  const lista = arreglos(p); if(!lista.length) return null;
+  // tablero: el que se nombra, el que contiene el equipo nombrado o el primero
+  let sel = tabTag && lista.find(x=>x.t.tag===tabTag.tag);
+  const men = []; // equipos mencionados en orden de aparición
+  for(const a of (sel ? [sel] : lista)){
+    for(const e of equiposDe(a.m)){ const i = posTag(t, e.tag); if(i >= 0 && !men.some(x=>x.e.tag===e.tag || (x.i <= i && i < x.i + x.e.tag.length))) men.push({ e, i, a }); }
+    if(men.length && !sel) sel = men[0].a;
+  }
+  sel = sel || lista[0];
+  const m = sel.m, tab = sel.t.tag, eq = equiposDe(m);
+  men.sort((a, b)=>a.i - b.i);
+  // nombres comunes y cargas: «el variador de VC1», «el guardamotor de VR2», «el interruptor general», «la parada de emergencia»
+  const deCarga = (carga, tipo) => { const c = eq.filter(e=>e.carga===carga); return (tipo ? c.find(e=>e.tipo===tipo) : null) || ["variador","arrancador","guardamotor","interruptor","contactor","bornera"].map(k=>c.find(e=>e.tipo===k)).find(Boolean); };
+  const tipoNom = /variador|vdf|vfd/.test(t) ? "variador" : /arrancador/.test(t) ? "arrancador" : /guardamotor/.test(t) ? "guardamotor" : /contactor/.test(t) ? "contactor" : /bornera|bornes/.test(t) ? "bornera" : /reactancia|filtro/.test(t) ? "reactancia" : null;
+  for(const l of datos(p).cargas){ if(!l.tag) continue; const i = posTag(t, l.tag); if(i < 0 || men.some(x=>x.i===i)) continue; const e = deCarga(l.tag, tipoNom); if(e) men.push({ e, i, a:sel }); }
+  men.sort((a, b)=>a.i - b.i);
+  if(!men.length){
+    if(/interruptor (general|principal)|itm general/.test(t)) men.push({ e:{ tag:"Q1", tipo:"interruptor" }, i:0 });
+    else if(/parada de emergencia|\bseta\b|panel de operacion|botonera|pulsadores|luces piloto/.test(t)) men.push({ e:{ tag:"PANEL", tipo:"puerta" }, i:0 });
+    else if(tipoNom){ const c = eq.filter(e=>e.tipo===tipoNom); if(c.length===1) men.push({ e:c[0], i:0 }); }
+  }
+  const campos = {};
+  // marca del variador (cambia el cálculo: modelo, bastidor y dimensiones)
+  const marca = /allen|rockwell|powerflex/.test(t) ? "rockwell" : /\babb\b|acs880/.test(t) ? "abb" : null;
+  const vs = men.filter(x=>x.e.tipo==="variador").map(x=>x.e);
+  if(marca && (vs.length || /(todos )?los variadores/.test(t))){
+    const objetivo = vs.length ? vs : eq.filter(e=>e.tipo==="variador");
+    const ops = objetivo.map(e=>e.carga).filter(Boolean).map(c=>({ op:"carga.editar", tag:c, campos:{ marca_variador:marca } }));
+    if(ops.length) return ops;
+  }
+  if(/restablec|reinicia|arreglo (automatico|original)|como estaba/.test(t)) return [{ op:"mecanico.editar", tag:tab, campos:{ restablecer:true } }];
+  // la placa de control a un lado
+  if(/placa de control|seccion de control/.test(t) && !men.length && /izquierda|derecha/.test(t)) return [{ op:"mecanico.editar", tag:tab, campos:{ ladoControl: /derecha/.test(t) ? "der" : "izq" } }];
+  // panel de operación en otra puerta
+  if((/panel|botonera|pulsadores|luces piloto|parada de emergencia/.test(t) || (men[0] && men[0].e.tipo==="puerta")) && /puerta de (fuerza|control)|seccion de (fuerza|control)|placa de (fuerza|control)/.test(t))
+    return [{ op:"mecanico.editar", tag:tab, campos:{ panelSeccion: /de fuerza/.test(t) ? "potencia" : "auto" } }];
+  if(!men.length) return null;
+  const x = men[0].e, ref = men[1] ? men[1].e.tag : "";
+  const accion = /intercambi|permuta|de lugar|de posicion|en (lugar|vez) de/.test(t) && ref ? "intercambiar"
+    : /antes de|a la izquierda de|delante de/.test(t) && ref ? "antes"
+    : /despues de|luego de|a la derecha de|al lado de|junto a/.test(t) && ref ? "despues"
+    : /al inicio|al principio|primer lugar|primero/.test(t) ? "inicio" : /al final|ultimo lugar/.test(t) ? "final"
+    : /izquierda/.test(t) ? "izquierda" : /derecha/.test(t) ? "derecha"
+    : /arriba|\bsub(e|elo|ela|ir|irlo)\b|encima|mas alto/.test(t) ? "arriba" : /abajo|\bbaj(a|alo|ala|ar|arlo)\b|debajo|mas bajo/.test(t) ? "abajo" : null;
+  if(!accion) return null;
+  const veces = Math.min(5, +((t.match(/(\d)\s*(posiciones|lugares|espacios|filas|columnas)/)||[])[1]) || ({ dos:2, tres:3, cuatro:4 })[(t.match(/\b(dos|tres|cuatro) (posiciones|lugares|espacios|filas|columnas)/)||[])[1]] || 1);
+  return Array.from({ length: ["antes","despues","intercambiar","inicio","final"].includes(accion) ? 1 : veces }, ()=>({ op:"mecanico.mover", tag:tab, equipo:x.tag, tipo:x.tipo, accion, ref: ["antes","despues","intercambiar"].includes(accion) ? ref : "" }));
+}
+/* datos de un equipo del arreglo (para preguntas: «¿dónde está VDFC1?», «¿qué hay a la derecha de Q1?») */
+export function infoEquipo(q, p){
+  const t = normMapa(q).t;
+  for(const a of arreglos(p)){
+    const m = a.m, c = m.comps.filter(x=>x.tag).sort((x, y)=>y.tag.length - x.tag.length).find(x=>posTag(t, x.tag) >= 0);
+    if(!c) continue;
+    const pl = m.placas.find(x=>x.id===c.placa) || {};
+    const fila = m.comps.filter(x=>x.tag && x!==c && x.placa===c.placa && x.y < c.y + c.h && c.y < x.y + x.h).sort((x, y)=>x.x - y.x);
+    const izq = fila.filter(x=>x.x + x.w <= c.x + 1).pop(), der = fila.find(x=>x.x >= c.x + c.w - 1);
+    const f = v => Math.round(v*10)/10;
+    return `<b>${esc(c.tag)}</b> (${esc(a.t.tag)}): ${esc(c.desc||"")}<br>Modelo: ${esc(c.modelo||"—")}<br>Dimensiones: ${f(c.w)} × ${f(c.h)} × ${f(c.d||0)} mm (ancho × alto × fondo)<br>Ubicación: ${esc(pl.nombre||c.placa||"")}${c.fila ? `, fila «${esc(c.fila)}»` : ""}, a ${Math.round(c.y)} mm de la base del gabinete<br>A su izquierda: <b>${esc(izq ? izq.tag : "—")}</b> · a su derecha: <b>${esc(der ? der.tag : "—")}</b><br><span class="cp-nota">${c.tag==="Q1" ? "Para reubicarlo dime, por ejemplo: «Pon el interruptor general a la izquierda»." : `Para reubicarlo dime, por ejemplo: «Mueve ${esc(c.tag)} a la derecha» o «Intercambia ${esc(c.tag)} con ${esc((der||izq||{}).tag || "…")}».`}</span>`;
+  }
+  return null;
+}
+/* qué se le puede pedir a Copito sobre un equipo del arreglo */
+export function ayudaEquipo(q, p){
+  const t = normMapa(q).t;
+  for(const a of arreglos(p)) for(const e of equiposDe(a.m)) if(posTag(t, e.tag) >= 0)
+    return `Para <b>${esc(e.tag)}</b> en ${esc(a.t.tag)} puedo: moverlo a la izquierda o a la derecha, ${e.tipo==="variador" ? "subirlo o bajarlo dentro de su columna, cambiar su marca (ABB o Allen-Bradley)," : "subir o bajar su fila,"} ponerlo antes o después de otro equipo o intercambiarlo con otro. Por ejemplo: «Mueve ${esc(e.tag)} a la derecha», «Intercambia ${esc(e.tag)} con …» o «${e.tipo==="variador" ? `Baja ${esc(e.tag)}` : `Sube la fila de ${esc(e.tag)}`}».`;
+  return null;
+}
 function interpretarMecanico(t, p, tabTag){
+  const aj = interpretarAjuste(t, p, tabTag); if(aj) return aj;
   if(!MEC.test(t)) return null;
   const pot = tablerosPotencia(p); if(!pot.length) return null;
   const tab = tabTag && pot.find(x=>x.tag===tabTag.tag) ? tabTag.tag : pot[0].tag;
@@ -176,10 +260,11 @@ function interpretarMecanico(t, p, tabTag){
   if(/mandos?|pulsadores|botonera/.test(t)){ if(/\b(sin|quita|quitar|elimina|eliminar|retira|retirar|saca)\b/.test(t)) c.mandos = "no"; else if(/automatic/.test(t)) c.mandos = "auto"; else c.mandos = "si"; }
   if(/calefaccion|resistencia calefactora/.test(t)){ if(/\b(sin|quita|quitar|elimina|eliminar|retira)\b/.test(t)) c.calefaccion = "no"; else if(/automatic/.test(t)) c.calefaccion = "auto"; else c.calefaccion = "si"; }
   const ti = t.match(/temperatura interior\D{0,30}?(\d{2})/); if(ti) c.tInterior = +ti[1];
+  const cn = t.match(/canaletas?\D{0,30}?(\d{2,3})\s*(?:x|×|por)\s*(\d{2,3})/); if(cn) c.canaleta = `${cn[1]}x${cn[2]}`;
   return Object.keys(c).length ? [{ op:"mecanico.editar", tag: tab, campos: c }] : null;
 }
-const NOMBRE_MEC = { ancho:["ancho del gabinete","mm"], alto:["alto del gabinete","mm"], fondo:["fondo del gabinete","mm"], entrada:["entrada de cables",""], montaje:["montaje",""], ventilacion:["ventilación",""], reserva:["reserva de espacio","%"], mandos:["mandos en la puerta",""], calefaccion:["calefacción anticondensación",""], tInterior:["temperatura interior máxima","°C"] };
-const VAL_MEC = { auto:"automático", piso:"autosoportado", mural:"mural", si:"sí", no:"no", natural:"natural", forzada:"forzada", inferior:"inferior", superior:"superior" };
+const NOMBRE_MEC = { canaleta:["canaletas","mm"], ladoControl:["placa de control",""], panelSeccion:["panel de operación",""], restablecer:["arreglo",""], ancho:["ancho del gabinete","mm"], alto:["alto del gabinete","mm"], fondo:["fondo del gabinete","mm"], entrada:["entrada de cables",""], montaje:["montaje",""], ventilacion:["ventilación",""], reserva:["reserva de espacio","%"], mandos:["mandos en la puerta",""], calefaccion:["calefacción anticondensación",""], tInterior:["temperatura interior máxima","°C"] };
+const VAL_MEC = { izq:"a la izquierda", der:"a la derecha", potencia:"en la puerta de fuerza", auto:"automático", piso:"autosoportado", mural:"mural", si:"sí", no:"no", natural:"natural", forzada:"forzada", inferior:"inferior", superior:"superior" };
 function descInstrumento(tag){
   const L = tipoInstrumento(tag); const v = VARIABLE[L.slice(0,2)] && L.startsWith("PD") ? VARIABLE.PD : VARIABLE[L[0]] || "proceso";
   if(/^XV|^SV|Y$/.test(L)) return "Válvula solenoide";
@@ -204,6 +289,7 @@ export function describir(op, p){
       if(c.tablero) r.push(`tablero → <b>${esc(c.tablero)}</b>`);
       for(const [k, n] of [["fp","FDP"],["eficiencia","EFF %"],["fu","FU"],["fs","FS"]]) if(c[k]!=null) r.push(`${n} → <b>${fmt(c[k])}</b>`);
       if(c.descripcion) r.push(`descripción → <b>${esc(c.descripcion)}</b>`);
+      if(c.marca_variador) r.push(`marca del variador ${l.vfdBrand==="rockwell" ? "Allen-Bradley" : "ABB"} → <b>${c.marca_variador==="rockwell" ? "Allen-Bradley PowerFlex 755" : "ABB ACS880"}</b>`);
       return `<b>${esc(op.tag)}</b>: ${r.join(", ")}`; }
     case "instrumento.agregar": return `Agregar el instrumento <b>${esc(op.tag)}</b> «${esc(op.descripcion||"")}»${op.servicio?`, ${esc(op.servicio)}`:""} (${esc(senalDe(op.tag).tipoSenal.toLowerCase())})`;
     case "instrumento.eliminar": return `Eliminar el instrumento <b>${esc(op.tag)}</b>`;
@@ -212,7 +298,13 @@ export function describir(op, p){
     case "sistema.editar": return `Sistema: ${Object.entries(c).map(([k,v])=>`${k==="tag"?"TAG":"nombre"} → <b>${esc(v)}</b>`).join(", ")}`;
     case "proyecto.editar": return `Proyecto: ${Object.entries(c).map(([k,v])=>`${CAMPO[k]||k} «${esc(k==="etapa" ? (ETAPAS.find(e=>e.id===p.etapa)||{}).nombre : p[k]||"—")}» → <b>${esc(k==="etapa" ? (ETAPAS.find(e=>e.id===v)||{}).nombre||v : v)}</b>`).join(", ")}`;
     case "diseno.editar": { const v = valoresDiseno(p); return Object.entries(c).map(([k,x])=>{ const [n,u] = NOMBRE_DISENO[k]||[k,""]; return `${esc(n)}: ${esc(v[k]??"—")} ${u} → <b>${esc(fmt(x))} ${u}</b>`; }).join("<br>"); }
+    case "mecanico.mover": {
+      const quien = op.equipo==="PANEL" ? "el panel de operación" : op.equipo;
+      const vert = op.accion==="arriba" || op.accion==="abajo";
+      const como = vert && op.tipo==="variador" ? `más ${op.accion} en su columna` : vert && (op.tipo==="puerta" || op.equipo==="PANEL") ? `150 mm más ${op.accion} en la puerta` : vert ? `${op.accion==="arriba" ? "una fila más arriba" : "una fila más abajo"} (con toda su fila)` : (ACCIONES_MOVER[op.accion]||op.accion);
+      return op.accion==="intercambiar" ? `Arreglo de <b>${esc(op.tag)}</b>: intercambiar <b>${esc(quien)}</b> con <b>${esc(op.ref)}</b>` : `Arreglo de <b>${esc(op.tag)}</b>: mover <b>${esc(quien)}</b> ${esc(como)}${op.ref ? ` <b>${esc(op.ref)}</b>` : ""}`; }
     case "mecanico.editar": { const t = tablerosPotencia(p).find(x=>x.tag===op.tag); const cfg = t ? cfgMecanico(p, t) : {};
+      if(c.restablecer) return `Arreglo de <b>${esc(op.tag)}</b>: <b>volver al arreglo automático</b> (se quitan las reubicaciones pedidas)`;
       return `Arreglo mecánico de <b>${esc(op.tag)}</b>: ${Object.entries(c).map(([k, v])=>{ const [n, u] = NOMBRE_MEC[k]||[k,""]; const ant = cfg[k]==="" || cfg[k]==null ? "automático" : (VAL_MEC[cfg[k]]||cfg[k]) + (u && cfg[k]!=="" ? " "+u : ""); const nv = v==="" ? "automático" : (VAL_MEC[v]||v) + (u ? " "+u : ""); return `${esc(n)} ${esc(ant)} → <b>${esc(nv)}</b>`; }).join(", ")}`; }
     case "documentos.emitir": return `Emitir ${op.rev ? "la revisión <b>"+esc(op.rev)+"</b>" : "la siguiente revisión"} de los <b>${p.entregables.length}</b> documentos: «${esc(op.motivo)}»`;
   }
@@ -230,7 +322,7 @@ function foto(p){
   const v = valoresDiseno(p);
   const md = tablerosPotencia(p).map(t=>{ const c = calcularTablero(p, t); return { tag:t.tag, md:c.totalKVA||0, i:c.demandCurrent||0, itm:c.mainBreaker, n:c.circuits.length }; });
   let caidas = 0; try{ caidas = cablesFuerza(p).filter(f=>(f.dv||0) > (+v.caidaTension||2.5)).length; }catch(e){}
-  const mec = tablerosPotencia(p).map(t=>{ try{ const c = calcularTablero(p, t); if(!c.circuits.length) return null; const m = arregloTablero(p, t, c); return { tag:t.tag, gab:`${m.W} × ${m.H} × ${m.D} mm`, vent:m.termico.modo, n:m.comps.length, avisos:m.avisos.length }; }catch(e){ return null; } }).filter(Boolean);
+  const mec = tablerosPotencia(p).map(t=>{ try{ const c = calcularTablero(p, t); if(!c.circuits.length) return null; const m = arregloTablero(p, t, c); return { tag:t.tag, gab:`${m.W} × ${m.H} × ${m.D} mm`, vent:m.termico.modo, n:m.comps.length, avisos:m.avisos.length, pos:Object.fromEntries(m.comps.filter(x=>x.tag).map(x=>[x.tag, `${Math.round(x.x)},${Math.round(x.y)},${x.seccion}`])), mod:Object.fromEntries(m.comps.filter(x=>x.tag).map(x=>[x.tag, x.modelo])) }; }catch(e){ return null; } }).filter(Boolean);
   return { md, cargas: datos(p).cargas.length, inst: instrumentos(p).length, io: (datos(p)["ins-io"]||[]).length, caidas, mec };
 }
 export function aplicar(p, ops){
@@ -255,6 +347,7 @@ export function aplicar(p, ops){
       if(c.tablero){ const id = tabId(c.tablero); if(id) l.tablero = id; else avisos.push(`No existe el tablero ${c.tablero}.`); }
       if(c.descripcion) l.desc = c.descripcion;
       for(const [k, f] of [["fp","fp"],["eficiencia","effPct"],["fu","fu"],["fs","fs"]]) if(c[k]!=null && !isNaN(+c[k])){ l[f] = +c[k]; l.man[f] = true; }
+      if(c.marca_variador==="abb" || c.marca_variador==="rockwell") l.vfdBrand = c.marca_variador;
       aplicarTipicos(l);
     } else if(op.op==="instrumento.agregar"){
       if(instrumentos(p).some(i=>i.tag===op.tag)){ avisos.push(`${op.tag} ya existe; no se agregó.`); continue; }
@@ -277,9 +370,19 @@ export function aplicar(p, ops){
     } else if(op.op==="diseno.editar"){
       p.diseno = p.diseno || {};
       for(const [k, v] of Object.entries(c)) if(NOMBRE_DISENO[k] && v!=null && v!=="" && (k!=="tensionControlTipo" || v==="Vac" || v==="Vdc")) p.diseno[k] = String(v);
+    } else if(op.op==="mecanico.mover"){
+      const t = tablerosPotencia(p).find(x=>x.tag===op.tag); if(!t){ avisos.push(`No existe el tablero de fuerza ${op.tag}.`); continue; }
+      const cfg = cfgMecanico(p, t);
+      cfg.mover.push({ equipo:op.equipo, accion:op.accion, ref:op.ref||"" });
+      // si el motor no puede aplicar la reubicación, se retira y se explica por qué
+      try{ const m = arregloTablero(p, t); const a = m.ajustes[m.ajustes.length-1]; if(a && !a.ok){ cfg.mover.pop(); avisos.push(`No moví ${op.equipo}: ${a.nota}.`); } }catch(e){ cfg.mover.pop(); avisos.push(`No se pudo reubicar ${op.equipo}.`); }
     } else if(op.op==="mecanico.editar"){
       const t = tablerosPotencia(p).find(x=>x.tag===op.tag); if(!t){ avisos.push(`No existe el tablero de fuerza ${op.tag}.`); continue; }
       const cfg = cfgMecanico(p, t);
+      if(c.restablecer){ Object.assign(cfg, { mover:[], ladoControl:"izq", q1Lado:"auto", panelSeccion:"auto", panelAltura:0, canaleta:"" }); continue; }
+      if(c.ladoControl==="izq" || c.ladoControl==="der") cfg.ladoControl = c.ladoControl;
+      if(c.panelSeccion==="potencia" || c.panelSeccion==="auto") cfg.panelSeccion = c.panelSeccion;
+      if(c.canaleta!=null){ if(c.canaleta==="" || /^\d{2,3}x\d{2,3}$/.test(c.canaleta)) cfg.canaleta = c.canaleta; else avisos.push(`Tamaño de canaleta no válido: ${c.canaleta}.`); }
       const okVal = { entrada:["inferior","superior"], montaje:["auto","piso","mural"], ventilacion:["auto","natural","forzada"], mandos:["auto","si","no"], calefaccion:["auto","si","no"] };
       for(const [k, v] of Object.entries(c)){
         if(okVal[k]){ if(okVal[k].includes(v)) cfg[k] = v; else avisos.push(`Valor no válido para ${k}: ${v}.`); }
@@ -313,6 +416,10 @@ function impacto(a, b, io){
   for(const m of (b.mec||[])){ const x = (a.mec||[]).find(y=>y.tag===m.tag); if(!x) continue;
     if(x.gab!==m.gab) r.push(`${m.tag}: gabinete ${x.gab} → <b>${m.gab}</b>`);
     if(x.vent!==m.vent) r.push(`${m.tag}: ventilación ${x.vent} → <b>${m.vent}</b>`);
+    const mov = Object.keys(m.pos).filter(k=>x.pos[k] && x.pos[k]!==m.pos[k]);
+    if(mov.length) r.push(`${m.tag}: ${mov.length} equipo(s) reubicado(s) en el plano: <b>${mov.slice(0, 8).join(", ")}${mov.length > 8 ? "…" : ""}</b>`);
+    const cam = Object.keys(m.mod).filter(k=>x.mod[k] && x.mod[k]!==m.mod[k]);
+    if(cam.length) r.push(`${m.tag}: ${cam.slice(0, 4).map(k=>`${k} → <b>${m.mod[k]}</b>`).join(", ")}`);
     if(x.avisos!==m.avisos) r.push(`${m.tag}: observaciones del arreglo ${x.avisos} → <b>${m.avisos}</b> (ver Datos de entrada del plano mecánico)`); }
   return r;
 }
@@ -330,7 +437,8 @@ export const HERRAMIENTA = {
     proyecto_id: { type:"string", description:"id del proyecto (campo id del JSON de contexto)" },
     resumen: { type:"string", description:"una frase con lo que se va a cambiar" },
     operaciones: { type:"array", items: { type:"object", properties: {
-      op: { type:"string", enum:["carga.agregar","carga.editar","carga.eliminar","instrumento.agregar","instrumento.editar","instrumento.eliminar","tablero.editar","sistema.editar","proyecto.editar","diseno.editar","mecanico.editar","documentos.emitir"] },
+      op: { type:"string", enum:["carga.agregar","carga.editar","carga.eliminar","instrumento.agregar","instrumento.editar","instrumento.eliminar","tablero.editar","sistema.editar","proyecto.editar","diseno.editar","mecanico.editar","mecanico.mover","documentos.emitir"] },
+      equipo: { type:"string", description:"mecanico.mover: TAG del equipo del arreglo (p. ej. VDFC1, GCC2, TB3, Q1, PANEL)" }, accion: { type:"string", enum:["izquierda","derecha","arriba","abajo","inicio","final","antes","despues","intercambiar"] }, ref: { type:"string", description:"mecanico.mover: TAG de referencia para antes / despues / intercambiar" },
       tag: { type:"string", description:"TAG de la carga, instrumento o tablero" },
       descripcion: { type:"string" }, potencia: { type:"number" }, unidad: { type:"string", enum:["hp","kw"] },
       arranque: { type:"string", enum:["dol","vfd","ss"], description:"dol = directo, vfd = variador, ss = arrancador suave" },

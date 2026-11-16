@@ -1,3 +1,3 @@
 /* Versión publicada: fecha y hora (Perú, UTC−5) en que se cargó esta versión del programa.
    Se actualiza en cada publicación; se muestra al pie del menú lateral. */
-export const VERSION = "2026-11-16 01:31";
+export const VERSION = "2026-11-16 07:44";

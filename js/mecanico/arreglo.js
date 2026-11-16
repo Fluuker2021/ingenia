@@ -19,11 +19,31 @@ import { calcularTablero, datos, ipRecomendado, tablerosPotencia, desdeTxt } fro
 import { valoresDiseno, tempDiseno } from "../modules/criterios.js";
 import * as C from "./componentes.js";
 
-export const CFG_DEF = () => ({ montaje:"auto", ancho:"", alto:"", fondo:"", entrada:"inferior", reserva:"", ventilacion:"auto", mandos:"auto", calefaccion:"auto", tInterior:"", orden:{} });
+export const CFG_DEF = () => ({ montaje:"auto", ancho:"", alto:"", fondo:"", entrada:"inferior", reserva:"", ventilacion:"auto", mandos:"auto", calefaccion:"auto", tInterior:"",
+  canaleta:"", ladoControl:"izq", q1Lado:"auto", panelSeccion:"auto", panelAltura:0, mover:[] });
+/* ajustes del arreglo que el usuario (o Copito) pide sobre equipos concretos */
+export const ACCIONES_MOVER = { izquierda:"a la izquierda", derecha:"a la derecha", arriba:"una fila arriba", abajo:"una fila abajo", inicio:"al inicio de su fila", final:"al final de su fila", antes:"antes de", despues:"después de", intercambiar:"intercambiar con" };
+const intercambiar = (a, i, j) => { const x = a[i]; a[i] = a[j]; a[j] = x; };
+/* reubica el elemento i de una lista; devuelve true, "limite" (ya está en el extremo) o false */
+function reubicar(lista, i, accion, j){
+  if(i < 0) return false;
+  if(accion==="izquierda" || accion==="arriba"){ if(i===0) return "limite"; intercambiar(lista, i, i-1); return true; }
+  if(accion==="derecha" || accion==="abajo"){ if(i===lista.length-1) return "limite"; intercambiar(lista, i, i+1); return true; }
+  if(accion==="inicio"){ if(i===0) return "limite"; lista.unshift(lista.splice(i, 1)[0]); return true; }
+  if(accion==="final"){ if(i===lista.length-1) return "limite"; lista.push(lista.splice(i, 1)[0]); return true; }
+  if(j==null || j < 0 || j===i) return false;
+  if(accion==="intercambiar"){ intercambiar(lista, i, j); return true; }
+  const ref = lista[j], x = lista.splice(i, 1)[0];
+  lista.splice(lista.indexOf(ref) + (accion==="despues" ? 1 : 0), 0, x);
+  return true;
+}
 export function cfgMecanico(p, t){
   const d = datos(p); d.mecanico = d.mecanico || {};
-  d.mecanico[t.id] = Object.assign(CFG_DEF(), d.mecanico[t.id]||{});
-  return d.mecanico[t.id];
+  // se completa en el mismo objeto (los formularios y Copito guardan sobre esta referencia)
+  const c = d.mecanico[t.id] = d.mecanico[t.id] || {};
+  const def = CFG_DEF(); for(const k in def) if(!(k in c)) c[k] = def[k];
+  if(!Array.isArray(c.mover)) c.mover = [];
+  return c;
 }
 
 const num = (s, re) => { const m = String(s||"").match(re || /([\d.]+)/); return m ? parseFloat(m[1]) : NaN; };
@@ -170,6 +190,35 @@ export function arregloTablero(p, t, calc){
     const r = { id:"cal1", tag:"R1", tipo:"resistencia", desc:"Resistencia calefactora anticondensación 100 W con termostato TH1", modelo:"Resistencia PTC 100 W + termostato 0…60 °C", val:"100 W", w:60, h:125, d:60, montaje:"din", perdidas:0, fuente:"Accesorios de climatización de gabinetes (referencial)", cant:1, z:ZPLACA, x:0, y:0 };
     gruposAux.push([r]);
   }
+  // ===== ajustes del usuario (mover, intercambiar, subir o bajar equipos) =====
+  const ajustes = [];
+  const movs = (Array.isArray(cfg.mover) ? cfg.mover : []).filter(mv=>mv && mv.equipo && ACCIONES_MOVER[mv.accion]);
+  const txtMov = mv => `${mv.equipo} ${ACCIONES_MOVER[mv.accion]}${mv.ref ? " "+mv.ref : ""}`;
+  const enDol = tag => E.dol.findIndex(d=>d.gm.tag===tag || d.k.tag===tag);
+  const enPot = tag => E.pot.findIndex(c=>c.tb===tag || c.partes.some(x=>x.tag===tag));
+  const pendientes = [];
+  let q1Lado = cfg.q1Lado, panelAlt = +cfg.panelAltura || 0;
+  for(const mv of movs){
+    const iD = enDol(mv.equipo), iP = enPot(mv.equipo);
+    if(iD >= 0 && !["arriba","abajo"].includes(mv.accion)){
+      const r = reubicar(E.dol, iD, mv.accion, mv.ref ? enDol(mv.ref) : null);
+      ajustes.push({ texto:txtMov(mv), ok:r===true, nota: r==="limite" ? "ya está en el extremo de su fila" : r ? "" : "el equipo de referencia no está en la misma fila" });
+    } else if(iP >= 0){
+      const col = E.pot[iP], dv = col.partes.find(x=>x.tipo==="variador");
+      if(["arriba","abajo"].includes(mv.accion)){
+        if(dv && dv.tag===mv.equipo){ dv.posV = mv.accion; ajustes.push({ texto:txtMov(mv).replace("una fila ", ""), ok:true }); }
+        else ajustes.push({ texto:txtMov(mv), ok:false, nota:"en la placa de fuerza el orden vertical sigue el recorrido de la energía (interruptor → seccionador → arrancador)" });
+        continue;
+      }
+      let r = reubicar(E.pot, iP, mv.accion, mv.ref ? enPot(mv.ref) : null);
+      // con una sola columna, «a la derecha / izquierda» cambia el lado del variador dentro de su columna
+      if(r==="limite" && dv && ["izquierda","derecha"].includes(mv.accion)){ col.vfdLado = mv.accion==="derecha" ? "der" : "izq"; r = true; }
+      ajustes.push({ texto:txtMov(mv), ok:r===true, nota: r==="limite" ? "ya está en el extremo de la placa de fuerza" : r ? "" : "el equipo de referencia no está en la placa de fuerza" });
+    } else if(mv.equipo==="Q1"){
+      if(["izquierda","derecha"].includes(mv.accion)){ q1Lado = mv.accion==="izquierda" ? "izq" : "der"; ajustes.push({ texto:txtMov(mv), ok:true }); }
+      else ajustes.push({ texto:txtMov(mv), ok:false, nota:"el interruptor general va en la fila de derivaciones, junto a las barras" });
+    } else pendientes.push(mv);
+  }
   const filasCtrl = [];   // { nombre, grupos:[[comp…]], alinear? }
   filasCtrl.push({ nombre:"Protecciones auxiliares de la acometida", grupos:gruposAux });
   if(E.dol.length){
@@ -180,6 +229,44 @@ export function arregloTablero(p, t, calc){
   const ordenB = b => /^TB(\d+)/.test(b.grupo) ? +b.grupo.slice(2) : 1000;
   const bornesCtrl = E.bornes.filter(b=>b.sec!=="pot").sort((a, b)=>ordenB(a) - ordenB(b));
   const bornesPot = E.bornes.filter(b=>b.sec==="pot");
+  // ajustes en las filas de la placa de control, en las borneras y en la puerta
+  const ubicar = tag => { for(let r=0;r<filasCtrl.length;r++){ const f = filasCtrl[r];
+      if(f.columnas){ const i = f.columnas.findIndex(c=>c.comp.tag===tag); if(i>=0) return { r, col:true }; continue; }
+      for(let g=0; g<f.grupos.length; g++){ const i = f.grupos[g].findIndex(x=>x.tag===tag); if(i>=0) return { r, g, i }; } }
+    return null; };
+  for(const mv of pendientes){
+    const tb = bornesCtrl.findIndex(b=>b.grupo===mv.equipo);
+    if(tb >= 0){ const r = reubicar(bornesCtrl, tb, mv.accion==="arriba" ? "izquierda" : mv.accion==="abajo" ? "derecha" : mv.accion, mv.ref ? bornesCtrl.findIndex(b=>b.grupo===mv.ref) : null); ajustes.push({ texto:txtMov(mv), ok:r===true, nota: r==="limite" ? "ya está en el extremo de la fila de borneras" : r ? "" : "la referencia no es una bornera de la placa de control" }); continue; }
+    if(/^(EPB1|LT|PANEL)$/.test(mv.equipo) && ["arriba","abajo"].includes(mv.accion)){ panelAlt += mv.accion==="arriba" ? 150 : -150; ajustes.push({ texto:txtMov(mv).replace("una fila ", "150 mm "), ok:true }); continue; }
+    const u = ubicar(mv.equipo);
+    if(!u){ ajustes.push({ texto:txtMov(mv), ok:false, nota:"no encontré ese equipo en el arreglo" }); continue; }
+    if(["arriba","abajo"].includes(mv.accion)){
+      const nombreFila = filasCtrl[u.r].nombre.replace(/ \(\d+\)$/, "");
+      const bloques = []; for(const f of filasCtrl){ if(f.columnas && bloques.length && bloques[bloques.length-1][0].columnas) bloques[bloques.length-1].push(f); else bloques.push([f]); }
+      const bi = bloques.findIndex(bq=>bq.includes(filasCtrl[u.r]));
+      const r = reubicar(bloques, bi, mv.accion);
+      if(r===true) filasCtrl.splice(0, filasCtrl.length, ...bloques.flat());
+      ajustes.push({ texto:`${txtMov(mv)} (fila «${nombreFila}»)`, ok:r===true, nota: r==="limite" ? `ya está en la ${mv.accion==="arriba" ? "primera" : "última"} fila de equipos (las borneras van siempre al pie, junto a la entrada de cables)` : "" });
+      continue;
+    }
+    if(u.col){ ajustes.push({ texto:txtMov(mv), ok:false, nota:"no se pudo reubicar en su fila" }); continue; }
+    const fila = filasCtrl[u.r], grupo = fila.grupos[u.g];
+    const ur = mv.ref ? ubicar(mv.ref) : null;
+    let r;
+    if(ur && !ur.col && ur.r===u.r && ur.g===u.g) r = reubicar(grupo, u.i, mv.accion, ur.i);                 // dentro del mismo grupo
+    else if(ur && !ur.col && ur.r===u.r) r = reubicar(fila.grupos, u.g, mv.accion, ur.g);                     // otro grupo de la misma fila
+    else if(ur && !ur.col && ["antes","despues","intercambiar"].includes(mv.accion)){                         // pasa a otra fila
+      const otra = filasCtrl[ur.r];
+      if(mv.accion==="intercambiar"){ const g2 = otra.grupos[ur.g]; fila.grupos[u.g] = g2; otra.grupos[ur.g] = grupo; }
+      else { fila.grupos.splice(u.g, 1); otra.grupos.splice(ur.g + (mv.accion==="despues" ? 1 : 0), 0, grupo); }
+      r = true;
+    }
+    else if(mv.ref) r = false;
+    else if(grupo.length > 1 && ((mv.accion==="izquierda" && u.i > 0) || (mv.accion==="derecha" && u.i < grupo.length-1))) r = reubicar(grupo, u.i, mv.accion);
+    else r = reubicar(fila.grupos, u.g, mv.accion);
+    ajustes.push({ texto:txtMov(mv), ok:r===true, nota: r==="limite" ? "ya está en el extremo de su fila" : r ? "" : "el equipo de referencia no está en la placa de control" });
+  }
+  for(let i=filasCtrl.length-1; i>=0; i--) if(filasCtrl[i].grupos && !filasCtrl[i].grupos.length) filasCtrl.splice(i, 1);
 
   // ===== 2) dimensiones requeridas =====
   const montajeAuto = ()=>{
@@ -192,7 +279,9 @@ export function arregloTablero(p, t, calc){
   const maxD = Math.max(...[...E.aux, ...E.dol.flatMap(d=>[d.gm, d.k]), ...E.ctrl.flatMap(c=>c.partes), ...E.pot.flatMap(c=>c.partes), ...E.acometida].map(x=>x.d||0), 100);
 
   // ancho de la placa de control: el menor normalizado en el que entren las filas
-  const ductV = C.canaleta(6*(E.dol.length*2 + E.aux.length + E.ctrl.reduce((a, c)=>a + c.partes.length, 0)), 60), ductH = C.canaleta(60, 60);
+  let ductV = C.canaleta(6*(E.dol.length*2 + E.aux.length + E.ctrl.reduce((a, c)=>a + c.partes.length, 0)), 60), ductH = C.canaleta(60, 60);
+  const mCan = String(cfg.canaleta||"").match(/(\d{2,3})\s*x\s*(\d{2,3})/i);
+  if(mCan){ const dc = { w:+mCan[1], h:+mCan[2], nombre:`${+mCan[1]}x${+mCan[2]} mm` }; ductV = dc; ductH = dc; }
   const utilDe = Wp => Wp - 2*(MARGEN + ductV.w) - 2*15;
   const filasDe = (util)=> {
     const out = [];
@@ -281,6 +370,7 @@ export function arregloTablero(p, t, calc){
     sel = { H:Hc, secs: conPot ? [{ rol:"control", W:800, ctrl:{ W:800, util:u, filas:a.filas, alto:a.alto } }, { rol:"potencia", W:1200, pot:{ W:1200, cols:colsPot, util:1200-100-2*(MARGEN+ductV.w)-20 } }] : [{ rol:"mixta", W:800, ctrl:{ W:800, util:u, filas:a.filas, alto:a.alto } }] };
   }
   H = sel.H; secs = sel.secs;
+  if(cfg.ladoControl==="der" && secs.length > 1){ const sc = secs.find(x=>x.rol!=="potencia"); secs = secs.filter(x=>x!==sc).concat([sc]); }
   let W = secs.reduce((a, s)=>a + s.W, 0);
   if(fijoW && fijoW > W){ const extra = fijoW - W; secs[secs.length-1].W += extra; W = fijoW; }
   else if(fijoW && fijoW < W) avisos.push(`El ancho pedido (${fijoW} mm) no alcanza: se usa ${W} mm.`);
@@ -383,15 +473,16 @@ export function arregloTablero(p, t, calc){
 
   // --- secciones de fuerza ---
   let filaQ = null;
+  const q1Izq = q1Lado==="izq";
   if(conPot){
     const pp = sPot[0].placa;
     if(entrada==="inferior"){
       busY = pp.y + pp.h - 40 - fase.ancho/2;
       filaQ = busY - 2*fase.paso - fase.ancho/2 - 60;
-      q1.x = pp.x + pp.w - MARGEN - ductV.w - 35 - q1.w; q1.y = filaQ - q1.h;
+      q1.x = q1Izq ? pp.x + MARGEN + 35 : pp.x + pp.w - MARGEN - ductV.w - 35 - q1.w; q1.y = filaQ - q1.h;
       zonaAcom = { placa:pp.id, x:q1.x - 25, y:pp.y + 60, w:q1.w + 50, h:q1.y - 20 - (pp.y + 60), nombre:"RECORRIDO DE CABLES DE ACOMETIDA" };
     } else {
-      q1.x = pp.x + pp.w/2 - q1.w/2; q1.y = pp.y + pp.h - 110 - q1.h;
+      q1.x = q1Lado==="izq" ? pp.x + MARGEN + 40 : q1Lado==="der" ? pp.x + pp.w - MARGEN - ductV.w - 40 - q1.w : pp.x + pp.w/2 - q1.w/2; q1.y = pp.y + pp.h - 110 - q1.h;
       busY = q1.y - 60 - fase.ancho/2;
       filaQ = busY - 2*fase.paso - fase.ancho/2 - 60;
     }
@@ -402,7 +493,7 @@ export function arregloTablero(p, t, calc){
       const pl = s.placa;
       // canaleta vertical de control (mando de variadores y arrancadores) a la derecha de cada placa de fuerza
       ductos(s, pl.x + pl.w - MARGEN - ductV.w, pl.y + 70, ductV.w, filaQ - (pl.y + 70), "v", ductV);
-      const xa = pl.x + MARGEN + 10, xb = pl.x + pl.w - MARGEN - ductV.w - 20 - (si===0 ? ANCHO_ACOM : 0);
+      const xa = pl.x + MARGEN + 10 + (si===0 && q1Izq ? ANCHO_ACOM : 0), xb = pl.x + pl.w - MARGEN - ductV.w - 20 - (si===0 && !q1Izq ? ANCHO_ACOM : 0);
       const wcols = s.pot.cols.reduce((a, c)=>a + c.ancho, 0);
       let x = xa + Math.max(0, (xb - xa - wcols)/2);
       const yBornes = pl.y + 75;
@@ -425,7 +516,7 @@ export function arregloTablero(p, t, calc){
       }
       // barra de tierra de la sección de fuerza
       const w2 = Math.min(pl.w - 80 - (si===0 ? ANCHO_ACOM : 0), 360);
-      barras.push({ tag:"PE", fase:"PE", nombre:pe.nombre, x:pl.x + 30, y:pl.y + 22 - pe.ancho/2, w:w2, h:pe.ancho, orient:"h", placa:pl.id, seccion:s.id, perforaciones:Math.round(w2/25) });
+      barras.push({ tag:"PE", fase:"PE", nombre:pe.nombre, x:pl.x + 30 + (si===0 && q1Izq ? ANCHO_ACOM : 0), y:pl.y + 22 - pe.ancho/2, w:w2, h:pe.ancho, orient:"h", placa:pl.id, seccion:s.id, perforaciones:Math.round(w2/25) });
     });
   }
   // barras L1-L2-L3 con aisladores y bajadas
@@ -448,12 +539,13 @@ export function arregloTablero(p, t, calc){
     // cable de alimentación del grupo: de las barras, por la canaleta superior y la vertical izquierda de la placa de control
     const yDuctoSup = ytopCtrl - ductH.w/2, xDuctoIzq = sCtrl.placa.x + MARGEN + ductV.w/2;
     for(const d of dest){ const px = d.x + 8, yy = d.y + d.h + DUCT_GAP*0.6;
-      const ini = conPot ? [[busX0 + 15, busY - fase.paso], [busX0 + 15, yDuctoSup]] : [[busX0 + 15, busY - fase.paso], [busX0 + 15, yDuctoSup]];
+      const xB = conPot && sCtrl.x0 > sPot[0].x0 ? busX1 - 15 : busX0 + 15;
+      const ini = [[xB, busY - fase.paso], [xB, yDuctoSup]];
       conexiones.push({ tipo:"cable", fase:"L1-L2-L3", desc:"Alimentación de guardamotores desde barras", pts:[...ini, [xDuctoIzq, yDuctoSup], [xDuctoIzq, yy], [px, yy], [px, d.y + d.h]] }); }
   }
 
   // ===== 5) puerta: mando del Q1, panel de operación, teclados de variadores, ventilación =====
-  const yPanel = Math.min(H - 250, 1650 - zocalo);
+  const yPanel = Math.min(H - 150, 1650 - zocalo + panelAlt);
   puerta.push({ tag:"Q1", tipo:"manija", desc:"Manija del interruptor general (bloqueo con candado)", modelo:C.MANIJA.modelo, x:q1.x + q1.w/2, y:q1.y + q1.h/2, w:C.MANIJA.w, h:C.MANIJA.h, seccion:sQ1.id });
   const ops = [];
   if((t.accesorios||{}).luces!==false) ["R","S","T"].forEach(f=>ops.push({ tag:"LT", tipo:"luz", color:"rojo", leyenda:`FASE ${f}` }));
@@ -468,15 +560,22 @@ export function arregloTablero(p, t, calc){
     }
   }
   // panel de operación: 4 columnas a 75 mm, filas a 85 mm, parada de emergencia al pie
-  const sPanel = sCtrl;
+  const sPanel = cfg.panelSeccion==="potencia" && sPot.length ? sPot[0] : sCtrl;
   const colsP = 4, pasoX = 75, pasoY = 85;
   const filasP = Math.ceil(ops.length/colsP);
   const panelW = colsP*pasoX + 30, panelH = filasP*pasoY + 130;
   const pcx = sPanel.x0 + sPanel.W/2 - (sPanel===sQ1 && sPanel.W < 1000 ? 0 : 0);
   let panelY0 = yPanel - panelH;
   if(panelY0 < 700) panelY0 = 700;
-  const choca = sPanel===sQ1 && Math.abs((q1.x + q1.w/2) - pcx) < panelW/2 + 60 && q1.y + q1.h/2 > panelY0 - 60;
-  const pcx2 = choca ? sPanel.x0 + sPanel.W*0.3 : pcx;
+  // posición libre en la puerta: sin cruzar la junta de una puerta doble, la manija de Q1 ni los teclados de los variadores
+  const dobleP = sPanel.W >= 1000, midP = sPanel.x0 + sPanel.W/2;
+  const obst = [];
+  if(sPanel===sQ1) obst.push([q1.x + q1.w/2, q1.y + q1.h/2, 90 + 60, 90 + 60]);
+  for(const c of comps.filter(c=>c.tipo==="variador" && c.seccion===sPanel.id)) obst.push([c.x + c.w/2, yPanel - 90, C.PANEL_VFD.w + 40, C.PANEL_VFD.h + 40]);
+  const libre = cx => !(dobleP && Math.abs(cx - midP) < panelW/2 + 25) && cx - panelW/2 > sPanel.x0 + 40 && cx + panelW/2 < sPanel.x1 - 40
+    && !obst.some(([ox, oy, ow, oh])=>Math.abs(ox - cx) < (ow + panelW)/2 && Math.abs(oy - (panelY0 + panelH/2)) < (oh + panelH)/2);
+  const cands = (dobleP ? [0.25, 0.75, 0.2, 0.8] : [0.5, 0.3, 0.7, 0.25, 0.75]).map(f=>sPanel.x0 + sPanel.W*f);
+  const pcx2 = cands.find(libre) ?? cands[0];
   ops.forEach((o, i)=>{ const r = Math.floor(i/colsP), k = i%colsP; puerta.push(Object.assign({ x:pcx2 - (colsP-1)*pasoX/2 + k*pasoX, y:panelY0 + panelH - 50 - r*pasoY, seccion:sPanel.id, diam:o.tipo==="potenciometro" ? 30 : 30, desc:descOp(o) }, o)); });
   puerta.push({ tag:"EPB1", tipo:"seta", desc:"Parada de emergencia (actúa sobre la bobina de mínima tensión de Q1)", modelo:C.PUERTA.seta.modelo, leyenda:"PARADA DE EMERGENCIA", x:pcx2, y:panelY0 + 45, diam:40, anillo:60, seccion:sPanel.id });
   const panel = { x:pcx2 - panelW/2, y:panelY0, w:panelW, h:panelH, seccion:sPanel.id };
@@ -484,6 +583,8 @@ export function arregloTablero(p, t, calc){
   for(const c of comps.filter(c=>c.tipo==="variador")){
     const s = secs.find(x=>x.id===c.seccion);
     let px = c.x + c.w/2, py = yPanel - 90;
+    if(s.W >= 1000 && Math.abs(px - (s.x0 + s.W/2)) < C.PANEL_VFD.w/2 + 25) px = px < s.x0 + s.W/2 ? s.x0 + s.W/2 - C.PANEL_VFD.w/2 - 40 : s.x0 + s.W/2 + C.PANEL_VFD.w/2 + 40;
+    if(panel && panel.seccion===s.id && Math.abs(px - (panel.x + panel.w/2)) < (panel.w + C.PANEL_VFD.w)/2 + 20) py = panel.y - C.PANEL_VFD.h/2 - 40;
     if(Math.abs(px - (q1.x + q1.w/2)) < 120 && Math.abs(py - (q1.y + q1.h/2)) < 150) py = q1.y - 120;
     puerta.push({ tag:c.tag, tipo:"panelvfd", desc:"Panel de operador del variador "+c.tag, modelo:C.PANEL_VFD.modelo, x:px, y:py, w:C.PANEL_VFD.w, h:C.PANEL_VFD.h, seccion:s.id });
   }
@@ -568,9 +669,13 @@ export function arregloTablero(p, t, calc){
   criterios.push(`Canaletas ranuradas ${ductH.nombre} entre filas y ${ductV.nombre} verticales a los costados, con ${DUCT_GAP} mm libres entre equipos y canaleta; reserva de espacio ${Math.round(reserva*100)} % por fila.`);
   criterios.push(`Borneras agrupadas por función: TB1 (bobina de mínima tensión), TBn de fuerza por circuito (bornes según la corriente: ${[...new Set(bloquesB.filter(b=>b.potencia||/^TB\d/.test(b.grupo)).flatMap(b=>b.bornes.map(x=>x.modelo.replace(/-PE$/,""))))].join(", ")||"UT 6"}), X1 salidas de control; barra de tierra ${pe.nombre} mm al pie de cada placa.`);
   if(calef) criterios.push("Resistencia calefactora anticondensación con termostato (temperatura mínima baja o instalación exterior).");
+  const hechos = ajustes.filter(a=>a.ok);
+  if(hechos.length) criterios.push(`Ajustes pedidos por el usuario: ${hechos.map(a=>a.texto).join("; ")}.`);
+  if(cfg.ladoControl==="der" && secs.length > 1) criterios.push("Placa de control a la derecha de la placa de fuerza (pedido del usuario).");
+  for(const a of ajustes.filter(a=>!a.ok)) avisos.push(`No se aplicó «${a.texto}»: ${a.nota}.`);
 
   const bom = listaMateriales(comps, bloquesB, barras, canaletas, rieles, puerta, fase, pe, aisladores.length*3, cabs);
-  return { tablero:t, calc, cfg, montaje, W, H, D, zocalo, techo: /intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom,
+  return { tablero:t, calc, cfg, montaje, W, H, D, zocalo, techo: /intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom, ajustes,
     secciones, placas, comps, canaletas, rieles, barras, aisladores, conexiones, bornes:bloquesB, puerta, panel, base, ventilacion:vent, termico:term,
     fase, pe, filas:filaInfo, criterios, avisos, bom, tension:g.voltage, frecuencia:g.freq, reserva };
 
@@ -604,7 +709,8 @@ export function arregloTablero(p, t, calc){
     cl.conex = [];
     const topBornes = yBornes + 32;
     if(cl.dr){
-      const dr = cl.dr, xD = x0 + 15, xA = xD + dr.w + 45 + cl.wA/2;
+      const dr = cl.dr, vDer = cl.src.vfdLado==="der";
+      const xD = vDer ? x0 + 15 + cl.wA + 45 : x0 + 15, xA = vDer ? x0 + 15 + cl.wA/2 : xD + dr.w + 45 + cl.wA/2;
       let y = yTop;
       if(cl.q){ put(cl.q, xA - cl.q.w/2, y - cl.q.h); y -= cl.q.h + 50; }
       if(cl.f){ put(cl.f, xA - cl.f.w/2, y - cl.f.h); y -= cl.f.h + 60; }
@@ -616,6 +722,7 @@ export function arregloTablero(p, t, calc){
       // variador lo más alto posible con su espacio libre superior; debajo, su espacio libre hasta la bornera
       let yV = yTop - dr.libreArriba - dr.h;
       const minV = topBornes + dr.libreAbajo;
+      if(dr.posV==="abajo") yV = Math.min(yV, minV);
       if(yV < minV){ yV = minV; if(yV + dr.h + dr.libreArriba > yTop + 1) avisos.push(`${dr.tag}: no se respetan los ${dr.libreArriba} mm libres sobre el variador; aumenta el alto del gabinete.`); }
       put(dr, xD, yV);
       // recorrido de fuerza: Q → F → reactancia de línea → bornes de entrada del variador → salida → filtro de carga → bornera
@@ -623,8 +730,8 @@ export function arregloTablero(p, t, calc){
       const xR = xA + cl.wA/2 + 10;     // bajada por el lado derecho de la subcolumna
       if(cl.f && L) for(let k=0;k<ph;k++){ const yh = cl.f.y - 14 - k*7, yl = L.y + L.h + 12 + k*7; cl.conex.push(via(F3[k], [[xp(cl.f,k), cl.f.y], [xp(cl.f,k), yh], [xR + k*7, yh], [xR + k*7, yl], [xp(L,k), yl], [xp(L,k), L.y + L.h]])); }
       const xIn = k => dr.x + dr.w*(0.14 + k*0.1), xOut = k => dr.x + dr.w*(0.62 + k*0.1);
-      if(L) for(let k=0;k<ph;k++){ const yy = L.y + 18 + k*8; cl.conex.push(via(F3[k], [[L.x, yy], [xIn(k), yy], [xIn(k), dr.y]])); }
-      if(M) for(let k=0;k<ph;k++){ const yy = M.y + 18 + k*8; cl.conex.push(via(M3[k], [[xOut(k), dr.y], [xOut(k), yy], [M.x, yy]])); }
+      if(L) for(let k=0;k<ph;k++){ const yy = L.y + 18 + k*8; cl.conex.push(via(F3[k], [[vDer ? L.x + L.w : L.x, yy], [xIn(k), yy], [xIn(k), dr.y]])); }
+      if(M) for(let k=0;k<ph;k++){ const yy = M.y + 18 + k*8; cl.conex.push(via(M3[k], [[xOut(k), dr.y], [xOut(k), yy], [vDer ? M.x + M.w : M.x, yy]])); }
       // salida hacia la bornera TBn (se completa cuando se ubica la bornera)
       cl.xTB = M ? M.x + M.w/2 : xOut(1);
       cl.salida = items => items.filter(b=>!b.pe).map((b, k)=> M ? via(M3[k], [[xp(M,k), M.y], [xp(M,k), M.y - 12 - k*6], [b.x + b.w/2, M.y - 12 - k*6], [b.x + b.w/2, topBornes - 8]]) : via(M3[k], [[xOut(k), dr.y], [b.x + b.w/2, dr.y - 40], [b.x + b.w/2, topBornes - 8]]));

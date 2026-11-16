@@ -1,5 +1,5 @@
 /* Ingenia — formularios de datos de entrada (se muestran solo los que usa cada documento). */
-import { $, $$, esc, html, ICON, toast, dropzone } from "./ui.js";
+import { $, $$, esc, html, ICON, toast, dropzone, spinner } from "./ui.js";
 import * as S from "./store.js";
 import { save } from "./store.js";
 import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
@@ -158,7 +158,9 @@ const ED = {
     $$("[data-mk]", el).forEach(i=>i.onchange = ()=>{
       const k = i.dataset.mk; let val = i.value.trim();
       if(["ancho","alto","fondo","reserva","tInterior"].includes(k)){ val = val.replace(/[^\d.]/g, ""); if(val!=="" && !(+val>0)){ toast("Ingresa un número", true); i.value = cfg[k]; return; } val = val==="" ? "" : +val; }
-      cfg[k] = val; cambio(); ED.mecanico(el, p, cambio);
+      cfg[k] = val; cambio();
+      res.innerHTML = spinner("Actualizando el arreglo…");
+      setTimeout(()=>ED.mecanico(el, p, cambio), 30);
     });
     const sl = $("[data-tsel]", el); if(sl) sl.onchange = ()=>{ el.dataset.t = sl.value; ED.mecanico(el, p, cambio); };
   },

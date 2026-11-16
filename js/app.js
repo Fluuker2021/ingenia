@@ -568,4 +568,4 @@ function screenEstandares(){
 
 route();
 comprobarVersion();
-iniciarCopito(()=>rutaMenu.seg==="proyecto" ? { id: rutaMenu.id } : {}, ()=>{ const y = window.scrollY; route(); window.scrollTo(0, y); });
+iniciarCopito(()=>rutaMenu.seg==="proyecto" ? { id: rutaMenu.id } : {}, ()=>{ const y = window.scrollY; return Promise.resolve(route()).then(()=>window.scrollTo(0, y)); });

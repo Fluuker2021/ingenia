@@ -5,11 +5,19 @@
 import * as S from "./store.js";
 import { esc } from "./ui.js";
 import { ETAPAS, ENTREGABLES } from "./catalog.js";
-import { datos, tableros, tablerosPotencia, instrumentos, expandirTag, tipoInstrumento, nuevaCarga, aplicarTipicos, derivarIO, tf, calcularTablero, cablesFuerza } from "./datos.js";
+import { datos, tableros, tablerosPotencia, tablerosControl, instrumentos, expandirTag, tipoInstrumento, nuevaCarga, aplicarTipicos, derivarIO, tf, calcularTablero, cablesFuerza } from "./datos.js";
 import { valoresDiseno } from "./modules/criterios.js";
 import { docInfo } from "./docs.js";
 import { nextRev } from "./workspace.js";
 import { cfgMecanico, arregloTablero, ACCIONES_MOVER } from "./mecanico/arreglo.js";
+import { arregloControl } from "./mecanico/arreglo-control.js";
+/* tableros con arreglo mecánico: los de fuerza (motor de fuerza) y los de control (motor del tablero de control) */
+const tablerosCtl = p => tablerosControl(p).filter(t=>t.tipo==="control");
+const tablerosMec = p => [...tablerosPotencia(p), ...tablerosCtl(p)];
+const arregloDe = (p, t, c) => t.tipo==="control" ? arregloControl(p, t) : arregloTablero(p, t, c);
+// en el plano mecánico del tablero de control sus equipos se buscan primero (hay TAG repetidos: CB1, TB1…)
+const enControl = () => /ins-mecanico-tc/.test((globalThis.location && globalThis.location.hash) || "");
+import { interpretarDoc, describirDoc, aplicarDoc, afectados, OPS_DOC } from "./copito-docs.js";
 
 /* ---------- texto ---------- */
 // normaliza (minúsculas, sin tildes) conservando la posición de cada carácter en el texto original
@@ -54,7 +62,7 @@ NOMBRE_DISENO.ubicacion = ["Ubicación del proyecto", ""];
 NOMBRE_DISENO.tensionControlTipo = ["Tipo de tensión de control", ""];
 const MOTIVOS = [[/interna/, "Emitido para revisión interna"], [/cliente/, "Emitido para revisión del cliente"], [/aprobacion/, "Emitido para aprobación"], [/construccion/, "Emitido para construcción"], [/conforme a obra|as built/, "Conforme a obra"]];
 
-const VERBO = /\b(cambia|cambialo|cambiala|cambiar|cambiarlo|cambie|cambiale|modifica|modificar|pon|ponlo|ponla|ponle|ponles|poner|ponerlo|actualiza|actualizar|ajusta|ajustar|establece|asigna|agrega|agregar|anade|anadir|incluye|incluir|crea|crear|elimina|eliminar|borra|borrar|quita|quitar|quitale|emite|emitir|renombra|sube|subelo|subela|subir|subirlo|baja|bajalo|bajala|bajar|bajarlo|aumenta|reduce|haz|hazlo|hacer|duplica|reemplaza|sustituye|mueve|muevelo|muevela|muevelos|mover|moverlo|muevas|configura|define|fija|coloca|colocalo|colocala|colocar|ubica|ubicalo|ubicala|reubica|reubicalo|pasa|pasalo|pasala|pasar|lleva|llevalo|llevala|desplaza|desplazalo|traslada|trasladalo|intercambia|intercambialo|intercambiar|permuta|invierte|ordena|reordena|separa|junta|agranda|amplia|achica|disminuye|usa|usar|utiliza|utilizar|deja|dejalo|alinea|centra|acerca|aleja|restablece|restablecer|reinicia)\b/;
+const VERBO = /\b(cambia|cambialo|cambiala|cambiar|cambiarlo|cambie|cambiale|modifica|modificar|pon|ponlo|ponla|ponle|ponles|poner|ponerlo|actualiza|actualizar|ajusta|ajustar|establece|asigna|agrega|agregar|anade|anadir|incluye|incluir|crea|crear|elimina|eliminar|borra|borrar|quita|quitar|quitale|emite|emitir|renombra|sube|subelo|subela|subir|subirlo|baja|bajalo|bajala|bajar|bajarlo|aumenta|reduce|haz|hazlo|hacer|duplica|reemplaza|sustituye|mueve|muevelo|muevela|muevelos|mover|moverlo|muevas|configura|define|fija|coloca|colocalo|colocala|colocar|ubica|ubicalo|ubicala|reubica|reubicalo|pasa|pasalo|pasala|pasar|lleva|llevalo|llevala|desplaza|desplazalo|traslada|trasladalo|intercambia|intercambialo|intercambiar|permuta|invierte|ordena|reordena|separa|junta|agranda|amplia|achica|disminuye|usa|usar|utiliza|utilizar|deja|dejalo|alinea|centra|acerca|aleja|restablece|restablecer|reinicia|reviso|aprobo|elaboro|dibujo|emite|regenera|regenerar)\b/;
 const PREGUNTA = /^\s*¿?\s*(que|cual|cuales|cuanto|cuantos|cuantas|como|donde|por que|quien|es|hay)\b/;
 export const esOrden = q => { const t = normMapa(q).t; return VERBO.test(t) && !PREGUNTA.test(t); };
 
@@ -76,6 +84,8 @@ function siguienteTag(lista, pref){
 export function interpretar(q, p, forzar){
   const M = normMapa(q), t = M.t, d = datos(p), ops = [];
   if(!forzar && (!VERBO.test(t) || PREGUNTA.test(t))) return null;
+  // cambios sobre lo que muestra un documento (circuitos de control, tablero de control, cajetín, notas, P&ID)
+  const od = interpretarDoc(q, p); if(od) return od;
   const tags = etiquetas(p).filter(e=>reTag(e.tag).test(t));
   const borrar = /\b(elimina|eliminar|borra|borrar|quita|quitar)\b/.test(t);
   const agregar = /\b(agrega|agregar|anade|anadir|incluye|incluir|crea|crear)\b/.test(t);
@@ -160,7 +170,11 @@ const MEC = /canaleta|gabinete|envolvente|entrada de cables|ingreso de cables|ve
 /* ---------- reubicación de equipos del arreglo mecánico ---------- */
 const DIR = /izquierda|derecha|arriba|abajo|\bsub(e|elo|ela|ir|irlo)\b|\bbaj(a|alo|ala|ar|arlo)\b|encima|debajo|mas alto|mas bajo|intercambi|permuta|de lugar|de posicion|en (lugar|vez) de|antes de|despues de|luego de|al lado de|junto a|al inicio|al principio|al final|primer lugar|ultimo lugar|restablec|reinicia|arreglo (automatico|original)|allen|rockwell|powerflex|\babb\b|acs880|puerta de (fuerza|control)|seccion de (fuerza|control)|placa de (fuerza|control)/;
 export const pareceAjuste = q => { const t = normMapa(q).t; return DIR.test(t) && !PREGUNTA.test(t) && !/\?/.test(q); };
-function arreglos(p){ return tablerosPotencia(p).map(t=>{ try{ const c = calcularTablero(p, t); return c.circuits.length ? { t, m: arregloTablero(p, t, c) } : null; }catch(e){ return null; } }).filter(Boolean); }
+function arreglos(p){
+  const fz = tablerosPotencia(p).map(t=>{ try{ const c = calcularTablero(p, t); return c.circuits.length ? { t, m: arregloTablero(p, t, c) } : null; }catch(e){ return null; } }).filter(Boolean);
+  const ct = tablerosCtl(p).map(t=>{ try{ return { t, m: arregloControl(p, t) }; }catch(e){ return null; } }).filter(Boolean);
+  return enControl() ? [...ct, ...fz] : [...fz, ...ct];
+}
 function equiposDe(m){
   const out = new Map();
   for(const c of m.comps) if(c.tag) out.set(c.tag, { tag:c.tag, tipo:c.tipo, carga:c.circ && c.circ.carga });
@@ -236,15 +250,16 @@ export function infoEquipo(q, p){
 /* qué se le puede pedir a Copito sobre un equipo del arreglo */
 export function ayudaEquipo(q, p){
   const t = normMapa(q).t;
-  for(const a of arreglos(p)) for(const e of equiposDe(a.m)) if(posTag(t, e.tag) >= 0)
-    return `Para <b>${esc(e.tag)}</b> en ${esc(a.t.tag)} puedo: moverlo a la izquierda o a la derecha, ${e.tipo==="variador" ? "subirlo o bajarlo dentro de su columna, cambiar su marca (ABB o Allen-Bradley)," : "subir o bajar su fila,"} ponerlo antes o después de otro equipo o intercambiarlo con otro. Por ejemplo: «Mueve ${esc(e.tag)} a la derecha», «Intercambia ${esc(e.tag)} con …» o «${e.tipo==="variador" ? `Baja ${esc(e.tag)}` : `Sube la fila de ${esc(e.tag)}`}».`;
+  for(const a of arreglos(p)) for(const e of equiposDe(a.m)) if(posTag(t, e.tag) >= 0){
+    if(["modulo","fpd","tapa"].includes(e.tipo)) return `<b>${esc(e.tag)}</b> va en el rack del PLC de ${esc(a.t.tag)} en el orden de su slot (se cambia en el listado I/O). Puedo subir o bajar toda la fila del PLC o mover el PLC completo a la izquierda o a la derecha, por ejemplo: «Sube la fila del PLC» o «Mueve PLC a la derecha».`;
+    return `Para <b>${esc(e.tag)}</b> en ${esc(a.t.tag)} puedo: moverlo a la izquierda o a la derecha, ${e.tipo==="variador" ? "subirlo o bajarlo dentro de su columna, cambiar su marca (ABB o Allen-Bradley)," : "subir o bajar su fila,"} ponerlo antes o después de otro equipo o intercambiarlo con otro. Por ejemplo: «Mueve ${esc(e.tag)} a la derecha», «Intercambia ${esc(e.tag)} con …» o «${e.tipo==="variador" ? `Baja ${esc(e.tag)}` : `Sube la fila de ${esc(e.tag)}`}».`; }
   return null;
 }
 function interpretarMecanico(t, p, tabTag){
   const aj = interpretarAjuste(t, p, tabTag); if(aj) return aj;
   if(!MEC.test(t)) return null;
-  const pot = tablerosPotencia(p); if(!pot.length) return null;
-  const tab = tabTag && pot.find(x=>x.tag===tabTag.tag) ? tabTag.tag : pot[0].tag;
+  const pot = tablerosMec(p); if(!pot.length) return null;
+  const tab = tabTag && pot.find(x=>x.tag===tabTag.tag) ? tabTag.tag : ((enControl() && pot.find(x=>x.tipo==="control")) || pot[0]).tag;
   // los TAG (de tableros, equipos o cargas) no se confunden con medidas: se quitan antes de leer los números
   for(const x of tableros(p)) t = t.split(x.tag.toLowerCase()).join(" ");
   t = t.replace(/\b[a-z]{1,5}-?\d{1,4}(\.[a-z]\d+)?\b/g, m=>/^\d/.test(m) ? m : " ");
@@ -303,11 +318,12 @@ export function describir(op, p){
       const vert = op.accion==="arriba" || op.accion==="abajo";
       const como = vert && op.tipo==="variador" ? `más ${op.accion} en su columna` : vert && (op.tipo==="puerta" || op.equipo==="PANEL") ? `150 mm más ${op.accion} en la puerta` : vert ? `${op.accion==="arriba" ? "una fila más arriba" : "una fila más abajo"} (con toda su fila)` : (ACCIONES_MOVER[op.accion]||op.accion);
       return op.accion==="intercambiar" ? `Arreglo de <b>${esc(op.tag)}</b>: intercambiar <b>${esc(quien)}</b> con <b>${esc(op.ref)}</b>` : `Arreglo de <b>${esc(op.tag)}</b>: mover <b>${esc(quien)}</b> ${esc(como)}${op.ref ? ` <b>${esc(op.ref)}</b>` : ""}`; }
-    case "mecanico.editar": { const t = tablerosPotencia(p).find(x=>x.tag===op.tag); const cfg = t ? cfgMecanico(p, t) : {};
+    case "mecanico.editar": { const t = tablerosMec(p).find(x=>x.tag===op.tag); const cfg = t ? cfgMecanico(p, t) : {};
       if(c.restablecer) return `Arreglo de <b>${esc(op.tag)}</b>: <b>volver al arreglo automático</b> (se quitan las reubicaciones pedidas)`;
       return `Arreglo mecánico de <b>${esc(op.tag)}</b>: ${Object.entries(c).map(([k, v])=>{ const [n, u] = NOMBRE_MEC[k]||[k,""]; const ant = cfg[k]==="" || cfg[k]==null ? "automático" : (VAL_MEC[cfg[k]]||cfg[k]) + (u && cfg[k]!=="" ? " "+u : ""); const nv = v==="" ? "automático" : (VAL_MEC[v]||v) + (u ? " "+u : ""); return `${esc(n)} ${esc(ant)} → <b>${esc(nv)}</b>`; }).join(", ")}`; }
     case "documentos.emitir": return `Emitir ${op.rev ? "la revisión <b>"+esc(op.rev)+"</b>" : "la siguiente revisión"} de los <b>${p.entregables.length}</b> documentos: «${esc(op.motivo)}»`;
   }
+  const dd = describirDoc(op, p); if(dd!=null) return dd;
   return esc(op.op);
 }
 function senalDe(tag){
@@ -322,7 +338,7 @@ function foto(p){
   const v = valoresDiseno(p);
   const md = tablerosPotencia(p).map(t=>{ const c = calcularTablero(p, t); return { tag:t.tag, md:c.totalKVA||0, i:c.demandCurrent||0, itm:c.mainBreaker, n:c.circuits.length }; });
   let caidas = 0; try{ caidas = cablesFuerza(p).filter(f=>(f.dv||0) > (+v.caidaTension||2.5)).length; }catch(e){}
-  const mec = tablerosPotencia(p).map(t=>{ try{ const c = calcularTablero(p, t); if(!c.circuits.length) return null; const m = arregloTablero(p, t, c); return { tag:t.tag, gab:`${m.W} × ${m.H} × ${m.D} mm`, vent:m.termico.modo, n:m.comps.length, avisos:m.avisos.length, pos:Object.fromEntries(m.comps.filter(x=>x.tag).map(x=>[x.tag, `${Math.round(x.x)},${Math.round(x.y)},${x.seccion}`])), mod:Object.fromEntries(m.comps.filter(x=>x.tag).map(x=>[x.tag, x.modelo])) }; }catch(e){ return null; } }).filter(Boolean);
+  const mec = tablerosMec(p).map(t=>{ try{ const c = t.tipo==="control" ? null : calcularTablero(p, t); if(c && !c.circuits.length) return null; const m = arregloDe(p, t, c); return { tag:t.tag, gab:`${m.W} × ${m.H} × ${m.D} mm`, vent:m.termico.modo, n:m.comps.length, avisos:m.avisos.length, pos:Object.fromEntries([...m.comps.filter(x=>x.tag).map(x=>[x.tag, `${Math.round(x.x)},${Math.round(x.y)},${x.seccion}`]), ...m.bornes.map(b=>[b.grupo, `${Math.round(b.x0)},${Math.round(b.y)},${b.seccion}`])]), puerta:m.puerta.map(d=>d.tag).filter(Boolean).join(", "), mod:Object.fromEntries(m.comps.filter(x=>x.tag).map(x=>[x.tag, x.modelo])) }; }catch(e){ return null; } }).filter(Boolean);
   return { md, cargas: datos(p).cargas.length, inst: instrumentos(p).length, io: (datos(p)["ins-io"]||[]).length, caidas, mec };
 }
 export function aplicar(p, ops){
@@ -371,13 +387,13 @@ export function aplicar(p, ops){
       p.diseno = p.diseno || {};
       for(const [k, v] of Object.entries(c)) if(NOMBRE_DISENO[k] && v!=null && v!=="" && (k!=="tensionControlTipo" || v==="Vac" || v==="Vdc")) p.diseno[k] = String(v);
     } else if(op.op==="mecanico.mover"){
-      const t = tablerosPotencia(p).find(x=>x.tag===op.tag); if(!t){ avisos.push(`No existe el tablero de fuerza ${op.tag}.`); continue; }
+      const t = tablerosMec(p).find(x=>x.tag===op.tag); if(!t){ avisos.push(`No existe el tablero ${op.tag}.`); continue; }
       const cfg = cfgMecanico(p, t);
       cfg.mover.push({ equipo:op.equipo, accion:op.accion, ref:op.ref||"" });
       // si el motor no puede aplicar la reubicación, se retira y se explica por qué
-      try{ const m = arregloTablero(p, t); const a = m.ajustes[m.ajustes.length-1]; if(a && !a.ok){ cfg.mover.pop(); avisos.push(`No moví ${op.equipo}: ${a.nota}.`); } }catch(e){ cfg.mover.pop(); avisos.push(`No se pudo reubicar ${op.equipo}.`); }
+      try{ const m = arregloDe(p, t); const a = m.ajustes[m.ajustes.length-1]; if(a && !a.ok){ cfg.mover.pop(); avisos.push(`No moví ${op.equipo}: ${a.nota}.`); } }catch(e){ cfg.mover.pop(); avisos.push(`No se pudo reubicar ${op.equipo}.`); }
     } else if(op.op==="mecanico.editar"){
-      const t = tablerosPotencia(p).find(x=>x.tag===op.tag); if(!t){ avisos.push(`No existe el tablero de fuerza ${op.tag}.`); continue; }
+      const t = tablerosMec(p).find(x=>x.tag===op.tag); if(!t){ avisos.push(`No existe el tablero ${op.tag}.`); continue; }
       const cfg = cfgMecanico(p, t);
       if(c.restablecer){ Object.assign(cfg, { mover:[], ladoControl:"izq", q1Lado:"auto", panelSeccion:"auto", panelAltura:0, canaleta:"" }); continue; }
       if(c.ladoControl==="izq" || c.ladoControl==="der") cfg.ladoControl = c.ladoControl;
@@ -388,10 +404,10 @@ export function aplicar(p, ops){
         if(okVal[k]){ if(okVal[k].includes(v)) cfg[k] = v; else avisos.push(`Valor no válido para ${k}: ${v}.`); }
         else if(["ancho","alto","fondo","reserva","tInterior"].includes(k)){ if(v==="" || v==null) cfg[k] = ""; else if(+v>0) cfg[k] = +v; else avisos.push(`Valor no válido para ${k}: ${v}.`); }
       }
-    } else if(op.op==="documentos.emitir"){
+    } else if(op.op==="documentos.emitir" || op.op==="documento.emitir"){
       const o = S.load().org, firmas = { elaboro:o.elaboraPor||"", reviso:o.revisaPor||"", aprobo:o.apruebaPor||"" };
       const hoy = new Date().toISOString().slice(0,10), rev = String(op.rev||"").toUpperCase();
-      for(const id of p.entregables){
+      for(const id of (op.op==="documento.emitir" ? [op.doc] : p.entregables)){
         const doc = p.documentos[id]; if(!doc) continue; docInfo(p, id);
         const last = doc.revisiones[doc.revisiones.length-1];
         const fila = Object.assign({ rev: rev || last.rev, fecha: hoy, descripcion: op.motivo }, firmas);
@@ -399,11 +415,15 @@ export function aplicar(p, ops){
         else { if(!rev) fila.rev = nextRev(last.rev); doc.revisiones.push(fila); }
         doc.emitida = true; doc.estado = /interna/.test(op.motivo) ? "Para revisión" : "Emitido"; docInfo(p, id);
       }
+    } else if(OPS_DOC.includes(op.op) || op.op==="aviso"){
+      // circuitos y tablero de control, cajetín, notas y equipos del P&ID (copito-docs.js)
+      const r = aplicarDoc(p, op, avisos) || {};
+      if(r.regenerarIO) regenerarIO = true;
     }
   }
   if(regenerarIO) d["ins-io"] = derivarIO(p);
   S.save();
-  return { copia, impacto: impacto(antes, foto(p), regenerarIO), avisos };
+  return { copia, impacto: impacto(antes, foto(p), regenerarIO), avisos, documentos: afectados(p, ops) };
 }
 function impacto(a, b, io){
   const r = [], f = v => (+v).toLocaleString("es-PE", { maximumFractionDigits:1 });
@@ -416,6 +436,9 @@ function impacto(a, b, io){
   for(const m of (b.mec||[])){ const x = (a.mec||[]).find(y=>y.tag===m.tag); if(!x) continue;
     if(x.gab!==m.gab) r.push(`${m.tag}: gabinete ${x.gab} → <b>${m.gab}</b>`);
     if(x.vent!==m.vent) r.push(`${m.tag}: ventilación ${x.vent} → <b>${m.vent}</b>`);
+    if(x.puerta!==m.puerta){ const a1 = String(x.puerta||"").split(", ").filter(Boolean), b1 = String(m.puerta||"").split(", ").filter(Boolean), lista = l => [...new Set(l)].slice(0, 8).join(", ") + (new Set(l).size > 8 ? "…" : "");
+      const mas = b1.filter(t=>!a1.includes(t)), menos = a1.filter(t=>!b1.includes(t));
+      if(mas.length || menos.length) r.push(`${m.tag}: dispositivos de puerta${mas.length ? ` agregados <b>${lista(mas)}</b>` : ""}${menos.length ? `${mas.length ? ";" : ""} retirados <b>${lista(menos)}</b>` : ""}`); }
     const mov = Object.keys(m.pos).filter(k=>x.pos[k] && x.pos[k]!==m.pos[k]);
     if(mov.length) r.push(`${m.tag}: ${mov.length} equipo(s) reubicado(s) en el plano: <b>${mov.slice(0, 8).join(", ")}${mov.length > 8 ? "…" : ""}</b>`);
     const cam = Object.keys(m.mod).filter(k=>x.mod[k] && x.mod[k]!==m.mod[k]);
@@ -437,15 +460,19 @@ export const HERRAMIENTA = {
     proyecto_id: { type:"string", description:"id del proyecto (campo id del JSON de contexto)" },
     resumen: { type:"string", description:"una frase con lo que se va a cambiar" },
     operaciones: { type:"array", items: { type:"object", properties: {
-      op: { type:"string", enum:["carga.agregar","carga.editar","carga.eliminar","instrumento.agregar","instrumento.editar","instrumento.eliminar","tablero.editar","sistema.editar","proyecto.editar","diseno.editar","mecanico.editar","mecanico.mover","documentos.emitir"] },
-      equipo: { type:"string", description:"mecanico.mover: TAG del equipo del arreglo (p. ej. VDFC1, GCC2, TB3, Q1, PANEL)" }, accion: { type:"string", enum:["izquierda","derecha","arriba","abajo","inicio","final","antes","despues","intercambiar"] }, ref: { type:"string", description:"mecanico.mover: TAG de referencia para antes / despues / intercambiar" },
+      op: { type:"string", enum:["carga.agregar","carga.editar","carga.eliminar","instrumento.agregar","instrumento.editar","instrumento.eliminar","tablero.editar","sistema.editar","proyecto.editar","diseno.editar","mecanico.editar","mecanico.mover","documentos.emitir","circuito.agregar","circuito.eliminar","circuito.editar","control.editar","documento.editar","documento.emitir","nota.agregar","nota.eliminar","equipo.agregar","equipo.eliminar"] },
+      equipo: { type:"string", description:"mecanico.mover: TAG del equipo del arreglo (p. ej. VDFC1, GCC2, TB3, Q1, PANEL; en tableros de control PS1, CR3, SW1, XF1, TB6, HMI1)" }, accion: { type:"string", enum:["izquierda","derecha","arriba","abajo","inicio","final","antes","despues","intercambiar"] }, ref: { type:"string", description:"mecanico.mover: TAG de referencia para antes / despues / intercambiar" },
       tag: { type:"string", description:"TAG de la carga, instrumento o tablero" },
       descripcion: { type:"string" }, potencia: { type:"number" }, unidad: { type:"string", enum:["hp","kw"] },
       arranque: { type:"string", enum:["dol","vfd","ss"], description:"dol = directo, vfd = variador, ss = arrancador suave" },
       tablero: { type:"string", description:"TAG del tablero" }, aplicacion: { type:"string", enum:["bomba-centrifuga","ventilador-centrifugo","ventilador-axial","faja-transportadora","valvula-rotativa","compresor-piston","molino","chancadora","agitador","otro"] },
       servicio: { type:"string" }, ubicacion: { type:"string" }, cantidad: { type:"number" },
+      barra: { type:"string", enum:["24 Vdc","120 Vac","220 Vac"], description:"circuito.*: barra del tablero de control" }, circuito: { type:"string", description:"circuito.eliminar / circuito.editar: C1, C2… dentro de su barra" }, tagEq: { type:"string", description:"circuito.*: TAG del interruptor o fusible (CB4, F3)" },
+      proteccion: { type:"number", description:"circuito.*: A" }, diferencial: { type:"boolean" },
+      doc: { type:"string", description:"documento.* / nota.*: id del entregable (p. ej. ins-unifilar-tc, ele-cargas)" }, texto: { type:"string", description:"nota.agregar" }, n: { type:"number", description:"nota.eliminar: número de nota" },
+      tipo: { type:"string", description:"equipo.agregar: colector, ventilador, valvula-rotativa, faja, bomba, tanque, tolva, compresor, chancadora, molino, agitador, aire, otro" },
       motivo: { type:"string", enum:["Emitido para revisión interna","Emitido para revisión del cliente","Emitido para aprobación","Emitido para construcción","Conforme a obra"] }, rev: { type:"string" },
-      campos: { type:"object", description:"Campos a cambiar. carga.editar: potencia, unidad, arranque, longitud_cable (m), tablero, descripcion, fp, eficiencia, fu, fs. instrumento.editar: descripcion, servicio, ubicacion, marca, modelo, alimentacion, rango, senal. tablero.editar: nombre, tag. sistema.editar: nombre, tag. proyecto.editar: nombre, cliente, unidad (unidad minera / planta), etapa (conceptual/basica/detalle). diseno.editar: tension (Vac), frecuencia, tensionControl, tensionControlTipo (Vac o Vdc), tensionInstr (Vdc), icc, altitud, tempMin, tempMax (es la temperatura de diseño), ubicacion, caidaTension, caidaAlimentador, reservaIO. mecanico.editar (arreglo mecánico del tablero de fuerza tag): ancho, alto, fondo (mm, \"\" = automático), entrada (inferior|superior), montaje (auto|piso|mural), ventilacion (auto|natural|forzada), reserva (%), mandos (auto|si|no), calefaccion (auto|si|no), tInterior (°C)." },
+      campos: { type:"object", description:"Campos a cambiar. control.editar (tablero de control por TAG): hmi, switch, router, controladorLimpieza (booleanos), marcaPlc, plc, modeloPlc, ioDiscreto (120 Vac | 24 Vdc), vfdMando (cableado | red), redIP (p. ej. 192.168.1), canales ({AI,AO,DI,DO}). circuito.editar: proteccion, potencia, descripcion, diferencial, barra. documento.editar: titulo, elaboro, reviso, aprobo, dibujo, estado. carga.editar: potencia, unidad, arranque, longitud_cable (m), tablero, descripcion, fp, eficiencia, fu, fs. instrumento.editar: descripcion, servicio, ubicacion, marca, modelo, alimentacion, rango, senal. tablero.editar: nombre, tag. sistema.editar: nombre, tag. proyecto.editar: nombre, cliente, unidad (unidad minera / planta), etapa (conceptual/basica/detalle). diseno.editar: tension (Vac), frecuencia, tensionControl, tensionControlTipo (Vac o Vdc), tensionInstr (Vdc), icc, altitud, tempMin, tempMax (es la temperatura de diseño), ubicacion, caidaTension, caidaAlimentador, reservaIO. mecanico.editar (arreglo mecánico del tablero de fuerza o de control tag): ancho, alto, fondo (mm, \"\" = automático), entrada (inferior|superior), montaje (auto|piso|mural), ventilacion (auto|natural|forzada), reserva (%), mandos (auto|si|no), calefaccion (auto|si|no), tInterior (°C)." },
     }, required:["op"] } },
   }, required:["resumen","operaciones"] },
 };

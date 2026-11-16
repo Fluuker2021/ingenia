@@ -7,7 +7,7 @@ import { valoresDiseno, tensionControlTxt, tensionEstabilizada, tempDiseno, secc
 import { procesarFilas, resumenIO, ESQUEMAS } from "./modules/tablas.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, circuitosControl, instrumentos, expandirTag, tipoInstrumento, esAnalogico, sistemaTag, sistemaNombre, r2, parametrosG,
   tableros, tablerosControl, tableroPorId, tf, tc, desdeTxt, esControl, esPotencia, TIPOS_TABLERO, ipRecomendado, cablesFuerza, CLASES_CABLE, CANALIZACIONES } from "./datos.js";
-import { seccionesFilosofia, seccionesTipicos } from "./modules/filosofia.js";
+import { seccionesFilosofia, seccionesTipicos, datosFilosofia, prepararFilosofia } from "./modules/filosofia.js";
 import { tempCorrFactor, cableFor, miguelezCableFor } from "./engine/tablero-core.js";
 import { rellenarExcel } from "./xlsx-engine.js";
 import { GENERADORES, dxfBytes } from "./cad/planos.js";
@@ -255,10 +255,11 @@ export const DOCS = {
   "ins-bloques": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros"] },
   "ins-unifilar-tc": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tablerocontrol","circuitos","notas"] },
   "ins-multifilar-tc": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tablerocontrol","io"] },
-  "ins-mecanico-tc": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tablerocontrol"] },
+  "ins-mecanico-tc": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tablerocontrol","mecanico"], vista3d:true },
   "ins-arreglo": { formato:"dxf", ref:"Lámina A1 sobre la planta del cliente", editores:["arreglo"] },
   "ins-tipicos": { formato:"docx", plantilla:"docx/documento_texto.docx", secciones: seccionesTipicos, ref:"Documento Word estándar", editores:[] },
-  "ins-filosofia": { formato:"docx", plantilla:"docx/documento_texto.docx", secciones: seccionesFilosofia, ref:"Documento Word estándar", editores:["filosofia"] },
+  // datos: estructura completa para la plantilla propia (tablas, secuencias, figura); preparar: figura de la arquitectura del proyecto
+  "ins-filosofia": { formato:"docx", plantilla:"docx/filosofia_control.docx", secciones: seccionesFilosofia, datos: datosFilosofia, preparar: prepararFilosofia, ref:"Filosofía de control: formato Word estándar con tablas de equipos, alarmas, interlocks y set points", editores:["filosofia"] },
   "gen-registro": { formato:"xlsx", estandar:true, ref:"Formato estándar Ingenia", editores:[] },
 };
 export function defDoc(id){ const d = DOCS[id]; if(!d) return null; return d.alias ? Object.assign({}, DOCS[d.alias], { aliasDe:d.alias }) : d; }

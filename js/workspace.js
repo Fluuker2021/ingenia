@@ -13,6 +13,7 @@ import { aciCercano } from "./cad/formato.js";
 import { parseDXF, boundsOf } from "./dxf.js";
 import { seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { ENTREGABLES } from "./catalog.js";
+import { montarBarraCopito } from "./copito-docs.js";
 
 const FMT = { xlsx:"Excel", docx:"Word", dxf:"DXF (AutoCAD)", proceso:"Datos de proceso" };
 
@@ -39,7 +40,7 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
   $$("[data-wtab]").forEach(b=>b.onclick = ()=>location.hash = `#/proyecto/${p.id}/doc/${id}/${b.dataset.wtab}`);
   const body = $("#ws-body");
   if(tab==="datos") return tabDatos(body, p, id, def);
-  if(tab==="vista") return tabVista(body, state, p, id, def);
+  if(tab==="vista") return Promise.resolve(tabVista(body, state, p, id, def)).then(()=>montarBarraCopito(body, p, id));
   if(tab==="vista3d") return tabVista3D(body, p, id);
   if(tab==="cajetin") return tabCajetin(body, state, p, id, def);
 }
@@ -150,7 +151,10 @@ function vistaMemoria(body, p, id, tipo){
 }
 function vistaTexto(body, p, id, def){
   const secs = def.secciones(p);
-  body.innerHTML = `<div class="doc-prev">${secs.map(s=>`<h3 class="ed-sub">${esc(s.titulo)}</h3>${s.texto?`<p>${esc(s.texto)}</p>`:""}${s.items.length?`<ul>${s.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`:""}`).join("")}</div>` + pieVista(p, id);
+  // bloques en orden ({p} párrafo, {b} viñeta, {b2} sub-viñeta, {t} subtítulo), tablas con su título y figura (SVG generado)
+  const bloques = bs => { let h = "", ul = 0; for(const b of bs||[]){ const n = b.b!=null ? 1 : b.b2!=null ? 2 : 0; while(ul>n){ h += "</ul>"; ul--; } while(ul<n){ h += `<ul${ul?' style="margin:2px 0"':""}>`; ul++; } h += n ? `<li>${esc(n===1?b.b:b.b2)}</li>` : b.t!=null ? `<p style="margin:10px 0 4px"><strong>${esc(b.t)}</strong></p>` : `<p>${esc(b.p)}</p>`; } return h + "</ul>".repeat(ul); };
+  const tabla = t => `${tablaHTML(t.columnas, t.filas)}${t.titulo?`<p class="muted" style="text-align:center;font-size:12px;font-style:italic;margin:4px 0 14px">${esc(t.titulo)}</p>`:""}`;
+  body.innerHTML = `<div class="doc-prev">${secs.map(s=>`<h3 class="ed-sub"${s.nivel>1?` style="font-size:${s.nivel>2?"11px":"11.5px"};margin-left:${(s.nivel-1)*10}px"`:""}>${esc(s.titulo)}</h3>${s.texto?`<p>${esc(s.texto)}</p>`:""}${bloques(s.bloques)}${(s.items||[]).length?`<ul>${s.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`:""}${(s.tablas||[]).map(tabla).join("")}${s.figura?`<div style="margin:10px 0;overflow-x:auto">${s.figura.replace("<svg ", '<svg style="width:100%;height:auto;max-width:900px;display:block;margin:0 auto" ')}</div>${s.pieFigura?`<p class="muted" style="text-align:center;font-size:12px;font-style:italic">${esc(s.pieFigura)}</p>`:""}`:""}${bloques(s.despues)}`).join("")}</div>` + pieVista(p, id);
 }
 
 /* visor de planos con zoom y desplazamiento */
@@ -203,18 +207,31 @@ async function vistaPlano(body, state, p, id){
   cv.addEventListener("mousedown", ev=>{ drag = { x:ev.clientX, y:ev.clientY, ox:view.ox, oy:view.oy }; cv.style.cursor = "grabbing"; });
   window.addEventListener("mouseup", ()=>{ drag = null; cv.style.cursor = ""; });
   cv.addEventListener("mousemove", ev=>{ if(!drag) return; view.ox = drag.ox + (ev.clientX-drag.x)*2; view.oy = drag.oy + (ev.clientY-drag.y)*2; dibujar(); });
+  // doble clic sobre un TAG del plano: Copito se abre con ese equipo para pedir el cambio
+  cv.addEventListener("dblclick", ev=>{
+    const r0 = cv.getBoundingClientRect(); const mx = (ev.clientX-r0.left)*2, my = (ev.clientY-r0.top)*2;
+    const x = (mx - view.ox)/view.s, y = (view.oy - my)/view.s;
+    let mejor = null, dm = 1e9;
+    for(const e of d.entities){ if(e.t!=="T" || !e.text) continue; const tx = String(e.text).trim();
+      if(!/^-?[A-Z]{1,6}\d*[-.]?\d+[A-Z]?(\.\d+)?$|^[A-Z]{1,5}-\d{2,4}[A-Z]?$/.test(tx)) continue;
+      const w = tx.length*e.h*0.6, cx = e.x + (e.align===1 ? 0 : e.align===2 ? -w/2 : w/2), dd = Math.hypot(cx - x, e.y - y);
+      if(dd < dm){ dm = dd; mejor = tx.replace(/^-/, ""); } }
+    if(mejor && dm < 12 && window.copito) window.copito.abrir(`En ${entregable(id).nombre}, para ${mejor}, `, false);
+  });
 }
 
 /* ---------------- vista previa 3D (plano mecánico del tablero) ---------------- */
 async function tabVista3D(body, p, id){
   body.innerHTML = spinner("Armando el tablero en 3D…");
   try{
-    const { arreglosProyecto } = await import("./mecanico/arreglo.js");
-    const lista = arreglosProyecto(p);
-    if(!lista.length){ body.innerHTML = `<div class="empty">No hay tableros de fuerza con cargas. Agrégalas en el <a href="#/proyecto/${p.id}/doc/ele-cargas/datos">listado de cargas</a>.</div>`; return; }
+    // plano mecánico del tablero de control: sus propios arreglos (PLC, relés, borneras); el de fuerza, los de fuerza
+    const ctl = id==="ins-mecanico-tc";
+    const lista = ctl ? (await import("./mecanico/arreglo-control.js")).arreglosControl(p) : (await import("./mecanico/arreglo.js")).arreglosProyecto(p);
+    if(!lista.length){ body.innerHTML = ctl ? `<div class="empty">El proyecto no tiene tableros de control. Agrégalos en <a href="#/proyecto/${p.id}/diseno">Datos generales</a>.</div>` : `<div class="empty">No hay tableros de fuerza con cargas. Agrégalas en el <a href="#/proyecto/${p.id}/doc/ele-cargas/datos">listado de cargas</a>.</div>`; return; }
     const sel = lista.find(m=>m.tablero.id===body.dataset.t) || lista[0];
     const t = sel.tablero;
-    const chips = [`Cambia la entrada de cables de ${t.tag} a ${sel.entrada==="inferior" ? "superior" : "inferior"}`, `Cambia la reserva de espacio de ${t.tag} a 30 %`, `Cambia el alto del gabinete de ${t.tag} a ${sel.H>=2200 ? 2000 : 2200} mm`, `Pon ventilación ${sel.termico.modo==="forzada" ? "natural" : "forzada"} en ${t.tag}`, `${sel.puerta.some(d=>d.tipo==="pulsador") ? "Quita" : "Agrega"} los mandos en la puerta de ${t.tag}`];
+    const chips = ctl ? [`Cambia el gabinete de ${t.tag} a ${sel.montaje==="mural" ? (sel.W===800 && sel.H===1000 ? "1000x1200x300" : "800x1000x300") : (sel.W===800 ? "1000x2000x400" : "800x2000x500")}`, `Cambia la entrada de cables de ${t.tag} a ${sel.entrada==="inferior" ? "superior" : "inferior"}`, `Pon ventilación ${sel.puerta.some(d=>d.tipo==="ventilador") ? "natural" : "forzada"} en ${t.tag}`,
+      ...(sel.comps.some(c=>c.tag==="PS1") ? [`Mueve PS1 de ${t.tag} a la derecha`] : []), ...(sel.comps.filter(c=>c.tipo==="rele").length > 1 ? [`Intercambia CR1 con CR2 en ${t.tag}`] : []), `${sel.puerta.some(d=>d.tipo==="luz") ? "Quita" : "Agrega"} los mandos en la puerta de ${t.tag}`] : [`Cambia la entrada de cables de ${t.tag} a ${sel.entrada==="inferior" ? "superior" : "inferior"}`, `Cambia la reserva de espacio de ${t.tag} a 30 %`, `Cambia el alto del gabinete de ${t.tag} a ${sel.H>=2200 ? 2000 : 2200} mm`, `Pon ventilación ${sel.termico.modo==="forzada" ? "natural" : "forzada"} en ${t.tag}`, `${sel.puerta.some(d=>d.tipo==="pulsador") ? "Quita" : "Agrega"} los mandos en la puerta de ${t.tag}`];
     body.innerHTML = `<div class="row between mb-2" style="flex-wrap:wrap;gap:8px"><div class="row">${lista.length>1 ? `<label class="muted">Tablero</label><select id="v3-t">${lista.map(m=>`<option value="${m.tablero.id}" ${m===sel?"selected":""}>${esc(m.tablero.tag)} — ${esc(m.tablero.nombre||"")}</option>`).join("")}</select>` : `<strong>${esc(t.tag)}</strong><span class="muted">${esc(t.nombre||"")}</span>`}</div>
         <span class="muted" style="font-size:12.5px">Gabinete ${sel.W} × ${sel.H} × ${sel.D} mm · ${sel.secciones.length} sección(es) · ${sel.comps.filter(c=>c.tag).length} equipos · ventilación ${esc(sel.termico.modo)}</span></div>
       ${sel.avisos.length ? `<div class="notice warn mb-2">${sel.avisos.map(esc).join("<br>")}</div>` : ""}
@@ -340,13 +357,14 @@ export async function descargarDoc(state, p, id, btn){
       X.descargar(out, nombre("xlsx"), X.MIME.xlsx);
     } else if(def.formato==="docx"){
       const base = def.aliasDe || id;
-      const extra = (base==="ele-mc" || base==="ele-md") ? datosMemoria(p) : def.secciones ? { secciones: def.secciones(p) } : {};
+      const extra = (base==="ele-mc" || base==="ele-md") ? datosMemoria(p) : def.datos ? def.datos(p) : def.secciones ? { secciones: def.secciones(p) } : {};
       const scal = escalares(p, id, org);
       const data = Object.assign({}, scal, { cliente_corto:(p.cliente||"").toUpperCase(), numero_proyecto:"", orden_compra:p.ordenCompra||"", revisiones: di.revisiones.map(r=>({ rev:r.rev, fecha:fmtF(r.fecha), descripcion:r.descripcion, elaboro:r.elaboro||scal.elaboro, reviso:r.reviso||scal.reviso, aprobo:r.aprobo||scal.aprobo })) }, extra);
       delete data._calc;
       let buf = tplCli ? await tplCli.blob.arrayBuffer() : await (await fetch("assets/plantillas/"+def.plantilla)).arrayBuffer();
       const zip = new PizZip(buf);
       if(!tplCli) await logosWord(zip, await logoPNG(org.logoDataURL), await logoCliente(p));
+      if(def.preparar) await def.preparar(zip, p);   // p. ej. figura de la arquitectura de control
       const doc = new window.docxtemplater(zip, { paragraphLoop:true, linebreaks:true, nullGetter:()=>"" });
       doc.render(data);
       X.descargar(doc.getZip().generate({ type:"arraybuffer", compression:"DEFLATE", mimeType:X.MIME.docx }), nombre("docx"), X.MIME.docx);

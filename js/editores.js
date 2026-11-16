@@ -8,10 +8,12 @@ import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl
   TIPOS_TABLERO, nuevoTablero, tableros, tablerosPotencia, tablerosControl, tableroPorId, esControl, esFuerza, tf, tc, desdeTxt, aplicarTipicos, REGIMENES,
   calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2 } from "./datos.js";
 import { camposHD, camposHDEq } from "./docs.js";
+import { filosofiaDe, filosofiaAuto, guardarTabla, guardarTexto, guardarAreas, filosofiaOps, arquitecturaSVG, TEXTOS_FIL, TIPOS_ALARMA, TIPOS_INTERLOCK } from "./modules/filosofia.js";
 import { EQUIPOS_PROCESO, recomendarInstrumentos } from "./modules/proceso.js";
 import { elementosArreglo, sugerirTableros } from "./cad/planos2.js";
 import { parseDXF, drawPreview } from "./dxf.js";
 import { cfgMecanico, arregloTablero } from "./mecanico/arreglo.js";
+import { arregloControl } from "./mecanico/arreglo-control.js";
 
 export const TITULOS = {
   criterios:"Criterios de diseño", cargas:"Cargas por tablero", cargasControl:"Cargas de 120 Vac de los tableros de control",
@@ -79,7 +81,7 @@ export function enlazarDiseno(root, onCambio){
 }
 
 /* tabla editable genérica */
-function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, onCell, clase, extraBotones }){
+function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, onCell, clase, extraBotones, mover }){
   const render = ()=>{
     // al redibujar se conserva el desplazamiento horizontal de la tabla y el campo en edición
     const wrap0 = $(".table-wrap", el), sl = wrap0 ? wrap0.scrollLeft : 0;
@@ -88,7 +90,7 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
         ${nuevo ? `<button class="btn-primary btn-sm" data-add>${ICON.plus} Agregar fila</button>` : ""}
         ${ejemplo ? `<button class="btn-sm" data-ej>Cargar ejemplo</button>` : ""}${extraBotones||""}
       </div><span class="muted">${filas.length} registro(s)</span></div>
-      <div class="table-wrap"><table class="ed-table"><thead><tr>${columnas.map(c=>`<th>${esc(c.t)}</th>`).join("")}${nuevo?"<th></th>":""}</tr></thead>
+      <div class="table-wrap"><table class="ed-table"><thead><tr>${columnas.map(c=>`<th>${esc(c.t)}</th>`).join("")}${nuevo||mover?"<th></th>":""}</tr></thead>
       <tbody>${filas.map((f,i)=>`<tr data-i="${i}">${columnas.map(c=>{
         const cls = clase ? (clase(f, c.k)||"") : "";
         if(c.calc) return `<td class="mono muted">${esc(c.calc(f,i))}</td>`;
@@ -96,10 +98,11 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
         if(ops) return `<td><select data-c="${c.k}" class="${cls}" style="min-width:${c.w||90}px">${ops.map(o=>{ const [v,l] = Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(f[c.k]??"")===String(v)?"selected":""}>${esc(l)}</option>`; }).join("")}</select></td>`;
         if(c.chk) return `<td style="text-align:center"><input type="checkbox" data-c="${c.k}" ${f[c.k]?"checked":""}></td>`;
         return `<td><input type="${c.n?"number":"text"}" ${c.n?'step="any"':""} data-c="${c.k}" value="${esc(f[c.k]??"")}" class="${cls}" style="width:${c.w||110}px"></td>`;
-      }).join("")}${nuevo?`<td><button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button></td>`:""}</tr>`).join("") || `<tr><td colspan="${columnas.length+1}" class="muted" style="text-align:center;padding:20px">${esc(vacio||"Sin registros")}</td></tr>`}</tbody></table></div><div data-pie></div>`;
+      }).join("")}${nuevo||mover?`<td style="white-space:nowrap">${mover?`<button class="btn-ghost btn-sm" data-up title="Subir">↑</button><button class="btn-ghost btn-sm" data-dn title="Bajar">↓</button>`:""}${nuevo?`<button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button>`:""}</td>`:""}</tr>`).join("") || `<tr><td colspan="${columnas.length+1}" class="muted" style="text-align:center;padding:20px">${esc(vacio||"Sin registros")}</td></tr>`}</tbody></table></div><div data-pie></div>`;
     const ad = $("[data-add]", el); if(ad) ad.onclick = ()=>{ filas.push(nuevo()); onChange(); render(); };
     const ej = $("[data-ej]", el); if(ej) ej.onclick = ()=>{ ejemplo().forEach(x=>filas.push(x)); onChange(); render(); toast("Ejemplo cargado — edítalo según tu proyecto"); };
     $$("[data-del]", el).forEach(b=>b.onclick = ()=>{ filas.splice(+b.closest("tr").dataset.i, 1); onChange(); render(); });
+    $$("[data-up],[data-dn]", el).forEach(b=>b.onclick = ()=>{ const i = +b.closest("tr").dataset.i, j = i + (b.hasAttribute("data-up") ? -1 : 1); if(j<0 || j>=filas.length) return; [filas[i], filas[j]] = [filas[j], filas[i]]; onChange(); render(); });
     $$("[data-c]", el).forEach(inpEl=>inpEl.addEventListener("change", ()=>{
       const f = filas[+inpEl.closest("tr").dataset.i], c = columnas.find(x=>x.k===inpEl.dataset.c);
       f[c.k] = inpEl.type==="checkbox" ? inpEl.checked : c.n ? (inpEl.value===""?"":parseFloat(inpEl.value)) : inpEl.value;
@@ -116,25 +119,28 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
 
 /* ---------------- editores ---------------- */
 const ED = {
-  mecanico(el, p, cambio){
-    const pot = tablerosPotencia(p);
-    if(!pot.length){ el.innerHTML = `<div class="empty">El proyecto no tiene tableros de fuerza.</div>`; return; }
+  mecanico(el, p, cambio, docId){
+    // plano mecánico del tablero de control (ins-mecanico-tc): tableros de control con su propio motor de arreglo
+    if(docId) el.dataset.doc = docId;
+    const ctl = el.dataset.doc==="ins-mecanico-tc";
+    const pot = ctl ? tablerosControl(p).filter(t=>t.tipo==="control") : tablerosPotencia(p);
+    if(!pot.length){ el.innerHTML = `<div class="empty">El proyecto no tiene tableros de ${ctl ? "control" : "fuerza"}.</div>`; return; }
     const cur = el.dataset.t && pot.find(t=>t.id===el.dataset.t) ? el.dataset.t : pot[0].id;
     const t = pot.find(x=>x.id===cur), cfg = cfgMecanico(p, t), v = valoresDiseno(p);
-    let m = null; try{ m = arregloTablero(p, t); }catch(err){ console.error(err); }
+    let m = null; try{ m = ctl ? arregloControl(p, t) : arregloTablero(p, t); }catch(err){ console.error(err); }
     const num = (k, ph) => `<input type="text" inputmode="numeric" data-mk="${k}" value="${esc(cfg[k]??"")}" placeholder="${esc(ph||"Automático")}">`;
     const opc = (k, ops) => `<select data-mk="${k}">${ops.map(([val, l])=>`<option value="${val}" ${String(cfg[k])===val?"selected":""}>${esc(l)}</option>`).join("")}</select>`;
-    const sinCargas = m && !m.calc.circuits.length;
+    const sinCargas = m && m.calc && !m.calc.circuits.length;
     el.innerHTML = (pot.length>1 ? selectorTablero(pot, cur) : "") + `
       <div class="grid-3">
         ${campo("Montaje del gabinete", opc("montaje", [["auto","Automático"],["piso","Autosoportado (piso)"],["mural","Mural"]]), m ? `Elegido: ${m.montaje==="mural"?"mural":"autosoportado"}` : "")}
         ${campo("Entrada de cables", opc("entrada", [["inferior","Inferior"],["superior","Superior"]]))}
         ${campo("Reserva de espacio (%)", num("reserva", `Criterio del proyecto: ${v.reservaTablero} %`))}
-        ${campo("Ancho total (mm)", num("ancho", m ? `Automático: ${m.W}` : ""), "Secciones normalizadas de 600, 800, 1000 o 1200")}
-        ${campo("Alto (mm)", num("alto", m ? `Automático: ${m.H}` : ""), "1800, 2000 o 2200 (mural: 500 a 1200)")}
-        ${campo("Fondo (mm)", num("fondo", m ? `Automático: ${m.D}` : ""), "400, 500, 600 u 800")}
+        ${campo("Ancho total (mm)", num("ancho", m ? `Automático: ${m.W}` : ""), ctl ? "Mural: 400 a 1000; autosoportado: 600 a 1200" : "Secciones normalizadas de 600, 800, 1000 o 1200")}
+        ${campo("Alto (mm)", num("alto", m ? `Automático: ${m.H}` : ""), ctl ? "Mural: 500 a 1200; autosoportado: 1800 a 2200" : "1800, 2000 o 2200 (mural: 500 a 1200)")}
+        ${campo("Fondo (mm)", num("fondo", m ? `Automático: ${m.D}` : ""), ctl ? "Mural: 200 a 400; autosoportado: 400 a 800" : "400, 500, 600 u 800")}
         ${campo("Ventilación", opc("ventilacion", [["auto","Según balance térmico"],["natural","Natural"],["forzada","Forzada"]]), m ? `Balance térmico: ${m.termico.modo}` : "")}
-        ${campo("Mandos en la puerta", opc("mandos", [["auto","Automático (tablero de fuerza y control)"],["si","Sí: pulsadores, luces y selectores"],["no","No: luces de fase y parada de emergencia"]]))}
+        ${campo("Mandos en la puerta", ctl ? opc("mandos", [["auto","Automático (solo la pantalla HMI)"],["si","Sí: luces piloto de tensión presente"],["no","No"]]) : opc("mandos", [["auto","Automático (tablero de fuerza y control)"],["si","Sí: pulsadores, luces y selectores"],["no","No: luces de fase y parada de emergencia"]]))}
         ${campo("Calefacción anticondensación", opc("calefaccion", [["auto","Automático (T mín. ≤ 5 °C o exterior)"],["si","Sí"],["no","No"]]))}
         ${campo("Temperatura interior máxima (°C)", num("tInterior", "45"), "Para el balance térmico (IEC 60890)")}
       </div>
@@ -153,7 +159,7 @@ const ED = {
         <div class="table-wrap"><table class="ed-table"><thead><tr><th>TAG</th><th>Descripción</th><th>Modelo</th><th>Ancho × alto × fondo (mm)</th><th>Montaje</th><th>Fuente</th></tr></thead><tbody>
         ${m.comps.filter(c=>c.tag).map(c=>`<tr><td class="mono">${esc(c.tag)}</td><td>${esc(c.desc||"")}</td><td>${esc(c.modelo||"")}</td><td class="mono">${f(c.w)} × ${f(c.h)} × ${f(c.d||0)}</td><td>${esc({ din:"Riel DIN", placa:"Placa", base:"Base", contactor:"Bajo contactor" }[c.montaje]||"Placa")}</td><td class="muted" style="font-size:12px">${esc(c.fuente||"")}</td></tr>`).join("")}
         </tbody></table></div>
-        <p class="muted mt-1" style="font-size:12px">Dimensiones referenciales de catálogo: verificar con el plano dimensional del código exacto antes de fabricar. Pídele cambios a Copito, por ejemplo: «Cambia el gabinete de ${esc(t.tag)} a 1200x2000x600», «Entrada de cables superior en ${esc(t.tag)}» o «Ventilación forzada en ${esc(t.tag)}».</p>`;
+        <p class="muted mt-1" style="font-size:12px">Dimensiones referenciales de catálogo: verificar con el plano dimensional del código exacto antes de fabricar. Pídele cambios a Copito, por ejemplo: ${ctl ? `«Cambia el gabinete de ${esc(t.tag)} a 800x1000x300», «Mueve PS1 a la derecha», «Intercambia CR3 con CR4» o «Pon ventilación forzada en ${esc(t.tag)}»` : `«Cambia el gabinete de ${esc(t.tag)} a 1200x2000x600», «Entrada de cables superior en ${esc(t.tag)}» o «Ventilación forzada en ${esc(t.tag)}»`}.</p>`;
     }
     $$("[data-mk]", el).forEach(i=>i.onchange = ()=>{
       const k = i.dataset.mk; let val = i.value.trim();
@@ -298,6 +304,8 @@ const ED = {
     const cur = el.dataset.t && ctl.find(t=>t.id===el.dataset.t) ? el.dataset.t : ctl[0].id;
     const t = ctl.find(x=>x.id===cur);
     const auto = !(d.circuitosCtl[t.id] && d.circuitosCtl[t.id].length);
+    // circuitos editados: se sincronizan con el proyecto (instrumentos y equipos agregados o quitados) y se guardan así
+    if(!auto) d.circuitosCtl[t.id] = circuitosControl(p, t);
     const filas = auto ? derivarCircuitosControl(p, t) : d.circuitosCtl[t.id];
     el.innerHTML = (ctl.length>1 ? selectorTablero(ctl, cur) : "") + `<div class="notice mb-2">${auto ? `Circuitos de <strong>${esc(t.tag)}</strong> generados desde sus instrumentos.` : `Circuitos editados de ${esc(t.tag)}.`} <button class="btn-sm" data-regen>${auto?"Editar circuitos":"Regenerar desde instrumentos"}</button></div><div data-t></div>`;
     const s = $("[data-tsel]", el); if(s) s.onchange = ()=>{ el.dataset.t = s.value; ED.circuitos(el, p, cambio, docId); };
@@ -406,12 +414,93 @@ const ED = {
     };
     render();
   },
+  /* filosofía de control: estructura armada desde el proyecto (modules/filosofia.js); lo editado se guarda como
+     diferencias, así lo que no se tocó sigue a los equipos e instrumentos del proyecto */
   filosofia(el, p, cambio){
-    const f = datos(p).filosofia;
-    el.innerHTML = `<p class="ws-note">Se arma con el proceso, las cargas y los instrumentos. Agrega solo lo que quieras precisar.</p>
-      ${campo("Secuencias de arranque / parada (opcional)", `<textarea data-k="secuencias" rows="4" placeholder="Una línea por paso. Si se deja vacío, se propone una secuencia a partir de los equipos.">${esc(f.secuencias||"")}</textarea>`)}
-      ${campo("Notas adicionales (opcional)", `<textarea data-k="notas" rows="3">${esc(f.notas||"")}</textarea>`)}`;
-    bindObj(el, f, cambio);
+    const CAPS = [["general","Generalidades"],["arquitectura","Arquitectura"],["sistema","Sistema"],["operacion","Operación"],["alarmas","Alarmas y set points"],["interlocks","Interlocks"],["modos","Modos"],["secuencias","Secuencias"],["supervision","Supervisión y notas"]];
+    const cap = CAPS.some(c=>c[0]===el.dataset.cap) ? el.dataset.cap : "general";
+    const F = filosofiaDe(p), A = filosofiaAuto(p), re = ()=>ED.filosofia(el, p, cambio);
+    const badge = f => `<span class="badge ${f._auto ? (f._ed ? "badge-warn" : "badge-neutral") : "badge-ok"}">${f._auto ? (f._ed ? "editado" : "automático") : "agregado"}</span>`;
+    const txt = (k, rows=4) => { const ed = (F.textos[k]||"")!==(A.textos[k]||""); return `<div class="field"><label>${esc(TEXTOS_FIL[k])} <span class="badge ${ed?"badge-warn":"badge-neutral"}" data-bx="${k}">${ed?"editado":"automático"}</span> <button class="btn-ghost btn-sm" data-rtx="${k}" ${ed?"":'style="display:none"'}>Restablecer</button></label><textarea data-tx="${k}" rows="${rows}">${esc(F.textos[k]||"")}</textarea></div>`; };
+    const sub = (t, k) => `<div class="row between mt-2 mb-1" style="flex-wrap:wrap;gap:6px"><h3 class="ed-sub" style="margin:0">${esc(t)}</h3>${k?`<button class="btn-sm" data-regen="${k}" title="Descarta lo editado en esta sección y vuelve a lo armado desde el proyecto">Regenerar desde el proyecto</button>`:""}</div>`;
+    const tb = k => `<div data-tb="${k}"></div>`;
+    let h = `<p class="ws-note">Todo se arma con el proyecto: cargas, instrumentos, listado I/O, tableros de control, criterios y documentos. Revisa y ajusta solo lo necesario; lo editado queda marcado y lo demás se actualiza solo cuando cambian equipos o instrumentos. En los textos cada línea es un párrafo; «- » crea una viñeta, «  - » una sub-viñeta y «# » un subtítulo.</p>
+      <div class="tabs" style="margin-bottom:12px">${CAPS.map(c=>`<button data-cap="${c[0]}" class="${c[0]===cap?"active":""}">${c[1]}</button>`).join("")}</div>`;
+    if(cap==="general") h += txt("introduccion") + txt("objetivos", 3) + txt("referencias", 5) + txt("alcance", 3) + sub("Áreas y equipos del alcance", "areas") + `<div data-areas></div>` + txt("exclusiones", 2) + txt("normas", 6) + txt("condiciones", 6);
+    if(cap==="arquitectura") h += txt("arquitectura", 10) + `<p class="muted" style="font-size:12.5px">Figura del documento: se dibuja con la configuración de los <a href="#/proyecto/${p.id}/doc/ins-io/datos">tableros de control</a> (PLC, HMI, switch, router, controlador de limpieza y red externa).</p><div style="max-width:820px;border:1px solid var(--border);border-radius:6px;overflow:hidden">${arquitecturaSVG(p).svg.replace("<svg ", '<svg style="width:100%;height:auto;display:block" ')}</div>`;
+    if(cap==="sistema") h += sub("Descripción general del sistema (sección 8)", "subsistemas") + `<div data-cards="subsistemas"></div>`;
+    if(cap==="operacion") h += txt("operacion", 2) + sub("Etapas de la operación (9.1)", "etapas") + `<div data-cards="etapas"></div>` + txt("condicionesOperacion", 4) + sub("Lista de equipos generales", "equipos") + tb("equipos") + sub("Lista de instrumentos", "instrumentos") + tb("instrumentos");
+    if(cap==="alarmas") h += sub("Set points de proceso (instrumentos analógicos)", "setpoints") + tb("setpoints") + sub("Alarmas", "alarmas") + tb("alarmas") + txt("alarmas", 3);
+    if(cap==="interlocks") h += txt("interlocks", 6) + sub("Interlocks y permisivos", "interlocks") + tb("interlocks");
+    if(cap==="modos") h += txt("modos", 14);
+    if(cap==="secuencias") h += sub("Secuencia de arranque (9.4)", "arranque") + tb("arranque") + txt("monitoreo", 4) + sub("Secuencias de parada ante falla o parada intempestiva (9.5)", "parada") + `<div data-paradas></div>`;
+    if(cap==="supervision") h += txt("supervision", 7) + txt("notas", 3);
+    el.innerHTML = h;
+    $$("[data-cap]", el).forEach(b=>b.onclick = ()=>{ el.dataset.cap = b.dataset.cap; re(); });
+    $$("[data-tx]", el).forEach(t=>t.onchange = ()=>{ const k = t.dataset.tx; guardarTexto(p, k, t.value); cambio();
+      const ed = !!datos(p).filosofia.textos[k], bx = $(`[data-bx="${k}"]`, el); bx.className = "badge "+(ed?"badge-warn":"badge-neutral"); bx.textContent = ed ? "editado" : "automático"; $(`[data-rtx="${k}"]`, el).style.display = ed ? "" : "none"; if(!ed) t.value = A.textos[k]||""; });
+    $$("[data-rtx]", el).forEach(b=>b.onclick = ()=>{ filosofiaOps.regenerar(p, b.dataset.rtx); cambio(); re(); });
+    $$("[data-regen]", el).forEach(b=>b.onclick = ()=>{ const r = filosofiaOps.regenerar(p, b.dataset.regen); cambio(); re(); toast(r.msg); });
+    // tablas
+    const COLS = {
+      equipos: [{ k:"descripcion", t:"Equipo", w:200 }, { k:"tag", t:"TAG", w:140 }, { k:"caracteristicas", t:"Características", w:340 }],
+      instrumentos: [{ k:"descripcion", t:"Instrumento", w:200 }, { k:"servicio", t:"Servicio", w:240 }, { k:"senal", t:"Tipo de señal", w:140 }, { k:"tag", t:"TAG", w:120 }],
+      setpoints: [{ k:"tag", t:"TAG", w:100 }, { k:"servicio", t:"Servicio", w:220 }, { k:"rango", t:"Rango", w:70 }, { k:"unidad", t:"Unidad", w:70 }, ...["sp","hh","h","l","ll"].map(k=>({ k, t:k.toUpperCase(), w:60 }))],
+      alarmas: [{ k:"instrumento", t:"Instrumento / equipo", w:110 }, { k:"senal", t:"TAG de alarma", w:140 }, { k:"descripcion", t:"Alarma", w:260 }, { k:"tipo", t:"Tipo", op:TIPOS_ALARMA, w:80 }, { k:"setpoint", t:"Set point", w:110 }, { k:"accion", t:"Acción", w:300 }, { k:"prioridad", t:"Prioridad", op:["Alta","Media","Baja"], w:80 }],
+      interlocks: [{ k:"tipo", t:"Tipo", op:TIPOS_INTERLOCK, w:100 }, { k:"senal", t:"Señal", w:140 }, { k:"servicio", t:"Servicio", w:200 }, { k:"equipo", t:"Equipo afectado", w:110 }, { k:"condicion", t:"Condición normal (permisivos)", w:280 }, { k:"accion", t:"Acción", w:300 }, { k:"valor", t:"Valor", w:100 }, { k:"retardo", t:"Retardo", w:80 }],
+      arranque: [{ k:"equipo", t:"TAG", w:90 }, { k:"descripcion", t:"Equipo", w:160 }, { k:"accion", t:"Acción", w:240 }, { k:"confirmacion", t:"Confirmación", w:250 }, { k:"tiempo", t:"TON", w:60 }, { k:"falla", t:"Ante falla", w:280 }, { k:"notas", t:"Detalle", w:320 }],
+    };
+    const montar = k => {
+      const b = $(`[data-tb="${k}"]`, el); if(!b) return;
+      const filas = filosofiaDe(p).tablas[k], cols = COLS[k];
+      tablaEditable(b, { filas, mover:true, columnas:[{ k:"_o", t:"Origen", calc: f=>f._auto ? (f._ed ? "editado" : "auto") : "agregado" }, ...cols],
+        nuevo: ()=>Object.fromEntries(cols.map(c=>[c.k, c.op ? c.op[0] : ""])), onCell: ()=>{}, vacio:"Sin filas: se arman con los equipos e instrumentos del proyecto.",
+        onChange: ()=>{ guardarTabla(p, k, filas); cambio(); if(k==="setpoints") montar("alarmas"); } });
+    };
+    Object.keys(COLS).forEach(montar);
+    // tarjetas (subsistemas y etapas: textos largos)
+    const tarjetas = (k, campos, nuevo) => {
+      const b = $(`[data-cards="${k}"]`, el); if(!b) return;
+      const filas = filosofiaDe(p).tablas[k], g = ()=>{ guardarTabla(p, k, filas); cambio(); };
+      b.innerHTML = filas.map((f,i)=>`<div class="card" style="padding:12px;margin-bottom:10px" data-i="${i}"><div class="row between mb-1">${badge(f)}<div class="row"><button class="btn-ghost btn-sm" data-cm="-1" title="Subir">↑</button><button class="btn-ghost btn-sm" data-cm="1" title="Bajar">↓</button><button class="btn-ghost btn-sm" data-cdel title="Eliminar">${ICON.trash}</button></div></div>
+        ${campos.map(([c, l, rows])=>campo(l, rows ? `<textarea data-f="${c}" rows="${rows}">${esc(f[c]||"")}</textarea>` : `<input type="text" data-f="${c}" value="${esc(f[c]||"")}">`)).join("")}</div>`).join("") + `<button class="btn-sm" data-cadd>${ICON.plus} Agregar</button>`;
+      const i = x => +x.closest("[data-i]").dataset.i;
+      $$("[data-f]", b).forEach(x=>x.onchange = ()=>{ filas[i(x)][x.dataset.f] = x.value; g(); });
+      $$("[data-cdel]", b).forEach(x=>x.onclick = ()=>{ filas.splice(i(x), 1); g(); tarjetas(k, campos, nuevo); });
+      $$("[data-cm]", b).forEach(x=>x.onclick = ()=>{ const a = i(x), z = a + +x.dataset.cm; if(z<0 || z>=filas.length) return; [filas[a], filas[z]] = [filas[z], filas[a]]; g(); tarjetas(k, campos, nuevo); });
+      $("[data-cadd]", b).onclick = ()=>{ filas.push(nuevo()); g(); tarjetas(k, campos, nuevo); };
+    };
+    tarjetas("subsistemas", [["nombre","Nombre"],["descripcion","Descripción",4],["alimentacion","Alimentación y control",2],["modos","Modos de operación",3],["caracteristicas","Características",2]], ()=>({ nombre:"", descripcion:"", alimentacion:"", modos:"", caracteristicas:"" }));
+    tarjetas("etapas", [["titulo","Etapa"],["texto","Descripción",4]], ()=>({ titulo:"", texto:"" }));
+    // áreas del alcance (una tabla por área)
+    const ab = $("[data-areas]", el);
+    if(ab){
+      const areas = JSON.parse(JSON.stringify(F.areas||[])), g = ()=>{ guardarAreas(p, areas); cambio(); };
+      const pinta = ()=>{
+        ab.innerHTML = areas.map((a,i)=>`<div class="card" style="padding:12px;margin-bottom:10px" data-a="${i}"><div class="row between mb-1"><input type="text" data-an value="${esc(a.nombre||"")}" placeholder="Nombre del área" style="min-width:260px"><button class="btn-ghost btn-sm" data-adel title="Eliminar área">${ICON.trash}</button></div><div data-aeq></div></div>`).join("") + `<button class="btn-sm" data-aadd>${ICON.plus} Agregar área</button>`;
+        $$("[data-a]", ab).forEach(c=>{ const a = areas[+c.dataset.a]; a.equipos = a.equipos || [];
+          $("[data-an]", c).onchange = e=>{ a.nombre = e.target.value; g(); };
+          $("[data-adel]", c).onclick = ()=>{ areas.splice(+c.dataset.a, 1); g(); pinta(); };
+          tablaEditable($("[data-aeq]", c), { filas:a.equipos, mover:true, nuevo:()=>({ descripcion:"", tag:"" }), onChange:g, columnas:[{ k:"descripcion", t:"Descripción", w:260 }, { k:"tag", t:"TAG", w:160 }] }); });
+        $("[data-aadd]", ab).onclick = ()=>{ areas.push({ nombre:"Área", equipos:[] }); g(); pinta(); };
+      };
+      pinta();
+    }
+    // secuencias de parada: un evento con sus pasos
+    const pb = $("[data-paradas]", el);
+    if(pb){
+      const ev = filosofiaDe(p).tablas.parada, g = ()=>{ guardarTabla(p, "parada", ev); cambio(); };
+      const pinta = ()=>{
+        pb.innerHTML = ev.map((e,i)=>`<div class="card" style="padding:12px;margin-bottom:10px" data-e="${i}"><div class="row between mb-1" style="gap:8px;flex-wrap:nowrap">${badge(e)}<input type="text" data-ev value="${esc(e.evento||"")}" style="flex:1;min-width:200px"><div class="row" style="flex-wrap:nowrap"><button class="btn-ghost btn-sm" data-em="-1" title="Subir">↑</button><button class="btn-ghost btn-sm" data-em="1" title="Bajar">↓</button><button class="btn-ghost btn-sm" data-edel title="Eliminar evento">${ICON.trash}</button></div></div><div data-ep></div></div>`).join("") + `<button class="btn-sm" data-eadd>${ICON.plus} Agregar evento</button>`;
+        $$("[data-e]", pb).forEach(c=>{ const k = +c.dataset.e, e = ev[k]; e.pasos = e.pasos || [];
+          $("[data-ev]", c).onchange = x=>{ e.evento = x.target.value; g(); };
+          $("[data-edel]", c).onclick = ()=>{ ev.splice(k, 1); g(); pinta(); };
+          $$("[data-em]", c).forEach(x=>x.onclick = ()=>{ const z = k + +x.dataset.em; if(z<0 || z>=ev.length) return; [ev[k], ev[z]] = [ev[z], ev[k]]; g(); pinta(); });
+          tablaEditable($("[data-ep]", c), { filas:e.pasos, mover:true, nuevo:()=>({ equipo:"", accion:"", retardo:"0 s" }), onChange:g, columnas:[{ k:"equipo", t:"Equipo (TAG)", w:130 }, { k:"accion", t:"Acción", w:420 }, { k:"retardo", t:"Retardo", w:110 }] }); });
+        $("[data-eadd]", pb).onclick = ()=>{ ev.push({ evento:"Nuevo evento", pasos:[] }); g(); pinta(); };
+      };
+      pinta();
+    }
   },
   arreglo(el, p, cambio, docId){
     const disc = docId==="ins-arreglo" ? "INS" : "ELE";

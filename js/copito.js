@@ -10,6 +10,7 @@ import { datos, calcularTablero, tableros, tablerosPotencia, instrumentos, expan
 import { valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { tablasIO } from "./docs.js";
 import { esOrden, interpretar, describir, aplicar, deshacer, HERRAMIENTA, pareceAjuste, ayudaEquipo, infoEquipo } from "./copito-editar.js";
+import { docAbierto, htmlAfectados, sugerenciasDoc, respuestaEquipoControl } from "./copito-docs.js";
 
 export const AVATAR = `<img class="cp-img" src="assets/copito.png" alt="" width="160" height="160">`;
 
@@ -138,7 +139,7 @@ function rBuscar(p, q){
   return `Esto es lo que encontré en <b>${esc(p.nombre)}</b>:<ul>${hits.slice(0,8).map(h=>`<li><a href="${h.href}">${esc(h.etq)}</a></li>`).join("")}</ul>`;
 }
 const AYUDA = `Soy <b>Copito</b>, el asistente de tus proyectos. Conozco todo lo que ingresas en Ingenia. Pregúntame, por ejemplo:
-  <ul><li>¿Cuál es la máxima demanda del proyecto?</li><li>¿Qué cable tiene el motor M-101?</li><li>¿Qué cables superan la caída de tensión?</li><li>¿Cuántas señales I/O hay y cuántos módulos?</li><li>¿Qué documentos faltan emitir?</li><li>¿Cuáles son las condiciones del sitio?</li></ul>También puedo <b>cambiar datos</b> (te pido confirmación antes):<ul><li>Cambia la potencia de M-101 a 50 HP</li><li>Agrega una bomba de 15 kW con variador</li><li>Pon el arranque de M-102 con variador</li><li>Cambia la altitud a 3500 m</li><li>Elimina el instrumento PIT-101</li><li>Emite todos los documentos para revisión del cliente</li></ul>Y <b>reacomodar el tablero</b> en el plano mecánico (2D y 3D):<ul><li>Mueve VDFC1 a la derecha</li><li>Intercambia GCC2 con GCC3</li><li>Sube la fila de TC5</li><li>Pon el interruptor general a la izquierda</li><li>Cambia el gabinete de TF-001 a 1200x2000x600</li></ul>Todo se hace aquí mismo, en tu navegador.`;
+  <ul><li>¿Cuál es la máxima demanda del proyecto?</li><li>¿Qué cable tiene el motor M-101?</li><li>¿Qué cables superan la caída de tensión?</li><li>¿Cuántas señales I/O hay y cuántos módulos?</li><li>¿Qué documentos faltan emitir?</li><li>¿Cuáles son las condiciones del sitio?</li></ul>También puedo <b>cambiar datos</b> (te pido confirmación antes):<ul><li>Cambia la potencia de M-101 a 50 HP</li><li>Agrega una bomba de 15 kW con variador</li><li>Pon el arranque de M-102 con variador</li><li>Cambia la altitud a 3500 m</li><li>Elimina el instrumento PIT-101</li><li>Emite todos los documentos para revisión del cliente</li></ul>Y <b>reacomodar el tablero</b> en el plano mecánico (2D y 3D):<ul><li>Mueve VDFC1 a la derecha</li><li>Intercambia GCC2 con GCC3</li><li>Sube la fila de TC5</li><li>Pon el interruptor general a la izquierda</li><li>Cambia el gabinete de TF-001 a 1200x2000x600</li></ul>Y <b>cambiar lo que ves en cualquier documento</b> (vista previa, cajetín y notas); el cambio se lleva a todos los entregables relacionados:<ul><li>Agrega una reserva en 24 Vdc · Quita la última reserva de 120 Vac · Cambia CB6 a 2x4A</li><li>Quita el router de TC-001 · Pon el PLC Siemens · Cambia la red IP a 10.10.1</li><li>Cambia el título del documento a … · Revisó Juan Pérez · Agrega la nota: …</li><li>Emite este documento para aprobación · Agrega el equipo TK-101 tanque al P&amp;ID</li></ul>Todo se hace aquí mismo, en tu navegador.`;
 
 export function responderLocal(q, ruta){
   const t = norm(q);
@@ -150,6 +151,7 @@ export function responderLocal(q, ruta){
   const r = h => ({ html: nota + h, ok:true, p });
   const tag = etiquetas(p).find(e=>e.tag.length>=3 && new RegExp(`(^|[^a-z0-9])${norm(e.tag).replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^a-z0-9]|$)`).test(t));
   if(tag) return r(rTag(p, tag, q));
+  { const ec = respuestaEquipoControl(q, p); if(ec) return r(ec); }
   if(/caida de tension|\bdv\b|regulacion/.test(t)) return r(rCables(p, true));
   if(/maxima demanda|demanda|potencia instalada|corriente|interruptor general|itm general|kva/.test(t)) return r(rDemanda(p));
   if(/cable|calibre|seccion|conductor|awg/.test(t)) return r(rCables(p, false));
@@ -197,7 +199,8 @@ const SISTEMA_COPITO = "Eres Copito, el asistente de Ingenia, una plataforma de 
 /* orden libre con IA: Claude propone las operaciones con la herramienta; el usuario las confirma */
 async function proponerIA(q, ruta, cfg){
   const client = await clienteIA(cfg);
-  const actual = ruta && ruta.id ? (S.proyecto(ruta.id)||{}).nombre : "";
+  const da = docAbierto();
+  const actual = (ruta && ruta.id ? (S.proyecto(ruta.id)||{}).nombre : "") + (da ? ` · documento abierto: ${(entregable(da.doc)||{}).nombre||da.doc} (id ${da.doc}, pestaña ${da.tab})` : "");
   const resp = await client.beta.messages.create({
     model:"claude-opus-5-5", max_tokens:4096,
     system:[ { type:"text", text: SISTEMA_COPITO + " Cuando el usuario pida agregar, cambiar, eliminar o emitir algo, usa la herramienta proponer_cambios con operaciones concretas (TAG existentes, unidades correctas). Si falta un dato imprescindible, pregúntalo en una frase en lugar de usar la herramienta." },
@@ -282,7 +285,10 @@ export function iniciarCopito(rutaActual, alCambiar){
     msgs.innerHTML = (chat.length ? "" : `<div class="cp-m cp-bot"><span class="cp-av">${AVATAR}</span><div class="cp-bub">${AYUDA}</div></div>`) +
       chat.map(m=>m.de==="yo" ? `<div class="cp-m cp-yo"><div class="cp-bub">${esc(m.t)}</div></div>` : `<div class="cp-m cp-bot"><span class="cp-av">${AVATAR}</span><div class="cp-bub">${m.h}${m.prop && pendientes.has(m.prop) ? `<div class="cp-acc"><button class="btn-accent btn-sm" data-aplicar="${m.prop}">Aplicar cambios</button><button class="btn-sm" data-cancelar="${m.prop}">Cancelar</button></div>` : ""}${m.hecho && hechos.has(m.hecho) ? `<div class="cp-acc"><button class="btn-sm" data-deshacer="${m.hecho}">Deshacer</button></div>` : ""}${m.ia?'<div class="cp-ia">Respuesta con IA</div>':""}</div></div>`).join("");
     msgs.scrollTop = msgs.scrollHeight;
-    $("#cp-sug").hidden = chat.length > 0;
+    const da = docAbierto(), pd = da && S.proyecto(da.id);
+    const sug = pd ? sugerenciasDoc(pd, da.doc) : SUGERENCIAS;
+    $("#cp-sug").innerHTML = sug.map(x=>`<button>${esc(x)}</button>`).join("");
+    $("#cp-sug").hidden = chat.length > 0 && !pd;
   };
   const cfg = leerIA();
   const modo = ()=>{ const c = leerIA(); $("#cp-modo").textContent = c.activo && c.clave ? "Asistente de tus proyectos · IA activa" : "Asistente de tus proyectos"; };
@@ -310,7 +316,7 @@ export function iniciarCopito(rutaActual, alCambiar){
       actualizarCon("Aplicando el cambio y actualizando el plano…", ()=>{
         const r = aplicar(p, pr.ops); hechos.set(id, { pid: p.id, copia: r.copia });
         const m = chat.find(x=>x.h && x.h.includes("cp-pensando\">Aplicando")); if(m) m.h = m.h.replace(`<span class="cp-pensando">Aplicando…</span>`, "Aplicado.");
-        chat.push({ de:"bot", hecho:id, h:`Listo, cambios aplicados.${r.impacto.length ? `<br>Impacto en el proyecto:<ul>${r.impacto.map(x=>`<li>${x}</li>`).join("")}</ul>` : " No cambia el cálculo de los tableros."}${r.avisos.length ? `<div class="cp-nota">${r.avisos.map(esc).join("<br>")}</div>` : ""}` });
+        chat.push({ de:"bot", hecho:id, h:`Listo, cambios aplicados.${r.impacto.length ? `<br>Impacto en el proyecto:<ul>${r.impacto.map(x=>`<li>${x}</li>`).join("")}</ul>` : " No cambia el cálculo de los tableros."}${htmlAfectados(p, r.documentos||[])}${r.avisos.length ? `<div class="cp-nota">${r.avisos.map(esc).join("<br>")}</div>` : ""}` });
       });
       return; }
     else if(b.dataset.cancelar){ pendientes.delete(b.dataset.cancelar); cerrar(b.dataset.cancelar, "Cancelado: no se cambió nada."); }
@@ -337,7 +343,8 @@ export function iniciarCopito(rutaActual, alCambiar){
       if(!p){ chat.push({ de:"bot", h:"Primero crea un proyecto; luego puedo cambiar sus datos." }); guardar(); pintar(); return; }
       const ops = interpretar(q, p, forzar);
       const c = leerIA();
-      if(ops && ops.length) proponer(p, ops, false);
+      if(ops && ops.length && ops.every(o=>o.op==="aviso")) chat.push({ de:"bot", h: ops.map(o=>o.texto).join("<br>") });
+      else if(ops && ops.length) proponer(p, ops.filter(o=>o.op!=="aviso"), false);
       else if(c.activo && c.clave){
         chat.push({ de:"bot", h:`<span class="cp-pensando">Copito está preparando los cambios…</span>` }); pintar();
         try{ const r = await proponerIA(q, ruta, c); chat.pop();
@@ -361,6 +368,7 @@ export function iniciarCopito(rutaActual, alCambiar){
   $("#cp-form").onsubmit = ev=>{ ev.preventDefault(); const q = $("#cp-q").value; $("#cp-q").value = ""; preguntar(q); };
   // otras pantallas (p. ej. la vista 3D del tablero) abren a Copito con una orden propuesta o la envían directamente
   window.copito = { abrir:(texto, enviar)=>{ abrir(true); if(enviar) preguntar(texto); else if(texto){ const i = $("#cp-q"); i.value = texto; setTimeout(()=>{ i.focus(); i.setSelectionRange(texto.length, texto.length); }, 60); } } };
-  $("#cp-sug").addEventListener("click", ev=>{ const b = ev.target.closest("button"); if(b) preguntar(b.textContent); });
+  // sugerencias: las que terminan en «…» se completan antes de enviarlas
+  $("#cp-sug").addEventListener("click", ev=>{ const b = ev.target.closest("button"); if(!b) return; const tx = b.textContent; if(/…\s*$/.test(tx)){ const i = $("#cp-q"); i.value = tx.replace(/…\s*$/, ""); i.focus(); } else preguntar(tx); });
   document.addEventListener("keydown", ev=>{ if(ev.key==="Escape" && !panel.hidden) abrir(false); });
 }

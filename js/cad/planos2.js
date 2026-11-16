@@ -10,6 +10,7 @@ import { procesarFilas } from "../modules/tablas.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { parseDXF } from "../dxf.js";
 import { multifilarKit } from "./plano-multifilar.js";
+import { multifilarControlKit } from "./plano-multifilar-control.js";
 import { mecanicoKit } from "./plano-mecanico.js";
 import * as S from "../store.js";
 
@@ -411,9 +412,9 @@ export const arregloInstrumentos = ctx => arreglo(ctx, "INS");
 export const GENERADORES2 = {
   "ins-pid": { fn: pid, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN (P&ID)", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-multifilar": { fn: multifilarKit, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
-  "ins-multifilar-tc": { fn: multifilarControl, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE CONTROL - CONEXIONADO DE E/S", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
+  "ins-multifilar-tc": { fn: multifilarControlKit, titulo:"DIAGRAMA MULTIFILAR DEL TABLERO DE CONTROL - CONEXIONADO DE E/S", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-mecanico": { fn: mecanicoKit, titulo:"PLANO MECÁNICO DEL TABLERO DE FUERZA", disciplina:"ELECTRICIDAD" },
-  "ins-mecanico-tc": { fn: mecanicoControl, titulo:"DISPOSICIÓN DE EQUIPOS DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
+  "ins-mecanico-tc": { fn: ctx => mecanicoKit(ctx, "control"), titulo:"PLANO MECÁNICO DEL TABLERO DE CONTROL", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
   "ele-arreglo": { fn: arregloEquipos, titulo:"ARREGLO GENERAL DE EQUIPOS ELÉCTRICOS", disciplina:"ELECTRICIDAD" },
   "ins-arreglo": { fn: arregloInstrumentos, titulo:"ARREGLO GENERAL DE INSTRUMENTOS", disciplina:"INSTRUMENTACIÓN Y CONTROL" },
 };

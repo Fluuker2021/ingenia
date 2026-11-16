@@ -219,3 +219,69 @@ export const COLOR = {
   cobre:0xc8783a, tierra:0x2e9e4f, borne:0x8a9099, bornePE:0xd6c32b, reactancia:0x7b5b3a, trafo:0x5d6670, rojo:0xd2312b,
   verde:0x2e9e4f, ambar:0xf5a623, amarillo:0xf5c518, blanco:0xf4f5f6, negro:0x17191d,
 };
+
+/* =====================================================================================
+   TABLERO DE CONTROL (js/mecanico/arreglo-control.js): PLC, fuentes de 24 Vdc, relés de interfaz, fusibles-borne,
+   red de control, HMI y accesorios del gabinete. Mismo criterio: valores referenciales de catálogo con su fuente.
+   ===================================================================================== */
+Object.assign(FUENTES, {
+  ab5069:"Allen-Bradley CompactLogix 5380 / Compact 5000 I/O — 5069-TD002 y 5069-TD001 (H × W × D aprox.)",
+  s71500:"Siemens SIMATIC S7-1500 — manual de sistema y manuales de producto (ancho 35 mm por módulo estándar)",
+  ab1606:"Allen-Bradley 1606-XL / XLB / XLE — 1606-TD002 (fuentes de 24 Vdc, pérdidas a ~60 % de carga)",
+  plcrsc:"Phoenix Contact PLC-RSC (relé REL-MR + base PLC-BSC, 6,2 mm) — catálogo",
+  hesi:"Phoenix Contact UT 4-HESI (5x20) — borne portafusible con indicador LED",
+  stratix:"Allen-Bradley Stratix — 1783-TD001 (switches administrables)",
+  scalance:"Siemens SCALANCE XB-200 — instrucciones de servicio",
+  rut956:"Teltonika RUT956 — hoja de datos (con soporte para riel DIN)",
+  pv7:"Allen-Bradley PanelView Plus 7 — 2711P-TD001 (recorte de panel)",
+  tp700:"Siemens SIMATIC HMI TP700 Comfort — instrucciones de servicio (recorte de montaje)",
+  stego:"STEGO KTO 011 — termostato para gabinetes",
+  led:"Rittal SZ — luminaria LED e interruptor de puerta para gabinetes",
+  toma:"Tomacorriente doble para riel DIN (4 módulos) — catálogo",
+  ovrt2:"ABB OVR T2 40-275 P QS — supresor tipo 2 enchufable, 1 polo",
+});
+// modelo: ancho, alto, fondo (mm) y pérdidas típicas (W)
+const PLC_DIM = {
+  "5069-L306ER":[80,147,105,6.2], "5069-L310ER":[80,147,105,6.5], "5069-L320ER":[80,147,105,7], "5069-L330ER":[80,147,105,7.5], "5069-L340ER":[80,147,105,8], "5069-L350ERM":[80,147,105,8.5],
+  "5069-IF8":[22,145,105,2.2], "5069-IF16":[22,145,105,2.6], "5069-OF4":[22,145,105,3], "5069-OF8":[22,145,105,4.4], "5069-IA16":[22,145,105,4.5], "5069-IB16":[22,145,105,2.6],
+  "5069-IB16K":[22,145,105,3.4], "5069-OW16":[22,145,105,3.3], "5069-OX4I":[22,145,105,2.5], "5069-FPD":[22,145,105,0.3], "5069-ECR":[9,145,105,0],
+  "6ES7 515-2AM02-0AB0":[70,147,129,6.3], "6ES7 531-7KF00-0AB0":[35,147,129,2.7], "6ES7 532-5HD00-0AB0":[35,147,129,3], "6ES7 532-5HF00-0AB0":[35,147,129,5.2],
+  "6ES7 521-1FH00-0AA0":[35,147,129,4.9], "6ES7 521-1BH00-0AB0":[35,147,129,2.6], "6ES7 521-1BL00-0AB0":[35,147,129,4.2], "6ES7 522-5HF00-0AB0":[35,147,129,5], "6ES7 522-1BH01-0AB0":[35,147,129,2.5],
+};
+/* CPU, módulo de E/S, distribuidor de potencial o tapa terminadora del PLC (se montan en un mismo riel, por slot) */
+export function plcModulo(modelo, tipo){
+  const m = String(modelo||"").trim(), sie = /^6ES7/i.test(m);
+  const r = PLC_DIM[m] || (sie ? (tipo==="cpu" ? [70,147,129,6.3] : [35,147,129,3.5]) : tipo==="cpu" ? [80,147,105,7] : tipo==="tapa" ? [9,145,105,0] : [22,145,105,3]);
+  return { w:r[0], h:r[1], d:r[2], montaje:"din", perdidas:r[3], libreArriba:50, libreAbajo:50, fuente: sie ? FUENTES.s71500 : FUENTES.ab5069 };
+}
+const FUENTES_24 = { "1606-XLE60E":[32,124,102,5], "1606-XLE120E":[39,124,117,9], "1606-XLB240E":[60,124,117,18], "1606-XLE480EP":[82,124,127,30] };
+export function fuente24(modelo){ const r = FUENTES_24[String(modelo||"").trim()] || [60,124,117,18]; return { w:r[0], h:r[1], d:r[2], montaje:"din", perdidas:r[3], fuente:FUENTES.ab1606 }; }
+/* relé de interfaz enchufable con base (1 conmutado) para las salidas digitales */
+export function releInterfaz(bobina){
+  const dc = /24/.test(bobina||"");
+  return { modelo:`PLC-RSC-${dc ? "24DC" : "120UC"}/21 (relé REL-MR 1 conmutado + base PLC-BSC con LED)`, w:6.2, h:80, d:94, montaje:"din", perdidas: dc ? 0.3 : 0.5, fuente:FUENTES.plcrsc };
+}
+/* bornes del tablero de control: fusible-borne y borne de dos pisos con sus dimensiones propias; el resto, los de la tabla general */
+const BORNES_CTRL = { "UT 4-HESI":[8.2, 81.6, 66.6, FUENTES.hesi], "PTTB 4":[6.2, 79, 60, FUENTES.borne] };
+export function borneControl(modelo){
+  const m = String(modelo||"UT 4").replace(/-PE$|\s*PE$/i, "").trim(), r = BORNES_CTRL[m];
+  return r ? { modelo:m, w:r[0], h:r[1], d:r[2], montaje:"din", fuente:r[3] } : borne(modelo);
+}
+/* switch Ethernet y router IIoT (riel DIN) */
+export function equipoRed(tipo, modelo){
+  if(tipo==="router") return { w:44.2, h:132, d:95, montaje:"din", perdidas:5, fuente:FUENTES.rut956 };
+  if(/scalance/i.test(modelo||"")) return { w:60, h:147, d:125, montaje:"din", perdidas:5, fuente:FUENTES.scalance };
+  return { w:60, h:147, d:132, montaje:"din", perdidas:10, fuente:FUENTES.stratix };
+}
+/* pantalla HMI en la puerta: recorte, marco frontal y profundidad hacia el interior */
+export function hmi(modelo){
+  if(/tp700|simatic/i.test(modelo||"")) return { recorteW:197, recorteH:141, w:214, h:158, prof:63, perdidas:12, fuente:FUENTES.tp700 };
+  return { recorteW:210, recorteH:154, w:226, h:170, prof:64, perdidas:18, fuente:FUENTES.pv7 };
+}
+export const TERMOSTATO = { modelo:"Termostato STEGO KTO 011 (contacto NA, 0…60 °C) para los ventiladores", w:33, h:60, d:43, montaje:"din", perdidas:0, fuente:FUENTES.stego };
+export const TOMA_DIN = { modelo:"Tomacorriente doble 2P+T 15 A para riel DIN", w:70, h:85, d:63, montaje:"din", perdidas:0, fuente:FUENTES.toma };
+export const LUMINARIA = { modelo:"Luminaria LED de gabinete 600 lm, 100…240 Vac (Rittal SZ 2500.210)", w:350, h:30, d:40, montaje:"techo", perdidas:0, fuente:FUENTES.led };
+export const FIN_PUERTA = { modelo:"Interruptor de puerta 1NA para la luminaria (Rittal SZ 4127.000)", w:20, h:55, d:40, montaje:"marco", perdidas:0, fuente:FUENTES.led };
+export const SPD_1P = { modelo:"OVR T2 40-275 P QS", w:17.8, h:90, d:68, montaje:"din", perdidas:0.3, fuente:FUENTES.ovrt2 };
+/* gabinetes murales del tablero de control (hasta 1000 de ancho: dos puertas) */
+export const GAB_MURAL_CTRL = { anchos:[400, 500, 600, 800, 1000], altos:[500, 600, 800, 1000, 1200], fondos:[200, 250, 300, 400] };

@@ -363,36 +363,37 @@ export function derivarIO(p){
 export function derivarCircuitosControl(p, t){
   // Criterio usual de unifilar de control: 24 Vdc con portafusibles de 1 A por
   // derivación; 120 Vac con ITM 2x2 A por instrumento / circuito; 220 Vac para ventilación, luminaria y
-  // tomacorriente con diferencial de 30 mA.
+  // tomacorriente con diferencial de 30 mA. Cada circuito ligado a un instrumento (inst) o a un equipo del
+  // tablero (cfg) sigue al proyecto aunque el usuario haya editado los circuitos (ver circuitosControl).
   t = t || tc(p);
   const inst = instrumentos(p).filter(i=>tableroDeInstrumento(p, i).id===t.id);
   const enLimpieza = i => t.controladorLimpieza && (/^PD(I)?T$/.test(tipoInstrumento(i.tag)) || /^XV$|^SV$/.test(tipoInstrumento(i.tag)));
   const hayAO = datos(p).cargas.some(l=>l.kind==="motor" && l.starter==="vfd" && t.vfdMando!=="red") || inst.some(i=>esAnalogico(i) && esSalida(i));
   const c24 = [], c120 = [], c220 = [];
-  c24.push({ descripcion:"Alimentación al PLC", proteccion:1 });
+  c24.push({ descripcion:"Alimentación al PLC", proteccion:1, cfg:"plc" });
   const ana = inst.filter(i=>esAnalogico(i) && !enLimpieza(i));
-  if(ana.length) c24.push({ descripcion:"Alimentación a las entradas analógicas", proteccion:1 });
-  if(hayAO) c24.push({ descripcion:"Alimentación a las salidas analógicas", proteccion:1 });
-  if(t.hmi) c24.push({ descripcion:"Alimentación al HMI", proteccion:1 });
-  if(t.router) c24.push({ descripcion:"Alimentación al router", proteccion:1 });
-  if(t.switch) c24.push({ descripcion:"Alimentación al switch", proteccion:1 });
+  if(ana.length) c24.push({ descripcion:"Alimentación a las entradas analógicas", proteccion:1, cfg:"ai" });
+  if(hayAO) c24.push({ descripcion:"Alimentación a las salidas analógicas", proteccion:1, cfg:"ao" });
+  if(t.hmi) c24.push({ descripcion:"Alimentación al HMI", proteccion:1, cfg:"hmi" });
+  if(t.router) c24.push({ descripcion:"Alimentación al router", proteccion:1, cfg:"router" });
+  if(t.switch) c24.push({ descripcion:"Alimentación al switch", proteccion:1, cfg:"switch" });
   for(const i of inst){
     if(enLimpieza(i)) continue;
-    if(/24\s*V/i.test(i.alimentacion||"") || (esAnalogico(i) && /loop/i.test(i.alimentacion||""))) for(const tg of expandirTag(i.tag)) c24.push({ descripcion:"Alimentación al "+(i.descripcion||"instrumento").toLowerCase()+" "+tg, proteccion:1 });
+    if(/24\s*V/i.test(i.alimentacion||"") || (esAnalogico(i) && /loop/i.test(i.alimentacion||""))) for(const tg of expandirTag(i.tag)) c24.push({ descripcion:"Alimentación al "+(i.descripcion||"instrumento").toLowerCase()+" "+tg, proteccion:1, inst:tg });
   }
   c24.push({ descripcion:"Reserva", proteccion:1 }, { descripcion:"Reserva", proteccion:1 });
-  c120.push({ descripcion:"Fuente de 24 Vdc", proteccion:10, potencia:240 });
-  c120.push({ descripcion:"Alimentación a entradas digitales", proteccion:2, potencia:10 });
-  c120.push({ descripcion:"Alimentación a salidas digitales", proteccion:2, potencia:16 });
+  c120.push({ descripcion:"Fuente de 24 Vdc", proteccion:10, potencia:240, cfg:"fuente" });
+  c120.push({ descripcion:"Alimentación a entradas digitales", proteccion:2, potencia:10, cfg:"di" });
+  c120.push({ descripcion:"Alimentación a salidas digitales", proteccion:2, potencia:16, cfg:"do" });
   for(const i of inst){
     if(enLimpieza(i) || esSalida(i)) continue;
-    if(/120/.test(i.alimentacion||"")) for(const tg of expandirTag(i.tag)) c120.push({ descripcion:"Alimentación al "+(i.descripcion||"instrumento").toLowerCase()+" "+tg, proteccion:2, potencia:8 });
+    if(/120/.test(i.alimentacion||"")) for(const tg of expandirTag(i.tag)) c120.push({ descripcion:"Alimentación al "+(i.descripcion||"instrumento").toLowerCase()+" "+tg, proteccion:2, potencia:8, inst:tg });
   }
-  if(t.controladorLimpieza) c120.push({ descripcion:"Alimentación al controlador de limpieza", proteccion:2, potencia:30 });
+  if(t.controladorLimpieza) c120.push({ descripcion:"Alimentación al controlador de limpieza", proteccion:2, potencia:30, cfg:"limpieza" });
   c120.push({ descripcion:"Reserva", proteccion:2 }, { descripcion:"Reserva", proteccion:2 });
-  c220.push({ descripcion:"Ventilación interna", proteccion:4, potencia:200 });
-  c220.push({ descripcion:"Luminaria interna", proteccion:6, potencia:60 });
-  c220.push({ descripcion:"Alimentación al tomacorriente", proteccion:4, diferencial:true });
+  c220.push({ descripcion:"Ventilación interna", proteccion:4, potencia:200, cfg:"ventilacion" });
+  c220.push({ descripcion:"Luminaria interna", proteccion:6, potencia:60, cfg:"luminaria" });
+  c220.push({ descripcion:"Alimentación al tomacorriente", proteccion:4, diferencial:true, cfg:"tomacorriente" });
   const add = (arr, barra, cable)=>arr.map((c,i)=>Object.assign({ barra, circuito:"C"+(i+1), cable }, c));
   return [
     ...add(c24, "24 Vdc", "2C#14AWG+14AWG(T)"),
@@ -400,7 +401,37 @@ export function derivarCircuitosControl(p, t){
     ...add(c220, "220 Vac", "2C#14AWG+14AWG(T)"),
   ];
 }
-export function circuitosControl(p, t){ t = t || tc(p); const d = datos(p); const c = d.circuitosCtl[t.id]; return c && c.length ? c : derivarCircuitosControl(p, t); }
+/* circuitos del tablero de control: los derivados del proyecto o los editados por el usuario, sincronizados:
+   los circuitos de instrumentos y equipos que ya no existen se retiran y los nuevos se agregan antes de las
+   reservas de su barra (así quitar o agregar un componente actualiza todos los entregables) */
+export function circuitosControl(p, t){
+  t = t || tc(p); const d = datos(p); const man = d.circuitosCtl[t.id];
+  const auto = derivarCircuitosControl(p, t);
+  return man && man.length ? sincronizarCircuitos(man, auto) : auto;
+}
+const CFG_DESC = [["plc",/al plc/i],["ai",/entradas anal/i],["ao",/salidas anal/i],["hmi",/\bhmi\b/i],["router",/router/i],["switch",/switch/i],["fuente",/fuente de 24/i],["di",/entradas digitales/i],["do",/salidas digitales/i],["limpieza",/controlador de limpieza/i],["ventilacion",/ventilaci/i],["luminaria",/luminaria/i],["tomacorriente",/tomacorriente/i]];
+export function sincronizarCircuitos(man, auto){
+  const tagsAuto = auto.filter(a=>a.inst).map(a=>a.inst).sort((a, b)=>b.length - a.length);
+  // clave de un circuito: instrumento o equipo al que alimenta (los guardados antes de esta versión se reconocen por su descripción)
+  const clave = x => {
+    if(x.inst) return "i:"+x.inst; if(x.cfg) return "c:"+x.cfg;
+    const d = String(x.descripcion||"");
+    const tg = tagsAuto.find(tg=>new RegExp(`(^|[^A-Za-z0-9])${tg.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}([^A-Za-z0-9]|$)`).test(d)); if(tg) return "i:"+tg;
+    const m = /alimentaci[oó]n al .+ ([A-Z]{1,5}-\d{2,4}[A-Z]?)$/i.exec(d); if(m) return "i:"+m[1].toUpperCase();
+    const c = CFG_DESC.find(([, re])=>re.test(d)); return c ? "c:"+c[0] : null;
+  };
+  const autoK = new Map(auto.map(a=>[clave(a), a]).filter(([k])=>k));
+  const out = man.filter(x=>{ const k = clave(x); return !k || autoK.has(k) || x.fijo; });
+  const tiene = new Set(out.map(clave).filter(Boolean));
+  for(const a of auto){
+    const k = clave(a); if(!k || tiene.has(k)) continue;
+    const res = out.findIndex(x=>x.barra===a.barra && /^reserva$/i.test(x.descripcion||""));
+    const ult = out.map(x=>x.barra).lastIndexOf(a.barra);
+    out.splice(res >= 0 ? res : (ult >= 0 ? ult + 1 : out.length), 0, Object.assign({}, a));
+  }
+  const n = {}; out.forEach(x=>{ n[x.barra] = (n[x.barra]||0) + 1; x.circuito = "C"+n[x.barra]; });
+  return out;
+}
 
 /* ---------------- equipos eléctricos ---------------- */
 export function equiposElectricos(p){

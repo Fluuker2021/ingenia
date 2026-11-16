@@ -716,19 +716,19 @@ function hPLCGen(c){
     const w = it.w*s, o = it.o, xc = x + w/2, ys = yTop - h;
     rect(P, x, ys, x+w, yTop);
     P.texto(xc, yTop+9, 4.52, o.tag, { c:5, ha:1, va:2 });
-    P.textoN(xc, yTop-2.5, 2.5, it.desc, Math.floor(w/1.9), { c:7, ha:1 });
+    P.textoN(xc, yTop-2.5, 2.5, it.desc, Math.floor((w-2)/2.4), { c:7, ha:1 });
     P.texto(xc, yTop-12, 2.8*Math.min(1, s+0.2), o.modelo || "(SIN MODELO)", { c:1, ha:1, va:2 });
-    if(it.i.nombre && o.tipo!=="tapa") P.textoN(xc, yTop-15.5, 2.1, it.i.nombre, Math.floor(w/1.6), { c:7, ha:1 });
+    if(it.i.nombre && o.tipo!=="tapa") P.textoN(xc, yTop-15.5, 2.1, it.i.nombre, Math.floor((w-2)/2), { c:7, ha:1 });
     const sl = o.tipo==="tapa" || o.tipo==="fpd" ? "" : o.slot!=null && o.slot!=="" ? (o.slot==="PS" ? "SLOT PS" : `SLOT ${o.slot}`) : "";
     if(sl){ rect(P, xc-11, yTop-30, xc+11, yTop-23.5); P.texto(xc, yTop-26.75, 2.8, sl, { c:5, ha:1, va:2 }); }
     // bornes: alimentación / comunes y un renglón por canal (número y nombre del fabricante)
     let y = yTop - 36;
     for(const [n, nom, d] of it.filas){
       P.texto(x+2, y, 1.9*f, String(n), { c:7, ha:0, va:2 });
-      P.texto(x+11*f, y, 1.9*f, `${nom===n ? "" : nom}${d && w > 50 ? "  "+d : ""}`.trim().slice(0, Math.floor((w-11*f-1)/(1.37*f))), { c:/^ch/i.test(n) ? 7 : 1, ha:0, va:2 });
+      P.texto(x+11*f, y, 1.9*f, `${nom===n ? "" : nom}${d && w > 50 ? "  "+d : ""}`.trim().slice(0, Math.floor((w-11*f-1)/(1.8*f))), { c:/^ch/i.test(n) ? 7 : 1, ha:0, va:2 });
       y -= rh;
     }
-    if(it.i.conector && it.i.conector!=="—" && o.tipo!=="tapa") P.textoN(xc, ys+11, 1.7*f, it.i.conector, Math.floor(w/(1.25*f)), { c:7, ha:1 });
+    if(it.i.conector && it.i.conector!=="—" && o.tipo!=="tapa") P.textoN(xc, ys+11, 1.7*f, it.i.conector, Math.floor((w-2)/(1.7*f*0.95)), { c:7, ha:1 });
     x += w;
   }
   // bastidor (M580 / M340) bajo los módulos

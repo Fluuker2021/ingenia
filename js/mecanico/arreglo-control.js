@@ -4,7 +4,7 @@
    la fuerza, la distribución, las borneras y las protecciones queden ordenadas:
    · arriba la acometida y la distribución: MCB1 / MCB2, supresor de sobretensiones, fuente de 24 Vdc (CB1 → PS1 →
      CB2) con sus fusibles-borne XF1 y las derivaciones agrupadas por barra (120 Vac con CB3, servicios en 220 Vac);
-   · al centro el PLC en el orden de sus slots (CPU del slot 0 a la izquierda, módulos de E/S, distribuidor de
+   · al centro el PLC en el orden físico de su familia (fuente del PLC si la lleva, CPU, módulos de E/S, distribuidor de
      potencial y tapa terminadora) en un riel propio, con espacio libre arriba y abajo para su ventilación, y la red
      de control (switch y router) a su lado;
    · debajo los relés de interfaz CRn, en una fila alineada con los módulos de salidas digitales que los mandan;
@@ -116,10 +116,16 @@ function construir(eq, calef, sup){
   }
   // ===== 4) PLC por slot (rack que no se separa) y red de control a su lado
   const pl = eq.plc, rack = [];
-  rack.push(mk({ tag:pl.cpu.tag, tipo:"cpu", slot:0, desc:`${pl.cpu.desc} — ${pl.cpu.familia} (slot 0)`, modelo:pl.cpu.modelo, val:pl.red||"" }, C.plcModulo(pl.cpu.modelo, "cpu")));
-  for(const m of pl.modulos) rack.push(mk({ tag:m.tag, tipo:"modulo", io:m.tipo, slot:m.slot, canales:m.canales, tb:m.tb, desc:`${m.desc} (slot ${m.slot}, bornera ${m.tb})`, modelo:m.modelo || "(definir con el fabricante)", val:`${m.canales} canales` }, C.plcModulo(m.modelo, "modulo")));
-  if(pl.fpd) rack.push(mk({ tag:pl.fpd.tag, tipo:"fpd", desc:pl.fpd.desc, modelo:pl.fpd.modelo, val:"" }, C.plcModulo(pl.fpd.modelo, "fpd")));
-  if(pl.tapa) rack.push(mk({ tag:pl.tapa.tag, tipo:"tapa", desc:pl.tapa.desc, modelo:pl.tapa.modelo, val:"" }, C.plcModulo(pl.tapa.modelo, "tapa")));
+  // en el orden físico de la familia (izquierda → derecha): fuente del PLC (PM 1507 / BMX CPS), CPU en su slot,
+  // módulos por slot, distribuidor de potencial y tapa terminadora
+  const orden = pl.orden && pl.orden.length ? pl.orden : [pl.cpu, ...pl.modulos, pl.fpd, pl.tapa].filter(Boolean);
+  for(const x of orden){
+    if(x===pl.cpu) rack.push(mk({ tag:x.tag, tipo:"cpu", slot:x.slot ?? 0, desc:`${x.desc} — ${x.familia} (slot ${x.slot ?? 0})`, modelo:x.modelo, val:pl.red||"" }, C.plcModulo(x.modelo, "cpu")));
+    else if(x===pl.ps) rack.push(mk({ tag:x.tag, tipo:"modulo", io:"PS", slot:x.slot, canales:2, desc:`${x.desc} (slot ${x.slot})`, modelo:x.modelo, val:"24 Vdc" }, C.plcModulo(x.modelo, "modulo")));
+    else if(x===pl.fpd) rack.push(mk({ tag:x.tag, tipo:"fpd", desc:x.desc, modelo:x.modelo, val:"" }, C.plcModulo(x.modelo, "fpd")));
+    else if(x===pl.tapa) rack.push(mk({ tag:x.tag, tipo:"tapa", desc:x.desc, modelo:x.modelo, val:"" }, C.plcModulo(x.modelo, "tapa")));
+    else rack.push(mk({ tag:x.tag, tipo:"modulo", io:x.tipo, slot:x.slot, canales:x.canales, tb:x.tb, desc:`${x.desc} (slot ${x.slot}, bornera ${x.tb})`, modelo:x.modelo || "(definir con el fabricante)", val:`${x.canales} canales` }, C.plcModulo(x.modelo, "modulo")));
+  }
   const gPlc = [{ items:rack, fijo:true, rack:true }];
   for(const r of eq.red.filter(r=>r.tipo!=="hmi")) gPlc.push({ items:[mk({ tag:r.tag, tipo:r.tipo, desc:r.desc, modelo:r.modelo, val:r.tipo==="switch" ? (pl.red||"Ethernet") : "4G / VPN" }, C.equipoRed(r.tipo, r.modelo))], gap: gPlc.length===1 ? 30 : GAP });
   filas.push({ id:"plc", nombre:`PLC ${eq.familia.nombre} y red de control`, zona:"plc", grupos:gPlc, siemens:/siemens/i.test(eq.familia.marca||"") });
@@ -468,7 +474,7 @@ export function arregloControl(p, t){
   criterios.unshift(
     `Gabinete ${montaje==="mural" ? "mural" : "autosoportado"} ${W}x${H}x${D} mm (ancho x alto x fondo)${zocalo ? ` con zócalo de ${zocalo} mm` : ""}, ${ipRecomendado(v)}, ${puertas} puerta(s); placa de montaje de ${Math.round(pc.w)}x${Math.round(pc.h)} mm.`,
     `Distribución arriba, en el orden del unifilar: ${eq.acometidas.map(a=>`${a.q.tag} (${a.tension})`).join(" y ")}, supresor ${eq.spd.tags.join("/")} con ${eq.spd.cb.tag}${fu ? `, fuente ${fu.ps.tag} ${fu.ps.modelo} entre ${fu.cb.tag} y ${fu.cbOut.tag} con los fusibles-borne XF1 (UT 4-HESI) a su lado` : ""}; derivaciones agrupadas por barra: ${eq.vEst}${eq.cb120 ? ` (${eq.cb120.tag})` : ""} y servicios del tablero.`,
-    `PLC ${eq.familia.nombre} en un riel propio en el orden de sus slots: ${rackC.map(c=>c.tipo==="modulo" ? `${c.tag} (slot ${c.slot})` : c.tipo==="cpu" ? `${c.tag} ${c.modelo} (slot 0)` : c.tag).join(", ")}; ${GAP_PLC} mm libres arriba y abajo para la ventilación del rack${eq.red.filter(r=>r.tipo!=="hmi").length ? ` y ${eq.red.filter(r=>r.tipo!=="hmi").map(r=>r.tag).join(" / ")} a su derecha` : ""}.`,
+    `PLC ${eq.familia.nombre} en un riel propio en el orden de sus slots: ${rackC.map(c=>c.tipo==="modulo" ? `${c.tag} (slot ${c.slot})` : c.tipo==="cpu" ? `${c.tag} ${c.modelo} (slot ${c.slot ?? 0})` : c.tag).join(", ")}${eq.plc.rack ? ` sobre el bastidor ${eq.plc.rack.tag} ${eq.plc.rack.modelo}` : ""}; ${GAP_PLC} mm libres arriba y abajo para la ventilación del rack${eq.red.filter(r=>r.tipo!=="hmi").length ? ` y ${eq.red.filter(r=>r.tipo!=="hmi").map(r=>r.tag).join(" / ")} a su derecha` : ""}.`,
   );
   if(rel.length) criterios.push(`Relés de interfaz ${rango(rel.map(c=>c.tag))} (${rel[0].modelo.replace(/\s*\(.*$/, "")}, 6,2 mm) en una fila debajo del PLC, alineados con ${modsDO.map(m=>m.tag).join(", ")} (un relé por canal, reservas incluidas).`);
   criterios.push(`Borneras al pie agrupadas por función en el orden del multifilar: ${bloquesB.filter(b=>b.grupo!=="XF1").map(b=>b.grupo).join(", ")}; señales discretas en bornes de dos pisos PTTB 4, analógicas en UT 4 con borne de pantalla; barra de tierra Cu ${pe.nombre} mm junto a la entrada ${entrada} de cables.`);

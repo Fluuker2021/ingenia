@@ -259,7 +259,10 @@ export function arregloControl(p, t){
   const candidatos = mont => {
     const G = mont==="mural" ? C.GAB_MURAL_CTRL : C.GAB_PISO, out = [];
     for(const W of G.anchos) for(const H of G.altos) if(mont==="piso" || H >= W) out.push([W, H]);
-    return out.sort((a, b)=>a[0]*a[1] - b[0]*b[1] || a[1] - b[1]);
+    // menor superficie, pero los gabinetes de más de 2000 mm se penalizan: los equipos de arriba quedan fuera del
+    // alcance cómodo para el montaje y el mantenimiento (se prefiere un gabinete más ancho y más bajo)
+    const costo = ([W, H]) => W*H*(H > 2000 ? 1.15 : 1);
+    return out.sort((a, b)=>costo(a) - costo(b) || a[1] - b[1]);
   };
   const montPedido = cfg.montaje==="piso" || cfg.montaje==="mural" ? cfg.montaje : fijoH ? (fijoH >= 1600 ? "piso" : "mural") : "auto";
   const montajes = montPedido==="auto" ? ["mural", "piso"] : [montPedido];
@@ -303,7 +306,6 @@ export function arregloControl(p, t){
   let y = ytop - ductH.w;
   ducto(pc.x + MARGEN + ductV.w, y, anchoDH, ductH.w, "h", ductH);
   const xMod = {}, filaInfo = [], yDuctos = [];
-  const sie = rows.some(r=>r.siemens);
   for(const r of rows){
     const yc = y - r.h/2;
     rieles.push({ placa:pc.id, x:xi - 10, y:yc, w:(xf - xi) + 20, nombre:r.nombre, modelo: r.zona==="plc" && r.siemens ? "Perfil soporte S7-1500 6ES7 590-1AE80-0AA0" : C.RIEL.modelo });
@@ -344,7 +346,7 @@ export function arregloControl(p, t){
   const peW = Math.min(pc.w - 80 - (ext.calef ? 125 + 50 : 0), Math.max(220, nPE*25 + 50));
   const peY = sup ? pc.y + pc.h - 30 : pc.y + 30;
   barras.push({ tag:"PE", fase:"PE", nombre:pe.nombre, x:pc.x + 40, y:peY - pe.ancho/2, w:peW, h:pe.ancho, orient:"h", placa:pc.id, seccion:"S1", perforaciones:Math.round(peW/25) });
-  if(ext.calef) Object.assign(comps[comps.push(ext.calef) - 1], { w:125, h:60, x:pc.x + 40 + peW + 30, y:pc.y + 5, placa:pc.id, seccion:"S1", fila:"Pie de la placa (junto a la barra de tierra)" });
+  if(ext.calef) Object.assign(comps[comps.push(ext.calef) - 1], { w:125, h:60, montaje:"placa", x:pc.x + 40 + peW + 30, y:pc.y + 5, placa:pc.id, seccion:"S1", fila:"Pie de la placa (junto a la barra de tierra)" });
   // luminaria en el techo (hacia la puerta) e interruptor de puerta en el marco del lado de la cerradura
   for(const c of ext.techo){ Object.assign(c, { x:W/2 - c.w/2, y:H - 4 - c.h, z:D - 95, z0:D - 95, placa:"", seccion:"S1", fila:"Techo del gabinete" }); comps.push(c); }
   for(const c of ext.marco){ Object.assign(c, { x:W - 4 - c.w, y:H - 260, z:D - 50, z0:D - 50, placa:"", seccion:"S1", fila:"Marco de la puerta" }); comps.push(c); }
@@ -453,7 +455,7 @@ export function arregloControl(p, t){
     c.fila = f; c.zb = D - 80 - f*40; ult[f] = c.x + r;
   }
   // reservas: dos M20 y una M25
-  for(const rr of [20, 20, 25]){ const g2 = C.prensaestopa(rr - 7), r = g2.agujero/2 + 14; const f = ult.indexOf(Math.min(...ult)); const x = ult[f] + r; if(x < W - 60){ lista.push({ ref:"RESERVA", desc:"Reserva", awg:"", x, fila:f, zb:D - 80 - f*40, seccion:"S1", ...g2, diam:0 }); ult[f] = x + r; } }
+  for(const rr of [20, 20, 25]){ const g2 = C.prensaestopa(rr - 7), r = g2.agujero/2 + 14; const f = ult.findIndex(u=>u + 2*r < W - 60); if(f >= 0){ const x = ult[f] + r; lista.push({ ref:"RESERVA", desc:"Reserva", awg:"", x, fila:f, zb:D - 80 - f*40, seccion:"S1", ...g2, diam:0 }); ult[f] = x + r; } }
   base.push(...lista);
 
   // ===== criterios de diseño aplicados =====

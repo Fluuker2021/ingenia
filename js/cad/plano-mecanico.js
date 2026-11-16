@@ -517,7 +517,7 @@ export async function mecanicoKit({ p, valsDe, cliente }, tipo){
     const maxFilas = Math.floor(((AR.y1 - 14) - (AR.y0 + 8))/3.6) - 2;
     if(m.tipo==="control"){
       // varias columnas en el espacio libre a la derecha de la vista (las del pie no invaden el cajetín)
-      const xL0 = vI.X(m.W) + 22, libreT = (ox + AR.x1 - 4) - xL0, nC = Math.max(1, Math.min(4, Math.floor(libreT/196))), wC = Math.min(250, libreT/nC - 4);
+      const xL0 = vI.X(m.W) + 22, libreT = (ox + AR.x1 - 4) - xL0, nC = Math.max(1, Math.min(4, Math.floor(libreT/175))), wC = Math.min(250, libreT/nC - 4);
       const xs = Array.from({ length:nC }, (_, i)=>ox + AR.x1 - 4 - (nC - i)*(wC + 4));
       doc.text(xs[0], AR.y1 - 8, 3, "%%UDETALLE DE BORNERAS", "M-TEXTO");
       let i0 = 0;
@@ -548,7 +548,7 @@ export async function mecanicoKit({ p, valsDe, cliente }, tipo){
         const lin = envolver(d.leyenda, 12).slice(0, 3); lin.forEach((t2, i)=>vP.T(d.x, yy + ((lin.length - 1)/2 - i)*4.8, Math.min(1.5, 1.6*4/s3), t2, "M-TEXTO", { halign:1, valign:2 })); }
       if(d.tag && d.tipo!=="seta" && d.tipo!=="hmi") vP.T(d.x + 17, d.y - 17, 1.2, d.tag, "M-ETIQUETA");
       if(d.tipo==="hmi"){ const x0 = d.x - d.recorteW/2, y0 = d.y - d.recorteH/2;
-        cotaH(doc, vP.X(x0), vP.X(x0 + d.recorteW), vP.Y(d.y + d.h/2) + 5, vP.Y(y0 + d.recorteH), `RECORTE ${d.recorteW}`);
+        cotaH(doc, vP.X(x0), vP.X(x0 + d.recorteW), vP.Y(d.y + d.h/2) + 8, vP.Y(y0 + d.recorteH), `RECORTE ${d.recorteW}`);
         cotaV(doc, vP.Y(y0), vP.Y(y0 + d.recorteH), vP.X(d.x + d.w/2) + 6, vP.X(x0 + d.recorteW), `RECORTE ${d.recorteH}`);
         vP.T(d.x, d.y, Math.min(2.2, 9/s3), "PANTALLA", "M-TEXTO", { halign:1, valign:2 }); vP.T(d.x, d.y - 4.5*s3, Math.min(1.8, 7/s3), String(d.modelo||"").toUpperCase(), "M-TEXTO", { halign:1, valign:2 }); }
     }
@@ -581,7 +581,7 @@ export async function mecanicoKit({ p, valsDe, cliente }, tipo){
     tituloVista(doc, (xR0 + xR1)/2, vB.Y(0) - 12, `BASE DEL TABLERO - ENTRADA ${m.entrada.toUpperCase()} DE CABLES`, escTxt(sB));
     // tabla de prensaestopas (numeradas como en la vista)
     const filasG = m.base.filter(c=>c.ref!=="RESERVA").map((c, i)=>({ n:i+1, ref:c.ref, desc:c.desc, cable:c.awg || "—", d:c.diam ? r1(c.diam) : "—", pe:c.rosca, ag:String(c.agujero).replace(".", ",") }))
-      .concat([{ n:"", ref:"RESERVA", desc:`${m.base.filter(c=>c.ref==="RESERVA").length} agujeros con tapón ciego`, cable:"", d:"", pe:"M32", ag:"32,5" }]);
+      .concat([{ n:"", ref:"RESERVA", desc:`${m.base.filter(c=>c.ref==="RESERVA").length} agujeros con tapón ciego`, cable:"", d:"", pe: m.tipo==="control" ? [...new Set(m.base.filter(c=>c.ref==="RESERVA").map(c=>c.rosca))].join(" / ") : "M32", ag: m.tipo==="control" ? [...new Set(m.base.filter(c=>c.ref==="RESERVA").map(c=>String(c.agujero).replace(".", ",")))].join(" / ") : "32,5" }]);
     const yG = vB.Y(0) - 26;
     doc.text(xR0, yG + 4, 2.8, "%%UPRENSAESTOPAS DE LA BASE", "M-TEXTO");
     const colsG = [{ titulo:"N°", key:"n", w:9, al:"centro" }, { titulo:"REF.", key:"ref", w:22, al:"centro" }, { titulo:"CIRCUITO / CABLE", key:"desc", w:112 }, { titulo:"CALIBRE", key:"cable", w:22, al:"centro" }, { titulo:"Ø EXT. (mm)", key:"d", w:18, al:"centro" }, { titulo:"PRENSAESTOPA", key:"pe", w:24, al:"centro" }, { titulo:"AGUJERO (mm)", key:"ag", w:20, al:"centro" }];

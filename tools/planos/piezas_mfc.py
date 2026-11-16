@@ -32,16 +32,16 @@ PIEZAS_KIT = {
         # ---------------- hoja 1: acometidas ----------------
         'leyenda': dict(rects=[R(1, 18, 236, 140, 272)], ancla=A(1, 18)),
         'notas': dict(rects=[R(1, 15, 170, 420, 215)], ancla=A(1, 15), textos={
-            'NOTA : 1. LA ACOMETIDA PARA EL TABLERO DE CONTROL 112DCB001-PLC-001 DE 120 VAC, 3F +T, 60 HZ ES SUMINISTRADA POR EL CLIENTE. 2. LA ACOMETIDA PARA EL TABLERO DE CONTROL 112DCB001-PLC-001 DE 220 VAC, 3F +T, 60 HZ ES SUMINISTRADA DESDE EL TABLERO DE FUERZA DE AMERICORP 3. BARRA A TIERRA FIJA DEL TABLERO DE CONTROL SERÁ AISLADA Y TIERRA PROTECCIÓN. 4.LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN, ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A 1000 m.s.n.m.': '{notas}'}),
+            're:^NOTA : 1\\. LA ACOMETIDA PARA EL TABLERO DE CONTROL': '{notas}'}),
         'a_spd': dict(rects=[R(1, 662, 255, 765, 668)], ancla=A(1, 0), textos={
             'CB20': '{q}', '6A': '{qv}', 'S202-C6': '{qm}', 'SPD1': '{s1}', 'SPD2': '{s2}', 'TIPO 2': '{tipo}',
             'OVR T2 40-': '{m1}', '275 P QS': '{m2}', 'OVR T2 40': '{m1}', '-275 P QS': '{m2}'}),
         'a_aux': dict(rects=[R(1, 385, 240, 806, 690)], ancla=A(1, 0), textos={
-            'VIENE DEL TABLERO DE FUERZA 112DCP011-DPA-001 CIRCUITO CB4': '{desde}', 'Alimentación 220 V 60 Hz 3F +PE': '{alim}',
+            're:^VIENE DEL TABLERO DE FUERZA': '{desde}', 'Alimentación 220 V 60 Hz 3F +PE': '{alim}',
             'TB2': '{tb}', 'UT16/UT16-PE': '{tbm}', 'MCB2': '{q}', '10A': '{qv}', 'S202-C10': '{qm}', 'MCB2.2': '{a1}', 'MCB2.4': '{a2}',
             'PE.2': '{pe}', 'ALIMENTACIÓN SISTEMA DE VENTILADORES ,LUMINARIA Y TOMACORRIENTE TABLERO ELÉCTRICO': '{desc}', '(NOTA 2)': '{nota}'}),
         'a_est': dict(rects=[R(1, 0, 575, 225, 690), R(1, 225, 615, 395, 690)], ancla=A(1, 0), textos={
-            'VIENE DEL TABLERO DE DISTRIBUCIÓN E INSTRUMENTACIÓN DE CAMPO N° 2112-DPJ-001 CIRCUITO 112DCB011-PLC- 001 -CB3': '{desde}',
+            're:^VIENE DEL TABLERO DE DISTRIBUCI': '{desde}',
             'Alimentación 120 V 60 Hz 3F +PE': '{alim}', 'TB1': '{tb}', 'UT16/UT16-PE': '{tbm}', 'MCB1': '{q}', '16A': '{qv}', 'S202-C16': '{qm}',
             'PE.1': '{pe}', '(NOTA 1)': '{nota}'}),
         'a_cb1': dict(rects=[R(1, 200, 490, 290, 668)], ancla=A(1, 0), textos={'CB1': '{q}', '10A': '{qv}', 'S202-C10': '{qm}'}),
@@ -61,7 +61,7 @@ PIEZAS_KIT = {
         'd_int': dict(rects=[R(2, 118, 240, 200, 672)], ancla=A(2, 150), barras_y=B120, textos={
             'CB5': '{q}', '2A': '{qv}', 'S202-C2': '{qm}', 'CB5.2': '{a1}', 'CB5.4': '{a2}', 'ALIMENTACIÓN SALIDAS DIGITALES': '{desc}'}),
         'd_campo': dict(rects=[R(2, 290, 240, 374, 672), R(2, 360, 500, 395, 672), R(2, 285, 450, 302, 458)], ancla=A(2, 318), barras_y=B120, textos={
-            'CB7': '{q}', '2A': '{qv}', 'S202-C2': '{qm}', 'INTERRUPTOR DE VIBRACIÓN LSH-004A': '{desc}'}),
+            'CB7': '{q}', '2A': '{qv}', 'S202-C2': '{qm}', 're:^INTERRUPTOR DE VIBRACI': '{desc}'}),
         'd_res': dict(rects=[R(3, 290, 240, 372, 672)], ancla=A(3, 318), barras_y=B120, textos={
             'CB15': '{q}', '2A': '{qv}', 'S202-C2': '{qm}', 'RESERVA': '{desc}'}),
         'd_pe': dict(rects=[R(3, 470, 540, 494, 640)], ancla=A(3, 480), barras_y=B120, textos={'PE4': '{pe}'}),
@@ -116,7 +116,7 @@ PIEZAS_KIT = {
         'ai_mod': dict(rects=[R(7, 40, 240, 73.5, 265)], ancla=A(7, 74), centro=True, textos={'AI1': '{tag}', '5069-IF8': '{modelo}', 'slot 1': '{slot}'}),
         'ai_sh': dict(rects=[R(7, 712, 210, 800, 272)], ancla=A(7, 714), omitir=[R(7, 765, 211, 800, 217)]),
         'ai_tx': dict(rects=[R(7, 124, 520, 204, 695), R(7, 134, 480, 212, 520), R(7, 153, 200, 233, 345), R(7, 153, 345, 229, 480), R(7, 149, 400, 153, 480)], ancla=A(7, 154), centro=True, barras_y=BAI, textos={
-            'TRANSMISOR INDICADOR DE PRESIÓN 2112DCB011-PIT-002_PI': '{tx}', '2A': '{bA}', '2B': '{bB}', '2': '{t1}', '3': '{t2}',
+            're:^TRANSMISOR INDICADOR DE PRESI': '{tx}', '2A': '{bA}', '2B': '{bB}', '2': '{t1}', '3': '{t2}',
             'IN1+': '{in1}', 'IN1-': '{in2}', 'Presión en línea de aire comprimido': '{desc}', '0,5 A': '{fv}'}),
         'ai_clp': dict(rects=[R(7, 205, 520, 290, 695), R(7, 214, 480, 292, 520), R(7, 233, 200, 313, 345), R(7, 233, 345, 309, 480), R(7, 229, 400, 233, 480)], ancla=A(7, 234), centro=True, barras_y=BAI, textos={
             'CLP.+': '{a1}', 'CLP.-': '{a2}', 'SHIELD.1': '{a3}', '3A': '{bA}', '3B': '{bB}', '4': '{t1}', '5': '{t2}',
@@ -129,7 +129,7 @@ PIEZAS_KIT = {
         'ao_sh': dict(rects=[R(9, 712, 500, 800, 668)], ancla=A(9, 718), barras_y=BAO),
         'ao_ch': dict(rects=[R(9, 54.5, 520, 134, 670), R(9, 15, 195, 145, 520), R(9, 145, 200, 160, 235)], ancla=A(9, 78), centro=True, barras_y=BAO, textos={
             'Referencia de velocidad del variador de frecuencia': '{desc}', '0': '{t1}', '1': '{t2}', 'OUT0+': '{o1}', 'OUT0-': '{o2}',
-            '1A': '{bA}', '1B': '{bB}', 'HACIA TABLERO DE FUERZA REFERENCIA DE VELOCIDAD 2112DCB011-SIC-006_SI': '{dest}'}),
+            '1A': '{bA}', '1B': '{bB}', 're:^HACIA TABLERO DE FUERZA REFERENCIA DE VELOCIDAD': '{dest}'}),
         'ao_res': dict(rects=[R(9, 134.5, 520, 214, 670), R(9, 145, 440, 230, 520)], ancla=A(9, 158), centro=True, barras_y=BAO, textos={
             'Reserva': '{desc}', '2': '{t1}', '3': '{t2}', 'OUT1+': '{o1}', 'OUT1-': '{o2}', '2A': '{bA}', '2B': '{bB}'}),
 
@@ -158,7 +158,7 @@ PIEZAS_KIT = {
         'di_mod': dict(rects=[R(20, 78, 240, 104, 262)], ancla=A(20, 144), textos={'DI2': '{tag}', '5069-IA16': '{modelo}', 'slot 7': '{slot}'}),
         'di_ch': dict(rects=[R(20, 183.9, 205, 264.1, 670)], ancla=A(20, 224), barras_y=BDI, textos={
             '2B': '{bB}', '2A': '{bA}', '2': '{t}', 'In-1': '{inn}', '0,5 A': '{fv}',
-            '(INSTALACION EN CAMPO) INTERRUPTOR DE VELOCIDAD CERO 2112DCB011-SSL-005A': '{dest}', 'Velocidad baja de vávula rotativa #1': '{desc}'}),
+            're:^\\(INSTALACION EN CAMPO\\) INTERRUPTOR DE VELOCIDAD CERO': '{dest}', 'Velocidad baja de vávula rotativa #1': '{desc}'}),
         'di_clp': dict(rects=[R(20, 503.9, 205, 584.1, 670), R(20, 584.1, 440, 610, 490)], ancla=A(20, 544), barras_y=BDI, textos={
             'XF5.6B': '{a1}', 'XF5.6A': '{a2}', '6B': '{bB}', '6A': '{bA}', '6': '{t}', 'In-5': '{inn}', '0,5 A': '{fv}',
             'VIENE DEL CONTROLADOR DE LIMPIEZA': '{dest}', 'Estado del controlador de limpieza': '{desc}'}),
@@ -168,9 +168,9 @@ PIEZAS_KIT = {
         'l_ctrl': dict(rects=[R(22, 0, 415, 480, 681)], ancla=A(22, 0), textos={
             'CLP': '{tag}', 'DWYER-DCT 1022-DCP200A': '{modelo}', 'TARJETA DE CONTROL': '{desc1}', 'DWYER-DCT1022-DCP200A': '{desc2}',
             'CLP.+': '{a1}', 'CLP.-': '{a2}', 'SHIELD.1': '{a3}', 'XF5.6B': '{a4}', 'XF5.6A': '{a5}', 'CB14.2': '{a6}', 'CB14.4': '{a7}', 'PE8': '{a8}',
-            'TMX': '{tmx}', 'DEG.HDC-DE-024-PG21M-0011': '{tmxm}'}),
+            'TMX': '{tmx}', 're:^[A-Z]{3}\\.[A-Z]{3}-[A-Z]{2}-\\d{3}-': '{tmxm}'}),
         'l_tb': dict(rects=[R(22, 130, 344, 172, 380)], ancla=A(22, 178), textos={'TB1': '{tb}', '4mm2': '{tbs}', 'PTTB4': '{tbm}', 'UT4-PE': '{tbpe}', 'CAJA DE PASO': '{caja}'}),
         'l_borne': dict(rects=[R(22, 175, 359, 190, 369)], ancla=A(22, 178), textos={'PE': '{b}'}),
-        'l_valv': dict(rects=[R(22, 52, 190, 90, 230)], ancla=A(22, 72), textos={'2112DCB011-XV-003A': '{tag}'}),
+        'l_valv': dict(rects=[R(22, 52, 190, 90, 230)], ancla=A(22, 72), textos={'re:-XV-': '{tag}'}),
     },
 }

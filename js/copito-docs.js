@@ -211,7 +211,11 @@ export function aplicarDoc(p, op, avisos){
   const tb = tablerosControl(p).find(x=>x.tag===op.tag) || tablerosControl(p)[0];
   // los circuitos editados se guardan como lista propia del tablero (sincronizada con instrumentos y equipos)
   const lista = () => (d.circuitosCtl[tb.id] = circuitosControl(p, tb).map(x=>Object.assign({}, x)));
-  const buscar = L => L.findIndex(x=>x.barra===op.barra && x.circuito===op.circuito);
+  // el circuito «Cn» del unifilar es el n-ésimo de su barra sin contar la derivación de la fuente de 24 Vdc
+  // (que en el unifilar es CB1 → PS1 → CB2, no una columna de la barra de 120 Vac)
+  const buscar = L => { const idx = L.map((x, i)=>i).filter(i=>L[i].barra===op.barra && !(L[i].cfg==="fuente" || /fuente de 24/i.test(L[i].descripcion||"")));
+    const k = idx[(parseInt(String(op.circuito).replace(/\D/g, ""), 10) || 0) - 1];
+    return k!=null && (!op.descripcion || L[k].descripcion===op.descripcion || /^reserva$/i.test(op.descripcion)) ? k : L.findIndex(x=>x.barra===op.barra && x.descripcion===op.descripcion); };
   switch(op.op){
     case "aviso": return {};
     case "circuito.agregar": { if(!tb) return {}; const L = lista();

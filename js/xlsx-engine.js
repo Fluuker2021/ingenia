@@ -274,7 +274,7 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
 /* Colores de INGENIA en los formatos Excel: los rellenos oscuros (encabezados) pasan a grafito con texto
    blanco, los claros a amarillo suave o gris, el texto azul a grafito; los valores numéricos se centran
    (los textos, como la descripción, conservan su alineación). */
-const PAL = { grafito:"FF17191D", amarillo:"FFF5C518", amarillo100:"FFFDF1C4", gris:"FFECEFF2", blanco:"FFFFFFFF" };
+const PAL = { grafito:"FF17191D", grafito800:"FF1F2228", amarillo:"FFF5C518", amarillo100:"FFFDF1C4", gris:"FFECEFF2", blanco:"FFFFFFFF" };
 const TEMA = { 0:"FFFFFF", 1:"000000", 2:"E7E6E6", 3:"44546A", 4:"4472C4", 5:"ED7D31", 6:"A5A5A5", 7:"FFC000", 8:"5B9BD5", 9:"70AD47" };
 function rgbDe(c){
   if(!c) return null;
@@ -285,8 +285,34 @@ function rgbDe(c){
   if(t) [r,g,b] = [r,g,b].map(v=> t<0 ? v*(1+t) : v+(255-v)*t);
   return { r, g, b, lum: (0.299*r+0.587*g+0.114*b)/255, sat: Math.max(r,g,b)-Math.min(r,g,b) };
 }
+/* etiquetas de encabezados (bloque Cliente / Proyecto / Fecha…) y de la tabla de revisiones de la carátula */
+const ETIQUETAS = new Set(["cliente","proyecto","p&id","fecha","revisión","revision","rev.","rev","pág.","documento","referencia","n° documento","n° proyecto",
+  "emitido para","elaboró","elaboró ing. disc.","revisó","revisó jef. proy.","aprobó","aprobó gerente","revisado por el cliente","ing. disc.","coord. proy.","superint. ing.","gerente proy.","comentarios","nota"]);
+const esEtiqueta = t => { const k = String(t||"").trim().toLowerCase().replace(/\s+/g," ").replace(/:$/,""); return ETIQUETAS.has(k) || /^revisado por /.test(k) || /^(cliente|proyecto|fecha|n° documento|rev\.?)\s*:/i.test(k); };
+const textoDe = v => v==null ? "" : typeof v==="object" ? (v.richText ? v.richText.map(r=>r.text).join("") : (v.result!=null ? String(v.result) : "")) : String(v);
 function aplicarPaletaIngenia(wb){
+  wb.eachSheet(ws=>{
+    // pie y encabezado de página en grafito (&K = color de fuente en los encabezados de Excel)
+    const hf = ws.headerFooter || {};
+    for(const k of ["oddHeader","oddFooter","evenHeader","evenFooter","firstHeader","firstFooter"]) if(hf[k] && !/&K/.test(hf[k])) hf[k] = hf[k].replace(/&([LCR])/g, "&$1&K17191D");
+    // título de la hoja (primeras filas, fuente grande) y etiquetas de encabezados
+    ws.eachRow({ includeEmpty:false }, (row, rn)=>row.eachCell({ includeEmpty:false }, cell=>{
+      const t = textoDe(cell.value).trim(); if(!t) return;
+      const fs = (cell.font && cell.font.size) || 11;
+      if(rn<=3 && fs>=12 && ws.name.toUpperCase()!=="CARÁTULA" && ws.name.toUpperCase()!=="CARATULA"){
+        cell.fill = { type:"pattern", pattern:"solid", fgColor:{ argb:PAL.grafito }, bgColor:{ indexed:64 } };
+        cell.font = Object.assign({}, cell.font||{}, { bold:true, color:{ argb:PAL.blanco } });
+        cell.border = Object.assign({}, cell.border||{}, { bottom:{ style:"medium", color:{ argb:PAL.amarillo } } });
+        cell._ingenia = true;
+      } else if(esEtiqueta(t)){
+        cell.fill = { type:"pattern", pattern:"solid", fgColor:{ argb:PAL.grafito800 }, bgColor:{ indexed:64 } };
+        cell.font = Object.assign({}, cell.font||{}, { bold:true, color:{ argb:PAL.blanco } });
+        cell._ingenia = true;
+      }
+    }));
+  });
   wb.eachSheet(ws=>ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:true }, cell=>{
+    if(cell._ingenia){ delete cell._ingenia; return; }
     const f = cell.fill;
     if(f && f.type==="pattern" && f.pattern==="solid"){
       const c = rgbDe(f.fgColor);

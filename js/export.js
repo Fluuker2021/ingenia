@@ -47,14 +47,16 @@ async function caratula(wb, ctx){
   put("E4", ctx.org.direccion||"", { font:{ size:8, color:{argb:"FF66748A"} } }); ws.mergeCells("E4:L4");
 
   ws.getRow(8).height = 24;
-  put("B8", "CLIENTE: "+(ctx.proyecto.cliente||"—").toUpperCase(), { font:{ bold:true, size:10 } }); box("B8:L8");
+  put("B8", "CLIENTE: "+(ctx.proyecto.cliente||"—").toUpperCase(), { font:{ bold:true, size:10, color:{argb:"FFFFFFFF"} }, fill:AZUL }); box("B8:L8");
+  for(let c=2;c<=12;c++) ws.getCell(8,c).border = { ...ws.getCell(8,c).border, bottom:{ style:"medium", color:{argb:"FFF5C518"} } };
+  ws.headerFooter.oddFooter = "&L&K17191D"+(ctx.org.nombre||"")+"&C&K17191D"+(ctx.doc.titulo||"")+"&R&K17191DRev. "+(ctx.doc.rev||"A");
   put("B10", (ctx.proyecto.nombre||"").toUpperCase(), { font:{ bold:true, size:14, color:{argb:AZUL} } }); ws.mergeCells("B10:L12");
   put("B13", (ctx.proyecto.unidad ? "UNIDAD: "+ctx.proyecto.unidad.toUpperCase()+"   ·   " : "")+"ETAPA: "+(ctx.proyecto.etapaNombre||"").toUpperCase(), { font:{ size:9 } }); ws.mergeCells("B13:L13");
   put("B15", (ctx.doc.disciplina||"").toUpperCase(), { font:{ bold:true, size:10 } }); ws.mergeCells("B15:L15");
   put("B17", (ctx.doc.titulo||"").toUpperCase(), { font:{ bold:true, size:16 } }); ws.mergeCells("B17:L20");
   for(let r=17;r<=20;r++) for(let c=2;c<=12;c++) ws.getCell(r,c).fill = { type:"pattern", pattern:"solid", fgColor:{argb:AZUL_CLARO} };
   borderRange(ws, "B17", "L20");
-  put("B22", "REVISIÓN", { font:{ bold:true, size:9 }, fill:GRIS }); ws.mergeCells("B22:D22");
+  put("B22", "REVISIÓN", { font:{ bold:true, size:9, color:{argb:"FFFFFFFF"} }, fill:"FF1F2228" }); ws.mergeCells("B22:D22");
   put("E22", "Rev. "+(ctx.doc.rev||"A"), { font:{ bold:true, size:12 } }); ws.mergeCells("E22:L22");
   borderRange(ws, "B22", "L22");
 
@@ -89,12 +91,12 @@ function hojaTabla(wb, ctx, nombre, tabla){
   // cabecera de hoja (Cliente / Proyecto / Fecha / Rev.) — mismo esquema que los listados de referencia
   put(1,1,(tabla.titulo||nombre).toUpperCase(), { font:{ bold:true, size:12, color:{argb:"FFFFFFFF"} }, fill:AZUL, al:{ horizontal:"center" } }); ws.mergeCells(1,1,1,last); ws.getRow(1).height = 22;
   const half = Math.max(2, Math.floor(last/2));
-  put(2,1,"Cliente",{font:{bold:true},fill:GRIS}); put(2,2,ctx.proyecto.cliente||"",{}); ws.mergeCells(2,2,2,half);
-  put(2,half+1,"Fecha",{font:{bold:true},fill:GRIS}); put(2,half+2,ctx.doc.fecha||"",{}); if(half+2<last) ws.mergeCells(2,half+2,2,last);
-  put(3,1,"Proyecto",{font:{bold:true},fill:GRIS}); put(3,2,ctx.proyecto.nombre||"",{}); ws.mergeCells(3,2,3,half);
-  put(3,half+1,"Revisión",{font:{bold:true},fill:GRIS}); put(3,half+2,ctx.doc.rev||"A",{}); if(half+2<last) ws.mergeCells(3,half+2,3,last);
-  put(4,1,"Documento",{font:{bold:true},fill:GRIS}); put(4,2,ctx.doc.titulo||"",{}); ws.mergeCells(4,2,4,half);
-  put(4,half+1,"Referencia",{font:{bold:true},fill:GRIS}); put(4,half+2,tabla.referencia||ctx.doc.referencia||"—",{}); if(half+2<last) ws.mergeCells(4,half+2,4,last);
+  put(2,1,"Cliente",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(2,2,ctx.proyecto.cliente||"",{}); ws.mergeCells(2,2,2,half);
+  put(2,half+1,"Fecha",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(2,half+2,ctx.doc.fecha||"",{}); if(half+2<last) ws.mergeCells(2,half+2,2,last);
+  put(3,1,"Proyecto",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(3,2,ctx.proyecto.nombre||"",{}); ws.mergeCells(3,2,3,half);
+  put(3,half+1,"Revisión",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(3,half+2,ctx.doc.rev||"A",{}); if(half+2<last) ws.mergeCells(3,half+2,3,last);
+  put(4,1,"Documento",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(4,2,ctx.doc.titulo||"",{}); ws.mergeCells(4,2,4,half);
+  put(4,half+1,"Referencia",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(4,half+2,tabla.referencia||ctx.doc.referencia||"—",{}); if(half+2<last) ws.mergeCells(4,half+2,4,last);
   // encabezados
   const hr = 6;
   cols.forEach((c,i)=>{ put(hr, i+1, c.titulo, { font:{ bold:true, size:8.5, color:{argb:"FFFFFFFF"} }, fill:AZUL, al:{ horizontal:"center" } }); });
@@ -116,7 +118,7 @@ function hojaTabla(wb, ctx, nombre, tabla){
     cols.forEach((c,i)=>{ const v = t[c.key]; put(r, i+1, v===undefined?"":v, { font:{ bold:true, size:8.5 }, fill:GRIS, al:{ horizontal:(c.num||typeof v==="number")?"right":"left" } }); });
   });
   (tabla.notas||[]).forEach((n,ni)=>{ const r = hr+2+tabla.filas.length+(tabla.totales||[]).length+ni; const cell = ws.getCell(r,1); cell.value = n; cell.font = font({ size:8, italic:true }); ws.mergeCells(r,1,r,last); });
-  ws.headerFooter.oddFooter = "&L"+(ctx.org.nombre||"")+"&C"+(ctx.doc.titulo||"")+" Rev. "+(ctx.doc.rev||"")+"&RPág. &P de &N";
+  ws.headerFooter.oddFooter = "&L&K17191D"+(ctx.org.nombre||"")+"&C&K17191D"+(ctx.doc.titulo||"")+" Rev. "+(ctx.doc.rev||"")+"&R&K17191DPág. &P de &N";
 }
 
 /* ---------------- EXCEL CON PLANTILLA DEL CLIENTE ----------------

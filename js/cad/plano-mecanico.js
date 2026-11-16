@@ -121,7 +121,7 @@ function parrafos(doc, x, yTop, ancho, titulo, items, fs){
 function tornillos(v, x, y, w, n, r, ly){ for(let k=0;k<n;k++){ const cx = x + w*(k+0.5)/n; v.C(cx, y, r, ly); v.L(cx - r*0.7, y - r*0.7, cx + r*0.7, y + r*0.7, ly); } }
 function etiqueta(v, c, txt, arriba){
   txt = txt==null ? c.tag : txt; if(!txt) return;
-  const anchoP = c.w/v.s + (c.etqJusta ? -0.3 : 1.5), h = ajustar(txt, anchoP, 1.9, 1.0);
+  const anchoP = c.w/v.s + (c.etqJusta ? -0.3 : 1.5), h = c.etqJusta ? Math.max(0.9, Math.min(1.9, anchoP/(String(txt).length*0.85))) : ajustar(txt, anchoP, 1.9, 1.0);
   if(arriba===false) v.T(c.x + c.w/2, c.y + c.h/2, h, txt, "M-ETIQUETA", { halign:1, valign:2 });
   else v.T(c.x + c.w/2, c.y + c.h + 0.7*v.s, h, txt, "M-ETIQUETA", { halign:1 });
 }

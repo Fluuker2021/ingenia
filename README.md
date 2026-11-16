@@ -72,3 +72,5 @@ js/engine/tablero-core.js  motor de cálculo NEC + catálogos ABB / Miguélez + 
 js/cad/formato.js  lámina y cajetín · js/cad/planos.js y planos2.js generadores de planos
 ```
 Librerías en `vendor/`: ExcelJS, docxtemplater + PizZip, pako.
+- `vendor/exceljs.min.js` lleva un parche: escribe `<outlinePr>` antes de `<pageSetUpPr>` dentro de `<sheetPr>` (orden del esquema OOXML). Sin él, Excel «reparaba» las hojas de los formatos y las dejaba vacías.
+- `tools/ordenar_docx.py` ordena según el esquema las propiedades de tabla y `updateFields` de las plantillas Word. Los archivos generados se verifican con el validador del Open XML SDK de Microsoft.

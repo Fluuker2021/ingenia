@@ -52,13 +52,13 @@ def envolver(texto, n):
 
 def mtext_a_texto(m):
     """MTEXT → un TEXT de varias líneas («\n»), alineado arriba en la posición de la primera línea.
-    Los párrafos se cortan al ancho del MTEXT (ancho de carácter ROMAND ≈ 0,72·h)."""
+    Los párrafos se cortan al ancho del MTEXT con un ancho de carácter de 0,9·h (fuente estándar de AutoCAD, más ancha que ROMAND)."""
     txt = m.plain_text().replace('\r', '')
     h = m.dxf.char_height
     ancho = m.dxf.get('width', 0) or 0
     lineas = []
     for par in txt.split('\n'):
-        lineas += envolver(par, max(4, int(ancho / (h * 0.72)))) if ancho > 0 else [par]
+        lineas += envolver(par, max(4, int(ancho / (h * 0.9)))) if ancho > 0 else [par]
     while lineas and not lineas[-1].strip():
         lineas.pop()
     ls = h * 1.6667
@@ -210,6 +210,53 @@ def mover(p, dx, dy):
     return q
 
 
+def segmentos(prims, minimo=5):
+    """tramos horizontales y verticales (de líneas y polilíneas) para detectar las celdas de una tabla"""
+    hs, vs = [], []
+    for p in prims:
+        pts = []
+        if p[0] == 'L':
+            pts = [((p[4], p[5]), (p[6], p[7]))]
+        elif p[0] == 'P':
+            xy = list(zip(p[5][0::2], p[5][1::2]))
+            if p[4]:
+                xy.append(xy[0])
+            pts = list(zip(xy, xy[1:]))
+        for (x1, y1), (x2, y2) in pts:
+            if abs(y1 - y2) < 0.05 and abs(x1 - x2) >= minimo:
+                hs.append((min(x1, x2), max(x1, x2), y1))
+            elif abs(x1 - x2) < 0.05 and abs(y1 - y2) >= minimo:
+                vs.append((min(y1, y2), max(y1, y2), x1))
+    return hs, vs
+
+
+def celda(cx, cy, hs, vs):
+    izq = max((x for y0, y1, x in vs if y0 - 0.1 <= cy <= y1 + 0.1 and x < cx), default=None)
+    der = min((x for y0, y1, x in vs if y0 - 0.1 <= cy <= y1 + 0.1 and x > cx), default=None)
+    aba = max((y for x0, x1, y in hs if x0 - 0.1 <= cx <= x1 + 0.1 and y < cy), default=None)
+    arr = min((y for x0, x1, y in hs if x0 - 0.1 <= cx <= x1 + 0.1 and y > cy), default=None)
+    if None in (izq, der, aba, arr):
+        return None
+    return izq, aba, der, arr
+
+
+def centrar_textos(sel, cfg):
+    """centra en su caja (o en la celda de la tabla) los textos horizontales de la pieza: ha=1, va=2"""
+    cajas = cfg.get('cajas', [])
+    zona = cfg.get('zona')
+    hs, vs = segmentos(sel) if cfg.get('celdas') else ([], [])
+    out = []
+    for p in sel:
+        if p[0] == 'T' and abs(p[7]) < 0.1 and p[1] in ('G-TEX', 'G-TEXT', 'L-TEXT'):
+            b = caja(p); cx, cy = (b[0] + b[2]) / 2, (b[1] + b[3]) / 2
+            if zona is None or (zona[0] <= cx <= zona[2] and zona[1] <= cy <= zona[3]):
+                c = next((k for k in cajas if k[0] <= cx <= k[2] and k[1] <= cy <= k[3]), None) or (celda(cx, cy, hs, vs) if cfg.get('celdas') else None)
+                if c:
+                    p = list(p); p[4] = R((c[0] + c[2]) / 2); p[5] = R((c[1] + c[3]) / 2); p[9] = 1; p[10] = 2
+        out.append(p)
+    return out
+
+
 def cargar(path):
     doc, _ = recover.readfile(path)
     return doc
@@ -301,6 +348,13 @@ def extraer(tipo, entrada, salida):
             if not pz.get('compartida'):
                 asignado.add(i)
             usados.add(p[1])
+        if pz.get('centrar'):
+            # las coordenadas ya están relativas al ancla: se llevan las cajas al mismo sistema
+            cz = dict(pz['centrar'])
+            cz['cajas'] = [(k[0] - ax, k[1] - ay, k[2] - ax, k[3] - ay) for k in cz.get('cajas', [])]
+            if cz.get('zona'):
+                z = cz['zona']; cz['zona'] = (z[0] - ax, z[1] - ay, z[2] - ax, z[3] - ay)
+            sel = centrar_textos(sel, cz)
         piezas[nombre] = dict(ancla=[ax, ay], n=len(sel), e=sel, **{k: v for k, v in pz.items() if k in ('info',)})
     capas, lts = tablas(doc, usados)
     ltscale = doc.header.get('$LTSCALE', 1.0)

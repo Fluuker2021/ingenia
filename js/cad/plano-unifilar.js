@@ -142,7 +142,7 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
   // acometida y accesorios (primera lámina del tablero)
   if(primera){
     const ax = SX(X_ACOM), ay = SY(0);
-    pieza(doc, kit, "acometida", ax, ay, { s, lineas:{ acometida:32 }, vars:{ q:"Q1", qv:`3x${calc.mainBreaker}A`, barra: barraCu(calc.mainBreaker), acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}` } });
+    pieza(doc, kit, "acometida", ax, ay, { s, lineas:{ acometida:26 }, vars:{ q:"Q1", qv:`3x${calc.mainBreaker}A`, barra: barraCu(calc.mainBreaker), acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}` } });
     let nf = 0; const fus = n=>{ const a = Array.from({length:n},(_,i)=>"F"+(++nf)); return a.join(","); };
     if(acc.luces) pieza(doc, kit, "acc_lt", ax, ay, { s, vars:{ f:fus(3), fv:"1X4A", fm:"E91/32", cable:"3C#14AWG+14AWG(N) 0.6/1kV", dev:"LT1,LT2,LT3", rango:"40-600Vac" } });
     if(acc.spd) pieza(doc, kit, "acc_spd", ax, ay, { s, vars:{ f:"-FS1", fv:"3x125A", cable:"3C#10AWG+10AWG(T) 0.6/1kV", dev:"SPD1,SPD2,SPD3", tipo:"TIPO 1 y 2", mod:`OVR T1 T2 3L 12.5-${g.voltage>440 ? 600 : 440} P QS` } });

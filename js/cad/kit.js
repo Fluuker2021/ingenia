@@ -65,10 +65,12 @@ export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas=
       let filas = txt.split("\n");
       if(clave && lineas[clave]) filas = filas.flatMap(f=>envolver(f, lineas[clave]));
       const h = e[6]*s, rot = e[7]||0, r = rot*Math.PI/180, paso = h*1.6667;
+      // centrado vertical (73 = 2): el bloque de líneas queda centrado en el punto, no solo la primera línea
+      const ini = (e[10]===2 && filas.length>1) ? -(filas.length-1)/2 : 0;
       filas.forEach((f, i)=>{
         if(!f.trim()) return;
         // cada línea adicional se desplaza «hacia abajo» del texto (perpendicular a su dirección)
-        const dx = Math.sin(r)*paso*i, dy = -Math.cos(r)*paso*i;
+        const k = i + ini, dx = Math.sin(r)*paso*k, dy = -Math.cos(r)*paso*k;
         doc.text(X(e[4])+dx, Y(e[5])+dy, h, f, lay, { rot, halign:e[9]||0, valign:e[10]||0, wf:e[11], c:e[2] });
       });
     }

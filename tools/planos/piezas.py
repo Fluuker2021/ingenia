@@ -16,16 +16,16 @@ UNIFILAR = {
         'acc_spd': dict(rects=[(321, 545, 545, 588)], ancla=(325, BUS_Y), textos={
             '-FS1': '{f}', '3x125A': '{fv}', '3C#10AWG+10AWG(T) 0.6/1kV': '{cable}', 'SPD1,SPD2,SPD3': '{dev}', 'TIPO 1 y 2': '{tipo}', 'OVR T1 T2 3L 12.5-440 P QS': '{mod}'}),
         'retorno': dict(rects=[(450, 335, 600, 615)], ancla=(325, BUS_Y), capas=['E-TIERRA']),
-        'acometida': dict(rects=[(285, 580, 365, 705), (300, 515, 340, 600)], ancla=(325, BUS_Y), textos={
+        'acometida': dict(rects=[(285, 580, 365, 705), (300, 515, 340, 600)], ancla=(325, BUS_Y), centrar=dict(cajas=[(292.08, 669.79, 356.26, 687.93)]), textos={
             'VIENE DEL TABLERO CENTRO CONTROL DE MOTORES BT Nª 112-MCL-001 CIRCUITO 112DCB011-P01': '{acometida}',
             'MCB1': '{q}', '3x250A': '{qv}', '3xB.Cu 20x5 mm + 1xB.Cu 20x3 mm(T)': '{barra}'}),
-        'titulo': dict(rects=[(5, 615, 130, 640)], ancla=(10.8, 631.8), textos={
+        'titulo': dict(rects=[(5, 615, 130, 640)], ancla=(10.8, 631.8), centrar=dict(cajas=[(10.8, 620.97, 120.88, 631.8)]), textos={
             'TABLERO DE FUERZA 112DCP011-DPA-001 460 VAC, 3F+T, 60Hz': '{tit1}\n{tit2}'}),
-        'pimd': dict(rects=[(595, 618, 640, 636)], ancla=(637.8, 631.8), textos={'PI: 150.2 kVA MD: 149.45 kVA': '{pi}\n{md}'}),
+        'pimd': dict(rects=[(595, 618, 640, 636)], ancla=(637.8, 631.8), centrar=dict(cajas=[(600.64, 620.97, 637.8, 631.8)]), textos={'PI: 150.2 kVA MD: 149.45 kVA': '{pi}\n{md}'}),
         'barra_txt': dict(rects=[(55, 519, 300, 527)], ancla=(71.8, BUS_Y), textos={
             'R,S,T 460 VAC, 3F, 60Hz, 65 KA': '{barra1}', '3xB.Cu 20x5 mm + 1xB.Cu 20x3 mm(T)': '{barra2}'}),
         'tierra': dict(rects=[(5, 286, 45, 345)], ancla=(20.8, 339.3)),
-        'leyenda': dict(rects=[(645, 370, 805, 640)], ancla=(656.5, 631.8), textos={'POSO A TIERRA': 'POZO A TIERRA', '(NOTA 3)': ''}),
+        'leyenda': dict(rects=[(645, 370, 805, 640)], ancla=(656.5, 631.8), centrar=dict(celdas=True), textos={'POSO A TIERRA': 'POZO A TIERRA', '(NOTA 3)': ''}),
         # columnas (ancla: eje del circuito sobre la barra principal)
         'col_vfd': dict(rects=[(38, 195, 101, 519.5)], ancla=(71.8, BUS_Y), textos={
             'C1': '{circ}', 'MCB2': '{q}', '3x250A': '{qv}', '-FS2': '{f}', '3X400A': '{fv}', 'RL1': '{rl}', '208A': '{rlv}',
@@ -60,7 +60,7 @@ FILTRO_REF = None   # las referencias cruzadas a hojas de control se filtran en 
 MULTIFILAR = {
     'fuente': 'Diagrama multifilar del tablero de fuerza (referencia del usuario)',
     'piezas': {
-        'h_acometida': dict(rects=[(-1, 158, 807, 681)], ancla=(0, 0), textos={
+        'h_acometida': dict(rects=[(-1, 158, 807, 681)], ancla=(0, 0), centrar=dict(celdas=True, zona=(0, 155, 140, 195)), textos={
             'VIENE DEL TABLERO CENTRO CONTROL DE MOTORES BT N° 112-MCL-001 CIRCUITO 112DCB011-P01': '{acometida}',
             'Alimentación 460 V 60 Hz 3F +PE': '{alim}',
             'MCB1': '{q}', '250A': '{qv}', 'XT4H 250 Ekip LS/I In=250A 3p F F': '{qm}',

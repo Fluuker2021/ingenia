@@ -12,11 +12,11 @@ PIEZAS_KIT = {
     'piezas': {
         # acometida estabilizada (120 Vac): recuadro de procedencia, MCB1 y cable hasta la barra principal
         'acom120': dict(rects=[(95, 655, 240, 700), (128, 517.2, 175, 662)], centro=True, ancla=(145.87, Y0), textos={
-            'VIENE DEL TABLERO DE DISTRIBUCIÓN E INSTRUMENTACIÓN DE CAMPO Nª 2112-DPJ-001 CIRCUITO 112DCB011-PLC- 001 -CB3': '{acometida}',
+            're:^VIENE DEL TABLERO DE DISTRIBUCI': '{acometida}',
             'MCB1': '{q}', '2X16A': '{qv}', '2C#12AWG+12AWG(T) 0.6/1kV': '{cable}'}),
         # acometida auxiliar (220 Vac) desde el tablero de fuerza: MCB2, CB20 y supresores con su retorno a tierra
         'acom220': dict(rects=[(520, 655, 650, 700), (540, 414.6, 650, 662), (615, 402.5, 616.5, 403.5)], centro=True, ancla=(561.97, Y220), textos={
-            'TABLERO DE FUERZA 112DCP011-DPA-001 2x220 VAC + T - 60HZ': '{acometida}',
+            're:^TABLERO DE FUERZA .*2x220': '{acometida}',
             'MCB2': '{q}', '2X10A': '{qv}', 'CB20': '{qs}', '2X20A': '{qsv}', 'SPD3,SPD4': '{spd}', 'TIPO 2': '{spdt}', 'OVR T2 40-275S P QS': '{spdm}',
             '2C#12AWG+12AWG(T) 0.6/1kV': '{cable}', 'R,S 220 VAC, 1F, 60Hz, 10 KA': ''}),
         # derivación de la fuente de 24 Vdc (CB1 → PS1 → CB2) desde la barra principal hasta la barra de 24 Vdc
@@ -40,7 +40,7 @@ PIEZAS_KIT = {
         # puesta a tierra, título y leyenda
         'tierra': dict(rects=[(0, 160, 26, 337.5)], centro=True, ancla=(16.94, YT), textos={'POZO A TIERRA': 'POZO A\nTIERRA', '2C#14AWG+14AWG(T) 0.6/1kV': ''}),
         'titulo': dict(rects=[(5, 615, 130, 640)], ancla=(10.8, 631.8), centrar=dict(cajas=[(10.8, 621.0, 120.9, 631.8)]), textos={
-            'TABLERO DE CONTROL 112DCB011-XXX-001 120 VAC, 1F+N+T, 60Hz': '{tit1}\n{tit2}'}),
+            're:^TABLERO DE CONTROL .*1F\\+N\\+T': '{tit1}\n{tit2}'}),
         'leyenda': dict(rects=[(652, 418, 806, 556)], ancla=(660.58, 549.79), centrar=dict(celdas=True), textos={'POSO A TIERRA': 'POZO A TIERRA', '(NOTA 3)': ''}),
     },
 }

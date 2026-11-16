@@ -11,7 +11,7 @@ Uso:
 El DWG se convierte a DXF con LibreDWG (paquete npm @mlightcad/libredwg-web, función dwg_write_dxf).
 Los bloques se descomponen (con sus atributos), los MTEXT se dividen en líneas de TEXT y los HATCH sólidos
 se triangulan en SOLID, para que el resultado sea DXF R12 puro (el que abre AutoCAD sin problemas)."""
-import sys, json, math
+import sys, json, math, re
 from ezdxf import recover, path as ezpath
 from ezdxf.math import Vec3
 from ezdxf.math.triangulation import mapbox_earcut_2d
@@ -344,6 +344,10 @@ def extraer(tipo, entrada, salida):
                 norm = ' '.join(t.split())
                 repl = {' '.join(k.split()): v for k, v in repl.items()}
                 t = norm
+                # claves «re:<patrón>»: el texto de la referencia se reconoce sin escribir sus códigos en el repositorio
+                for k_re, v_re in list(repl.items()):
+                    if k_re.startswith('re:') and re.search(k_re[3:], t):
+                        repl = dict(repl); repl[t] = v_re; break
                 if t in repl:
                     if repl[t] == '':
                         continue

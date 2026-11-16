@@ -89,7 +89,7 @@ export function equiposControl(p, t){
   // --- circuitos derivados (en el orden del unifilar): 24 Vdc con fusible-borne, 120 Vac y 220 Vac con ITM 2P
   const circuitos = [];
   c24.forEach((c, i)=>circuitos.push({ barra:"24 Vdc", circuito:"C"+(i+1), tag:"F"+(i+1), tipo:"fusible", polos:1, in:+c.proteccion||1, val:`${+c.proteccion||1}A`,
-    modelo:"UT 4-HESI (5x20) + fusible 5x20", borne:`XF1.${i+1}`, descripcion:c.descripcion, cable:"2C#16AWG+16AWG(T)", potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") }));
+    modelo:"UT 4-HESI (5x20) + fusible 5x20", borne:`XF1.${i+1}`, descripcion:c.descripcion, cable:"2C#14AWG+14AWG(T)", potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") }));
   dist120.forEach((c, i)=>{ const a = +c.proteccion||2; circuitos.push({ barra:"120 Vac", circuito:"C"+(i+1), tag:cbTag(), tipo:"mcb", polos:2, in:a, val:`2x${a}A`, modelo:mcbModelo(2, a),
     borne:`TB3.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") }); });
   let nID = 0;
@@ -100,6 +100,9 @@ export function equiposControl(p, t){
     if(/luminaria/i.test(c.descripcion||"")) o.extra = { interruptorPuerta:"SQ1", luminaria:"LM1" };
     if(/tomacorriente/i.test(c.descripcion||"")) o.extra = { tomacorriente:"TC1" };
     circuitos.push(o); });
+  // cargas fuera del tablero (instrumentos de campo, controlador de limpieza): en el unifilar quedan fuera de la envolvente
+  const INTERNA = /plc|cpu|hmi|router|switch|entradas|salidas|fuente|ventilaci|luminaria|tomacorriente|m[oó]dulo/i;
+  for(const c of circuitos) c.campo = !c.reserva && !INTERNA.test(c.descripcion||"");
   // supresor de sobretensiones de la acometida auxiliar (o de la estabilizada si no hay auxiliar)
   const spd = { cb:{ tag:cbTag(), tipo:"mcb", polos:2, in:20, modelo:mcbModelo(2, 20), val:"2x20A", desc:"Interruptor del supresor de sobretensiones" }, tags:["SPD1","SPD2"], modelo:"OVR T2 40-275 P QS", tipo:"TIPO 2", acometida: conAux ? "aux" : "est" };
 

@@ -33,8 +33,14 @@ def resolver_lt(e):
     return None if lt.upper() in ('BYLAYER', 'BYBLOCK') else lt
 
 
+def limpio(nombre):
+    """nombre de capa válido en DXF R12 (letras, dígitos, $, - y _)"""
+    import re
+    return re.sub(r'[^A-Za-z0-9_$-]', '_', nombre)
+
+
 def capa(e, padre_capa=None):
-    l = e.dxf.get('layer', '0')
+    l = limpio(e.dxf.get('layer', '0'))
     return padre_capa if (l == '0' and padre_capa) else l
 
 
@@ -280,8 +286,8 @@ def todas(doc, region=None):
 def tablas(doc, usados):
     capas = {}
     for l in doc.layers:
-        if l.dxf.name in usados:
-            capas[l.dxf.name] = dict(c=abs(l.dxf.color), lt=l.dxf.linetype)
+        if limpio(l.dxf.name) in usados:
+            capas[limpio(l.dxf.name)] = dict(c=abs(l.dxf.color), lt=l.dxf.linetype)
     lts = {}
     for name in set([c['lt'] for c in capas.values()]):
         if name.upper() in ('CONTINUOUS', 'BYLAYER', 'BYBLOCK'):

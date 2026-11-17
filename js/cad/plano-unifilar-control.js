@@ -91,7 +91,7 @@ export async function unifilarControlKit({ p, valsDe, cliente, id }){
 
 /* rótulo de una barra: a la izquierda de su alimentación si hay espacio, si no a la derecha */
 function rotuloBarra(doc, x0, x1, xa, y, txt, s){
-  const h = 2.5*s, w = String(txt).length*h*0.62;
+  const h = 2.5*s, w = String(txt).length*h*0.72;
   if(xa==null || xa - x0 >= w + 4*s) return doc.text(x0 + 2*s, y + 2.2*s, h, txt, "G-TEX");
   if(x1 - xa >= w + 4*s) return doc.text(xa + 3*s, y + 2.2*s, h, txt, "G-TEX");
   doc.text((x0 + x1)/2, y + 6.2*s, h, txt, "G-TEX", { halign:1 });

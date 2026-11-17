@@ -15,7 +15,7 @@ export function load(){
   if(state) return state;
   try{ const raw = localStorage.getItem(LS_KEY); state = raw ? Object.assign(defaults(), JSON.parse(raw)) : defaults(); }
   catch(e){ state = defaults(); }
-  migrar(state); migrarVentilacion(state);
+  migrar(state); migrarVentilacion(state); retirarEntregables(state);
   return state;
 }
 /* datos guardados con versiones anteriores: unidades «VAC / VDC» → «Vac / Vdc» */
@@ -25,6 +25,14 @@ function migrar(s){
     : Array.isArray(v) ? v.map(fix) : (v && typeof v==="object") ? (Object.keys(v).forEach(k=>{ v[k] = fix(v[k]); }), v) : v;
   s.proyectos = fix(s.proyectos || []);
   s.migVac = 1;
+}
+/* entregables retirados del catálogo: se quitan de los proyectos guardados */
+const RETIRADOS = ["ele-arreglo","ins-bloques","ins-arreglo","ins-tipicos"];
+function retirarEntregables(s){
+  for(const p of s.proyectos||[]){
+    if(Array.isArray(p.entregables)) p.entregables = p.entregables.filter(id=>!RETIRADOS.includes(id));
+    for(const id of RETIRADOS) if(p.documentos) delete p.documentos[id];
+  }
 }
 /* corrección 02: el circuito «Ventilación» de los tableros de control pasa a «Ventilación interna» */
 function migrarVentilacion(s){

@@ -22,7 +22,7 @@ function caja(e){
   if(t==="C"||t==="A") return [e[4]-e[6], e[5]-e[6], e[4]+e[6], e[5]+e[6]];
   if(t==="P"){ const xs = e[5].filter((_,i)=>i%2===0), ys = e[5].filter((_,i)=>i%2===1); return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
   if(t==="S"){ const xs = [e[4],e[6],e[8],e[10]], ys = [e[5],e[7],e[9],e[11]]; return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; }
-  if(t==="T"){ const h = e[6], w = String(e[8]).length*h*0.62; const r = (e[7]||0)*Math.PI/180; const ca = Math.cos(r), sa = Math.sin(r);
+  if(t==="T"){ const h = e[6], w = String(e[8]).length*h*0.72; const r = (e[7]||0)*Math.PI/180; const ca = Math.cos(r), sa = Math.sin(r);
     const ox = [0,-w/2,-w][e[9]]||0, oy = [0,0,-h/2,-h][e[10]]||0;
     const pts = [[ox,oy],[ox+w,oy],[ox,oy+h],[ox+w,oy+h]].map(([x,y])=>[e[4]+x*ca-y*sa, e[5]+x*sa+y*ca]);
     return [Math.min(...pts.map(p=>p[0])), Math.min(...pts.map(p=>p[1])), Math.max(...pts.map(p=>p[0])), Math.max(...pts.map(p=>p[1]))]; }

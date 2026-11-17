@@ -3,7 +3,29 @@
    cuadrícula A–H / 1–5, tabla de revisiones, planos de referencia, bloque de aprobación del contratista y
    rótulo principal), con la marca del cliente retirada y los campos convertidos en datos del proyecto.
    Con plantillas del cliente: su formato y su cajetín DXF, rellenando los textos marcados {{…}}. */
-import { DXF_BLOCKS, dxfTrunc } from "../engine/tablero-core.js";
+import { DXF_BLOCKS, dxfTrunc, DXF_CAR } from "../engine/tablero-core.js";
+
+/* los rótulos fijos de los bloques del cajetín no deben pasar a la celda vecina: si el texto (con el ancho real que
+   tendrá en AutoCAD) llega a la línea vertical siguiente, se reduce su altura */
+function ajustarRotulos(bloque){
+  const v = bloque.filter(e=>e[0]==="L" && Math.abs(e[1]-e[3]) < 0.01).map(e=>({ x:e[1], y0:Math.min(e[2], e[4]), y1:Math.max(e[2], e[4]) }))
+    .concat(bloque.filter(e=>e[0]==="P").flatMap(e=>{ const q = []; for(let i=2;i+3<e.length;i+=2) if(Math.abs(e[i]-e[i+2]) < 0.01) q.push({ x:e[i], y0:Math.min(e[i+1], e[i+3]), y1:Math.max(e[i+1], e[i+3]) }); return q; }));
+  return bloque.map(e=>{
+    if(e[0]!=="T" || e[4]) return e;
+    const [, x, y, h, , txt] = e, n = String(txt||"").length; if(!n) return e;
+    const der = v.filter(l=>l.x > x + 0.3 && l.y0 <= y + 0.2 && l.y1 >= y + h*0.6).reduce((a, l)=>Math.min(a, l.x), Infinity);
+    if(!isFinite(der) || x + n*h*DXF_CAR <= der - 0.6) return e;
+    const h2 = Math.max(1.2, (der - 0.8 - x)/(n*DXF_CAR));
+    return ["T", x, y, h2, e[4], txt];
+  });
+}
+/* texto de un dato en su celda: altura reducida hasta que entre en el ancho disponible (y recortado si aún no entra) */
+function ajustarDato(txt, h, ancho, hMin = 1.4){
+  const t = String(txt||""); if(!t) return { t, h };
+  const h2 = Math.max(hMin, Math.min(h, ancho/(t.length*DXF_CAR)));
+  const n = Math.floor(ancho/(h2*DXF_CAR));
+  return { t: t.length > n ? t.slice(0, Math.max(1, n - 1)) + "." : t, h: h2 };
+}
 
 export const A1 = { w:841, h:594, area:{ x0:25, y0:46, x1:831, y1:579 }, reservado:{ x0:684, y0:46, x1:831, y1:105 } };
 export const PASO_HOJAS = 1000; // separación entre láminas en el espacio modelo (como en los planos de referencia)
@@ -18,12 +40,13 @@ function bloquesNeutros(){
   const sep = [];
   for(let k=1;k<8;k++){ const x = 25 + k*100.75; sep.push(["L", x, 579, x, 584]); }
   for(let k=1;k<5;k++){ const y = 579 - k*113.8; sep.push(["L", 20, y, 25, y]); }
-  DXF_BLOCKS.ING_MAIN = DXF_BLOCKS.TITLE_MAIN.filter(e=>sinMarca(e) && !malSep(e)).concat(sep, [["T",428.996,41.5,2.5,0,"PROCEDIMIENTO DE REVISION Y VALIDACION - CLIENTE"]]);
-  DXF_BLOCKS.ING_REV = DXF_BLOCKS.TITLE_REV.filter(sinMarca);
-  DXF_BLOCKS.ING_REF = DXF_BLOCKS.TITLE_REF.slice();
+  DXF_BLOCKS.ING_MAIN = DXF_BLOCKS.TITLE_MAIN.filter(e=>sinMarca(e) && !malSep(e) && !(e[0]==="T" && /PROCEDIMIENTO DE REVISION/i.test(e[5]||""))).concat(sep, [["T",428.996,41.5,2.5,0,"PROCEDIMIENTO DE REVISION Y VALIDACION - CLIENTE"]]);
+  DXF_BLOCKS.ING_MAIN = ajustarRotulos(DXF_BLOCKS.ING_MAIN);
+  DXF_BLOCKS.ING_REV = ajustarRotulos(DXF_BLOCKS.TITLE_REV.filter(sinMarca));
+  DXF_BLOCKS.ING_REF = ajustarRotulos(DXF_BLOCKS.TITLE_REF.slice());
   // bloque del contratista sin el ícono del logo (6 líneas en x<0) — el recuadro queda para el nombre de la empresa
-  DXF_BLOCKS.ING_CTR = DXF_BLOCKS.TITLE_CTR.filter(e=>!(e[0]==="L" && e[1]<0 && e[3]<0));
-  DXF_BLOCKS.ING_CTR2 = DXF_BLOCKS.TITLE_CTR2.slice();
+  DXF_BLOCKS.ING_CTR = ajustarRotulos(DXF_BLOCKS.TITLE_CTR.filter(e=>!(e[0]==="L" && e[1]<0 && e[3]<0)));
+  DXF_BLOCKS.ING_CTR2 = ajustarRotulos(DXF_BLOCKS.TITLE_CTR2.slice());
   DXF_BLOCKS.ING_HOJA = [["P",1,0,0,54,0,54,6,0,6]];
 }
 
@@ -55,43 +78,49 @@ export function dibujarLamina(doc, ox, oy, vals, cliente){
   doc.insertBlock("ING_CTR2", ox+741.25, oy+86.25, S);
   doc.insertBlock("ING_HOJA", ox+777, oy+98.535, S);
   const T = (x, y, h, txt, n, opt)=>{ if(txt) doc.text(ox+x, oy+y, h, dxfTrunc(String(txt), n||40), "G-TEXT", opt||{}); };
+  // dato en una celda de ancho conocido: centrado (o alineado a la izquierda) y con la altura que entra
+  const C = (x, y, h, txt, ancho, izq, hMin)=>{ if(!txt) return; const a = ajustarDato(txt, h, ancho, hMin); doc.text(ox+x, oy+y, a.h, a.t, "G-TEXT", izq ? { valign:2 } : { halign:1, valign:2 }); };
+  // columna de firmas: una sola altura para todos los nombres (la del más largo), como en un cajetín ordenado
+  const hCol = (lista, h, ancho) => Math.max(1.2, Math.min(h, ...lista.filter(Boolean).map(t=>ancho/(String(t).length*DXF_CAR))));
   // rótulo principal (recuadro x 616…766, y 10…46): líneas centradas, repartidas en la altura y con la altura de texto
   // proporcional a su importancia; si una línea no entra en el ancho se reduce su altura
   const lin = [[vals.UNIDAD, 3.0], [vals.AREA, 2.6], [vals.PROYECTO, 3.0], [vals.DISCIPLINA, 3.2], [vals.TITULO, 3.0], [vals.TITULO2, 2.3]]
-    .filter(([t])=>t && String(t).trim()).map(([t, h])=>{ t = String(t); const hh = Math.max(1.8, Math.min(h, 144/(t.length*0.82))); return { t, h: hh }; });
+    .filter(([t])=>t && String(t).trim()).map(([t, h])=>{ t = String(t); const hh = Math.max(1.8, Math.min(h, 144/(t.length*DXF_CAR))); return { t, h: hh }; });
   const libre = 36 - lin.reduce((a, l)=>a + l.h, 0), gap = libre/(lin.length + 1);
   let yl = 46 - gap;
-  for(const l of lin){ yl -= l.h; T(691, yl + l.h/2, l.h, l.t, 90, { halign:1, valign:2 }); yl -= gap; }
-  T(818, 30, 2.5, vals.NUM_PROYECTO, 14, { halign:1, valign:2 }); T(822.5, 42.9, 2.5, vals.ESCALA, 8, { halign:1, valign:2 });
-  T(798.5, 14.5, String(vals.PLANO||"").length>22 ? 2.6 : 3.5, vals.PLANO, 30, { halign:1, valign:2 });
+  for(const l of lin){ yl -= l.h; C(691, yl + l.h/2, l.h, l.t, 144); yl -= gap; }
+  C(818, 30, 2.5, vals.NUM_PROYECTO, 23); C(822.5, 42.9, 2.5, vals.ESCALA, 15);
+  C(793.5, 14.5, 3.5, vals.PLANO, 52);
   // letra de revisión en el centro del triángulo (821,10)-(826,18,66)-(831,10)
   T(826, 12.9, 3, vals.REV, 2, { halign:1, valign:2 });
   // firmas del procedimiento del cliente (quedan en blanco salvo que el usuario lo indique)
-  T(446.5, 29.8, 2.2, vals.DIBUJO, 10); T(446.5, 23.8, 2.2, vals.DISENO, 10); T(446.5, 17.8, 2.2, vals.REVISO, 10); T(446.5, 11.8, 2.2, vals.APROBO, 10);
-  [29.8, 23.8, 17.8, 11.8].forEach(y=>T(491.6, y, 2.0, vals.FECHA, 10));
+  { const nm = [vals.DIBUJO, vals.DISENO, vals.REVISO, vals.APROBO], h = hCol(nm, 2.2, 22); nm.forEach((t, i)=>C(446.5, 30.6 - 6*i, h, t, 22, true, 1.2)); }
+  [30.6, 24.6, 18.6, 12.6].forEach(y=>C(500.3, y, 2.0, vals.FECHA, 19));
   const lg = vals._logos || {};
-  if(lg.cliente){ dibujarLogo(doc, lg.cliente, ox+513, oy+29.2, 36, 15.6); T(584, 34.5, 2.6, vals.CLIENTE, 24, { halign:1 }); }
-  else T(563.5, 34.5, 3.2, vals.CLIENTE, 30, { halign:1 });
+  if(lg.cliente){ dibujarLogo(doc, lg.cliente, ox+513, oy+29.2, 36, 15.6); C(584, 35.5, 2.6, vals.CLIENTE, 60); }
+  else C(563.5, 35.5, 3.2, vals.CLIENTE, 100);
   // revisiones (abajo hacia arriba)
   const ry = [1.4, 7.6, 13.8, 20.3, 25.7];
   for(let i=0;i<5;i++){
     if(!vals["R"+i+"_REV"]) continue;
     const y = 10.25 + ry[i];
-    T(25.25+3.4, y, 2.2, vals["R"+i+"_REV"], 2); T(25.25+12.1, y, 2.2, vals["R"+i+"_DESC"], 48);
-    T(25.25+132, y, 2.2, vals["R"+i+"_DIB"], 10); T(25.25+172, y, 2.2, vals["R"+i+"_ING"], 10); T(25.25+212, y, 2.2, vals["R"+i+"_APR"], 9); T(25.25+251.5, y, 2.0, vals["R"+i+"_FECHA"], 10);
+    const yc = y + 1.1;
+    C(25.25+5, yc, 2.2, vals["R"+i+"_REV"], 8); C(25.25+12.1, yc, 2.2, vals["R"+i+"_DESC"], 116, true);
+    C(25.25+132, yc, 2.2, vals["R"+i+"_DIB"], 36, true); C(25.25+172, yc, 2.2, vals["R"+i+"_ING"], 36, true); C(25.25+212, yc, 2.2, vals["R"+i+"_APR"], 36, true); C(25.25+251.5, yc, 2.0, vals["R"+i+"_FECHA"], 17, true);
   }
   // planos de referencia
   const fy = [1.8, 7.8, 13.8, 19.8, 25.8];
-  for(let i=0;i<5;i++){ if(vals["REF"+(i+1)]){ T(295.25+1.5, 10.25+fy[i], 2.0, vals["REF"+(i+1)], 22); T(295.25+46.5, 10.25+fy[i], 2.0, vals["REFN"+(i+1)], 42); } }
+  for(let i=0;i<5;i++){ if(vals["REF"+(i+1)]){ C(295.25+1.5, 10.25+fy[i]+1, 2.0, vals["REF"+(i+1)], 42, true); C(295.25+46.5, 10.25+fy[i]+1, 2.0, vals["REFN"+(i+1)], 165, true); } }
   // bloque del contratista / empresa que elabora
-  T(741.25+11.681, 46.25+34.819, 2.3, "PROCEDIMIENTO DE APROBACION ("+(vals.EMPRESA||"").slice(0,22)+")", 52);
-  if(lg.org){ dibujarLogo(doc, lg.org, ox+687, oy+56, 52, 27); T(741.25-28.2, 46.25+3.5, 2.4, vals.EMPRESA, 20, { halign:1 }); }
-  else T(741.25-28.2, 46.25+22, 3.0, vals.EMPRESA, 18, { halign:1 });
-  T(741.25+26.5, 46.25+21.6, 2.1, vals.DIBUJO, 10); T(741.25+26.5, 46.25+15.1, 2.1, vals.DISENO, 10); T(741.25+26.5, 46.25+8.6, 2.1, vals.REVISO, 10); T(741.25+26.5, 46.25+2.1, 2.1, vals.APROBO, 10);
-  [21.6, 15.1, 8.6, 2.1].forEach(y=>T(741.25+71.5, 46.25+y, 1.9, vals.FECHA, 10));
-  T(741.25+0.88, 86.25+8.285, 2.2, (vals.EMPRESA||"")+" - PLANO No:", 40);
-  T(741.25+1.25, 86.25+2.54, String(vals.PLANO||"").length>24 ? 2.4 : 3.0, vals.PLANO, 34);
-  T(779, 100.3, 2.5, "HOJA "+(vals.HOJA||"1 DE 1"), 16);
+  C(786.1, 46.25+36, 2.3, "PROCEDIMIENTO DE APROBACION ("+(vals.EMPRESA||"")+")", 86);
+  if(lg.org){ dibujarLogo(doc, lg.org, ox+689, oy+58, 48, 25); C(741.25-28.2, 46.25+4.5, 2.4, vals.EMPRESA, 52); }
+  else C(741.25-28.2, 46.25+23, 3.0, vals.EMPRESA, 52);
+  const fx = [21.6, 15.1, 8.6, 2.1];
+  { const nm = [vals.DIBUJO, vals.DISENO, vals.REVISO, vals.APROBO], h = hCol(nm, 2.1, 19); nm.forEach((t, i)=>C(741.25+26.5, 46.25+fx[i]+1.05, h, t, 19, true, 1.2)); }
+  fx.forEach(y=>C(741.25+79.6, 46.25+y+1.05, 1.9, vals.FECHA, 18));
+  C(741.25+0.88, 86.25+9.3, 2.2, (vals.EMPRESA||"")+" - PLANO No:", 88, true);
+  C(741.25+1.25, 86.25+3.6, 3.0, vals.PLANO, 88, true);
+  C(804, 101.5, 2.5, "HOJA "+(vals.HOJA||"1 DE 1"), 52);
   return { x0:ox+A1.area.x0, y0:oy+A1.area.y0, x1:ox+A1.area.x1, y1:oy+A1.area.y1, reservado:{ x0:ox+A1.reservado.x0, y0:oy+A1.reservado.y0, x1:ox+A1.reservado.x1, y1:oy+A1.reservado.y1 }, w:A1.w, h:A1.h };
 }
 
@@ -159,7 +188,7 @@ export function notasLamina(doc, ox, oy, lista, { x0 = 688, x1 = 829, y0 = 108, 
   if(!notas.length || y1 - y0 < 12) return 0;
   const cortar = (s, n) => { const out = []; let cur = ""; for(const w of s.split(/\s+/)){ if((cur+" "+w).trim().length > n){ if(cur) out.push(cur); cur = w; } else cur = (cur+" "+w).trim(); } if(cur) out.push(cur); return out; };
   for(const h of [2.2, 2.0, 1.8, 1.6]){
-    const n = Math.max(12, Math.floor((x1 - x0 - 6)/(h*0.72))), ls = h*1.55;
+    const n = Math.max(12, Math.floor((x1 - x0 - 6)/(h*0.78))), ls = h*1.55;
     const lineas = notas.flatMap((t, i)=>cortar(`${i+1}. ${t}`, n).map((l, k)=>k ? "   "+l : l));
     const alto = (lineas.length + 1)*ls + 2;
     if(alto <= y1 - y0 || h===1.6){

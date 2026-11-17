@@ -42,7 +42,7 @@ function vista(doc, ox, oy, s){
   };
 }
 /* altura de texto que cabe en un ancho de lámina dado */
-const ajustar = (txt, ancho, hMax, hMin) => Math.max(hMin || 1, Math.min(hMax, ancho/Math.max(1, String(txt).length*0.62)));
+const ajustar = (txt, ancho, hMax, hMin) => Math.max(hMin || 1, Math.min(hMax, ancho/Math.max(1, String(txt).length*0.72)));
 
 /* ---------- cotas ---------- */
 function flecha(doc, x, y, ang, ly){
@@ -95,7 +95,7 @@ function tabla(doc, x, yTop, cols, filas, o){
     let x2 = x;
     for(const c of cols){
       let v = f[c.key]; v = v==null ? "" : String(v);
-      const maxC = Math.floor((c.w - 1.6)/(fs*0.62));
+      const maxC = Math.floor((c.w - 1.6)/(fs*0.72));
       if(v.length > maxC) v = v.slice(0, Math.max(1, maxC - 1)) + "…";
       const al = c.al || "izq";
       doc.text(al==="centro" ? x2 + c.w/2 : x2 + 0.8, y + hf/2, fs, v, f.__titulo ? "M-ETIQUETA" : "M-TEXTO", al==="centro" ? { halign:1, valign:2 } : { valign:2 });
@@ -108,7 +108,7 @@ function tabla(doc, x, yTop, cols, filas, o){
   return hc + n*hf;
 }
 function parrafos(doc, x, yTop, ancho, titulo, items, fs){
-  fs = fs || 2; const paso = fs*1.45, nCar = Math.min(200, Math.floor(ancho/(fs*0.72)));
+  fs = fs || 2; const paso = fs*1.45, nCar = Math.min(200, Math.floor(ancho/(fs*0.78)));
   let y = yTop;
   if(titulo){ doc.text(x, y, 2.6, "%%U" + titulo, "M-TEXTO"); y -= 5; }
   items.forEach((it, i)=>{
@@ -554,7 +554,7 @@ export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
     const notas = (m.notas || notasPlano(m)).concat(id ? datos(p).notas[id] || [] : []);   // + notas del usuario
     const xNot1 = ox + RES.x0 - 6;                               // las notas no invaden el bloque del cajetín
     const anchoNot = Math.max(120, xNot1 - xIso0);
-    const altoNotas = notas.reduce((a, n)=>a + envolver(n, Math.floor(anchoNot/(1.9*0.72)) - 4).length*2.76 + 0.8, 0) + 10;
+    const altoNotas = notas.reduce((a, n)=>a + envolver(n, Math.floor(anchoNot/(1.9*0.78)) - 4).length*2.76 + 0.8, 0) + 10;
     const yIsoTop = AR.y1 - 10, yIsoBot = AR.y0 + altoNotas + 12;
     const sIso = Math.max((isoW)/Math.max(40, xIso1 - xIso0 - 10), (isoH)/Math.max(40, yIsoTop - yIsoBot - 14));
     const isoOx = xIso0 + Math.max(0, ((xIso1 - xIso0) - isoW/sIso)/2), isoOy = yIsoBot + 10 + (m.W*0.5 + m.zocalo)/sIso;

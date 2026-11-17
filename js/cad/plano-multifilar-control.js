@@ -367,7 +367,7 @@ function hVdc(c){
       if(q===cPLC) d += " "+eq.plc.cpu.modelo; else if(q===cHMI && hmi) d += " "+hmi.modelo; else if(q===cSW && sw) d += " "+sw.modelo; else if(q===cRUT && rut) d += " "+rut.modelo;
       const vars = { bA:nf+"A", bB:nf+"B", fv:String(q.val||"").replace(/(\d)A$/,"$1 A"), a1, a2, desc:"" };
       // descripción bajo la referencia de la flecha más larga del par (las etiquetas XF1.nA crecen con el número)
-      const yd = q.reserva ? 227.78 : Math.min(227.78, 260.85 - Math.max(a1.length, a2.length)*4.52*0.72 - 1.5 - 7*3.25*0.62 - 2);
+      const yd = q.reserva ? 227.78 : Math.min(227.78, 260.85 - Math.max(a1.length, a2.length)*4.52*0.72 - 1.5 - 7*3.25*0.72 - 2);
       P.textoN(A+8, yd, 2.35, d, 18, { ha:1, c:7 });
       if(q.reserva){
         P.pz("v_par", A, { vars, omitir:[[-6, 229, 30, 345.6], [15.5, 205, 16.5, 358]] });

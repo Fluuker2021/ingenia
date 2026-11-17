@@ -324,7 +324,7 @@ function lazosTablero(p, t, eq, inst){
 
 /* ---------- caja (y) de una fila para repartirlas en la altura ---------- */
 function cajaTexto(x, y, h, txt, ha=0, va=0){
-  const filas = String(txt).split("\n"), w = Math.max(...filas.map(f=>f.length))*h*0.62, extra = (filas.length-1)*h*1.6667;
+  const filas = String(txt).split("\n"), w = Math.max(...filas.map(f=>f.length))*h*0.72, extra = (filas.length-1)*h*1.6667;
   const x0 = x - [0, w/2, w][ha||0], y0 = y + ({ 2:-h/2, 3:-h }[va] || 0) - extra;
   return [x0, y0, x0 + w, y0 + h + extra];
 }
@@ -362,7 +362,7 @@ function paginar(filas, util){
 /* notas de la plantilla (o las del usuario) abajo a la izquierda, junto a la leyenda; devuelve la altura que ocupan */
 function notasOps(lista){
   for(const h of [2.5, 2.2, 2.0, 1.8]){
-    const n = Math.min(Math.round(275/h), Math.floor(280/(h*0.62))), ls = h*1.6667;
+    const n = Math.min(Math.round(275/h), Math.floor(280/(h*0.72))), ls = h*1.6667;
     const lineas = ["NOTAS :"].concat(lista.flatMap((t, i)=>envolver(`${i+1}. ${t}`, n).map((l, k)=>k ? "    "+l : l)));
     const alto = (lineas.length-1)*ls + h;
     if(alto <= 60 || h===1.8) return { h, ls, lineas, top: Math.max(37.01, 6 + alto) };

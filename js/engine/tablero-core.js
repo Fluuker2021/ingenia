@@ -612,6 +612,8 @@ function dxfEsc(s){
     .replace(/[^\x00-\xFF]/g, c=>DXF_ACCENTS[c]!=null ? DXF_ACCENTS[c] : "")
     .replace(/[\r\n\t]+/g," ");
 }
+// ancho de carácter real en AutoCAD ≈ 0,87 × altura (txt.shx); con el factor 0,8 queda ≈ 0,70 × altura
+export const DXF_ANCHO_TEXTO = 0.8, DXF_CAR = 0.72;
 function capaR12(n){ return String(n==null||n===""?"0":n).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9$_\-]/g, "_").slice(0, 31) || "0"; }
 function dxfTrunc(s,n){ s = dxfEsc(s); return s.length>n ? s.slice(0,n) : s; }
 function dxfNum(n){ return (Math.round(n*1000)/1000).toString(); }
@@ -721,7 +723,10 @@ class DXFDoc{
     layer = this._layer(layer||"G-TEX");
     let e = "0\nTEXT\n8\n"+layer+(opt.c!=null ? "\n62\n"+opt.c : "")+"\n10\n"+dxfNum(x)+"\n20\n"+dxfNum(y)+"\n30\n0.0\n40\n"+dxfNum(h)+"\n1\n"+str;
     if(opt.rot) e += "\n50\n"+dxfNum(opt.rot);
-    if(opt.wf && opt.wf!==1) e += "\n41\n"+dxfNum(opt.wf);
+    // factor de ancho: AutoCAD dibuja estos textos con su fuente por defecto (txt.shx, ~0,87 × altura por carácter);
+    // con 0,8 los textos ocupan lo mismo que en la vista previa y que en los cálculos de espacio de los generadores
+    const wf = opt.wf || DXF_ANCHO_TEXTO;
+    if(wf!==1) e += "\n41\n"+dxfNum(wf);
     if(opt.halign || opt.valign){ e += (opt.halign ? "\n72\n"+opt.halign : "")+"\n11\n"+dxfNum(x)+"\n21\n"+dxfNum(y)+"\n31\n0.0"+(opt.valign ? "\n73\n"+opt.valign : ""); }
     this.entities.push(e);
   }
@@ -806,7 +811,7 @@ class DXFDoc{
       if(t==="L") return "0\nLINE\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n11\n"+dxfNum(e[3])+"\n21\n"+dxfNum(e[4])+"\n31\n0.0";
       if(t==="C") return "0\nCIRCLE\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n40\n"+dxfNum(e[3]);
       if(t==="A") return "0\nARC\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n40\n"+dxfNum(e[3])+"\n50\n"+dxfNum(e[4])+"\n51\n"+dxfNum(e[5]);
-      if(t==="T") return "0\nTEXT\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n40\n"+dxfNum(e[3])+"\n1\n"+dxfEsc(e[5])+(e[4]?"\n50\n"+dxfNum(e[4]):"");
+      if(t==="T"){ const tx = dxfEsc(e[5]); if(!tx.trim()) return ""; return "0\nTEXT\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n40\n"+dxfNum(e[3])+"\n1\n"+tx.slice(0,250)+(e[4]?"\n50\n"+dxfNum(e[4]):"")+"\n41\n"+dxfNum(DXF_ANCHO_TEXTO); }
       if(t==="S") return "0\nSOLID\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n11\n"+dxfNum(e[3])+"\n21\n"+dxfNum(e[4])+"\n31\n0.0\n12\n"+dxfNum(e[5])+"\n22\n"+dxfNum(e[6])+"\n32\n0.0\n13\n"+dxfNum(e[7])+"\n23\n"+dxfNum(e[8])+"\n33\n0.0";
       if(t==="P"){
         const closed = e[1];
@@ -820,7 +825,7 @@ class DXFDoc{
       return "";
     };
     const blockDefs = [...this.blocksUsed].map(key=>{
-      const ents = (DXF_BLOCKS[key]||[]).map(blockEntityDXF).join("\n");
+      const ents = (DXF_BLOCKS[key]||[]).map(blockEntityDXF).filter(Boolean).join("\n");
       return "0\nBLOCK\n8\n0\n2\nTBL_"+key+"\n70\n0\n10\n0.0\n20\n0.0\n30\n0.0\n"+ents+"\n0\nENDBLK\n8\n0";
     }).join("\n");
     return [

@@ -438,10 +438,9 @@ function dibujarFrente(v, m, llam){
   // placa de identificación (140 × 40, arriba) y señal de riesgo eléctrico en cada hoja de puerta (abajo, centrada)
   const pid = C.placaId(m);
   v.R(pid.x - pid.w/2, pid.y - pid.h/2, pid.w, pid.h, "M-EQUIPO");
-  v.T(pid.x, pid.y + 9, 1.3, m.tablero.tag, "M-ETIQUETA", { halign:1, valign:2 });
-  v.T(pid.x, pid.y - 1, 1.0, (m.tablero.nombre||"").toUpperCase(), "M-TEXTO", { halign:1, valign:2 });
-  v.T(pid.x, pid.y - 11, 0.9, m.placaTxt || `${m.tension} Vac, 3F+T, ${m.frecuencia} Hz`, "M-TEXTO", { halign:1, valign:2 });
-  llam.push({ x:pid.x - pid.w/2, y:pid.y, texto:"PLACA DE IDENTIFICACIÓN (FONDO NEGRO, LETRAS BLANCAS)" });
+  const lp = [[(m.tablero.nombre||"").toUpperCase(), 1.1, "M-TEXTO"], [m.tablero.tag, 1.4, "M-ETIQUETA"], [m.placaTxt || `${m.tension} Vac, 3F+T, ${m.frecuencia} Hz`, 1.0, "M-TEXTO"]];
+  lp.forEach(([t, h, ly], i)=>v.T(pid.x, pid.y + pid.h*0.25 - i*pid.h*0.25, h, t, ly, { halign:1, valign:2 }));
+  llam.push({ x:pid.x - pid.w/2, y:pid.y, texto:"PLACA DE IDENTIFICACIÓN (NOMBRE, TAG Y TENSIÓN)" });
   const sen = C.senalesRiesgo(m);
   for(const { x, y, w, h } of sen){
     v.R(x - w/2, y - h/2, w, h, "M-SENAL");

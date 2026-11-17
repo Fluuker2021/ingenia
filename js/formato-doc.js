@@ -456,7 +456,9 @@ function formatosTitulo(zip){
 function indiceWord(zip, doc){
   doc = doc.replace(/>TABLA DE CONTENIDO</g, ">ÍNDICE<");
   let k = 0; const marca = ()=>`_Toc9${String(++k).padStart(8, "0")}`;
-  const conMarca = (p, nombre)=>p.replace(/(<w:pPr>[\s\S]*?<\/w:pPr>|<w:p(?=[ >])[^>]*>)/, `$1<w:bookmarkStart w:id="${8000+k}" w:name="${nombre}"/>`).replace(/<\/w:p>$/, `<w:bookmarkEnd w:id="${8000+k}"/></w:p>`);
+  // el marcador va después de las propiedades del párrafo (w:pPr es el primer hijo de w:p según el esquema)
+  const conMarca = (p, nombre)=>(/<w:pPr>[\s\S]*?<\/w:pPr>/.test(p) ? p.replace(/(<w:pPr>[\s\S]*?<\/w:pPr>)/, `$1<w:bookmarkStart w:id="${8000+k}" w:name="${nombre}"/>`)
+    : p.replace(/(<w:p(?=[ >])[^>]*>)/, `$1<w:bookmarkStart w:id="${8000+k}" w:name="${nombre}"/>`)).replace(/<\/w:p>$/, `<w:bookmarkEnd w:id="${8000+k}"/></w:p>`);
   const entrada = (estilo, partes, nombre, ini, fin)=>`<w:p><w:pPr><w:pStyle w:val="${estilo}"/></w:pPr>${ini||""}<w:hyperlink w:anchor="${nombre}" w:history="1">${partes}<w:r><w:tab/></w:r>${fld(`PAGEREF ${nombre} \\h`, "1")}</w:hyperlink>${fin||""}</w:p>`;
   const r = t=>`<w:r><w:t xml:space="preserve">${t}</w:t></w:r>`;
   // 1) títulos del cuerpo → marcadores + entradas
@@ -482,9 +484,20 @@ function indiceWord(zip, doc){
     const m = doc.match(/<w:p(?=[ >])(?:(?!<w:p[ >])[\s\S])*?TOC \\o[\s\S]*?<\/w:p>/);
     if(m){
       const i = doc.indexOf(m[0]), resto = doc.slice(i + m[0].length, i + m[0].length + 1500);
-      // el cuerpo empieza en una hoja nueva (salvo que sigan los índices de figuras / tablas, que ya la tienen)
-      const salto = /ÍNDICE DE|w:type="page"/.test(resto.slice(0, resto.indexOf("</w:p>")+6)) ? "" : `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
-      doc = doc.slice(0, i) + entradas.join("") + salto + doc.slice(i + m[0].length);
+      // el cuerpo empieza en una hoja nueva (salvo que sigan los índices de figuras / tablas, que ya la tienen): el primer
+      // título lleva «salto de página anterior»; con un párrafo de salto aparte, si el índice llenaba justo su hoja, ese
+      // párrafo pasaba a la siguiente y quedaba una hoja en blanco
+      const conSalto = !/ÍNDICE DE|w:type="page"/.test(resto.slice(0, resto.indexOf("</w:p>")+6));
+      doc = doc.slice(0, i) + entradas.join("") + doc.slice(i + m[0].length);
+      if(conSalto){
+        const nombre1 = (entradas[0].match(/w:anchor="([^"]+)"/)||[])[1], k1 = nombre1 ? doc.indexOf(`w:name="${nombre1}"`) : -1;
+        const p1 = k1 >= 0 ? Math.max(doc.lastIndexOf("<w:p>", k1), doc.lastIndexOf("<w:p ", k1)) : -1;
+        if(p1 >= 0){ const fin = doc.indexOf("</w:p>", p1), par = doc.slice(p1, fin);
+          // orden del esquema de w:pPr: pStyle, keepNext, keepLines, pageBreakBefore…
+          const nuevo = /<w:pPr>/.test(par) ? par.replace(/<w:pPr>((?:<w:pStyle [^>]*\/>)?(?:<w:keepNext(?: [^>]*)?\/>)?(?:<w:keepLines(?: [^>]*)?\/>)?)/, "<w:pPr>$1<w:pageBreakBefore/>")
+            : par.replace(/^<w:p( [^>]*)?>/, m=>m + "<w:pPr><w:pageBreakBefore/></w:pPr>");
+          doc = doc.slice(0, p1) + nuevo + doc.slice(fin); }
+      }
     }
   }
   // 2) índices de figuras / tablas (campos TOC \c "Figura" / "Tabla"): entradas con página
@@ -578,5 +591,151 @@ export function formatoWord(zip, s, logos){
   // estilos (títulos, listas con viñetas, índice) y todo el documento en Arial
   estilosWord(zip, anchoTexto);
   letraWord(zip);
+  // números de página del índice: el valor guardado de cada campo PAGEREF es la página estimada del título (los visores
+  // que no actualizan campos, o Word si no se aceptan, mostraban «1» en todas las entradas)
+  try{ paginasIndice(zip); }catch(e){ console.warn("Índice: no se pudo estimar la paginación", e); }
   return true;
+}
+
+/* ---------- paginación estimada para el índice ----------
+   Recorre el cuerpo del documento ya formateado y estima en qué página cae cada título marcado (_Toc9…): alto de cada
+   párrafo según su estilo (interlineado, espacio antes / después, tamaño de letra, sangrías y ancho útil), filas de las
+   tablas, imágenes, saltos de página y de sección, y títulos que se mantienen con el párrafo siguiente. Word recalcula
+   los campos al abrir (updateFields); este valor es el que muestran los visores que no lo hacen. */
+const TW_EMU = 635;                          // 1 twip = 635 EMU
+function estilosParrafo(stXml){
+  const est = {}, def = { sz:22, before:0, after:160, line:259, rule:"auto", left:0, hanging:0, keepNext:false };
+  const dd = (stXml.match(/<w:docDefaults>[\s\S]*?<\/w:docDefaults>/)||[""])[0];
+  const leer = (x, o) => {
+    const sp = (x.match(/<w:spacing\b[^>]*\/>/)||[""])[0], ind = (x.match(/<w:ind\b[^>]*\/>/)||[""])[0], sz = (x.match(/<w:sz w:val="(\d+)"/)||[])[1];
+    const at = (t, a) => { const m = t.match(new RegExp(`w:${a}="(-?\\d+)"`)); return m ? +m[1] : null; };
+    if(sz) o.sz = +sz;
+    for(const [k, a] of [["before","before"],["after","after"],["line","line"]]){ const v = at(sp, a); if(v!=null) o[k] = v; }
+    const lr = (sp.match(/w:lineRule="(\w+)"/)||[])[1]; if(lr) o.rule = lr;
+    const l = at(ind, "left") ?? at(ind, "start"), hg = at(ind, "hanging"); if(l!=null) o.left = l; if(hg!=null) o.hanging = hg;
+    if(/<w:keepNext\/>|<w:keepNext w:val="(?:1|true)"\/>/.test(x)) o.keepNext = true;
+    return o;
+  };
+  leer(dd, def);
+  const xs = {}; for(const m of stXml.matchAll(/<w:style\b[^>]*w:styleId="([^"]+)"[\s\S]*?<\/w:style>/g)) xs[m[1]] = m[0];
+  const resolver = (id, prof=0) => {
+    if(est[id]) return est[id];
+    const x = xs[id]; if(!x || prof > 8) return Object.assign({}, def);
+    const base = (x.match(/<w:basedOn w:val="([^"]+)"/)||[])[1];
+    const o = Object.assign({}, base ? resolver(base, prof+1) : def);
+    return est[id] = leer(x, o);
+  };
+  return { def, resolver };
+}
+function paginasIndice(zip){
+  const fDoc = "word/document.xml"; if(!zip.file(fDoc) || !zip.file("word/styles.xml")) return;
+  let doc = zip.file(fDoc).asText();
+  if(!/PAGEREF _Toc9/.test(doc)) return;
+  const E = estilosParrafo(zip.file("word/styles.xml").asText());
+  const b0 = doc.indexOf("<w:body>"), b1 = doc.lastIndexOf("</w:body>"); if(b0 < 0 || b1 < 0) return;
+  const cuerpo = doc.slice(b0 + 8, b1);
+  // geometría de cada sección (la del cuerpo es el último sectPr); por defecto A4 con márgenes de 2,5 cm
+  const geo = x => { const sz = x.match(/<w:pgSz\b[^>]*w:w="(\d+)"[^>]*w:h="(\d+)"/), mg = x.match(/<w:pgMar\b[^>]*\/>/);
+    const at = a => { const m = mg && mg[0].match(new RegExp(`w:${a}="(\\d+)"`)); return m ? +m[1] : 1418; };
+    const W = sz ? +sz[1] : 11906, H = sz ? +sz[2] : 16838; return { ancho: W - at("left") - at("right"), alto: H - at("top") - at("bottom") }; };
+  const secs = [...cuerpo.matchAll(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/g)].map(m=>geo(m[0]));
+  let iSec = 0, g = secs[0] || geo("");
+  // elementos de primer nivel del cuerpo: párrafos y tablas (las tablas anidadas se cuentan dentro de su celda)
+  const elementos = []; let i = 0;
+  while(i < cuerpo.length){
+    const p = cuerpo.indexOf("<w:p", i), t = cuerpo.indexOf("<w:tbl>", i);
+    const sig = [p, t].filter(x=>x >= 0); if(!sig.length) break;
+    const ini = Math.min(...sig);
+    if(ini===t){ let n = 0, k = ini; while(k < cuerpo.length){ const a = cuerpo.indexOf("<w:tbl>", k + 1), c = cuerpo.indexOf("</w:tbl>", k + 1); if(c < 0){ k = cuerpo.length; break; } if(a >= 0 && a < c){ n++; k = a; } else { if(n===0){ k = c + 8; break; } n--; k = c; } }
+      elementos.push({ tipo:"t", xml:cuerpo.slice(ini, k) }); i = k; }
+    else { if(!/^<w:p[ >]/.test(cuerpo.slice(ini, ini + 5))){ i = ini + 4; continue; } const c = cuerpo.indexOf("</w:p>", ini); const fin = c < 0 ? cuerpo.length : c + 6;
+      const xml = cuerpo.slice(ini, fin); elementos.push({ tipo:"p", xml: /^<w:p(?: [^>]*)?\/>/.test(xml) ? xml.slice(0, xml.indexOf("/>") + 2) : xml }); i = ini + elementos[elementos.length-1].xml.length; }
+  }
+  const textoP = x => (x.match(/<w:t(?: [^>]*)?>[^<]*<\/w:t>/g)||[]).map(t=>t.replace(/<[^>]+>/g, "")).join("").replace(/&[a-z]+;|&#\d+;/g, "x");
+  /* alto de un párrafo (twips) en un ancho dado; devuelve también si fuerza salto de página o cierra sección */
+  const altoP = (x, ancho, szVacio) => {
+    const st = (x.match(/<w:pStyle w:val="([^"]+)"/)||[])[1], ppr = (x.match(/<w:pPr>[\s\S]*?<\/w:pPr>/)||[""])[0];
+    const o = Object.assign({}, st ? E.resolver(st) : E.resolver("Normal"));
+    const sp = (ppr.match(/<w:spacing\b[^>]*\/>/)||[""])[0], ind = (ppr.match(/<w:ind\b[^>]*\/>/)||[""])[0];
+    const at = (t, a) => { const m = t.match(new RegExp(`w:${a}="(-?\\d+)"`)); return m ? +m[1] : null; };
+    for(const k of ["before","after","line"]){ const v = at(sp, k); if(v!=null) o[k] = v; }
+    const lr = (sp.match(/w:lineRule="(\w+)"/)||[])[1]; if(lr) o.rule = lr;
+    const l = at(ind, "left") ?? at(ind, "start"); if(l!=null) o.left = l;
+    if(/<w:keepNext\/>/.test(ppr)) o.keepNext = true;
+    const szs = [...x.matchAll(/<w:r>[\s\S]*?<\/w:r>|<w:r [\s\S]*?<\/w:r>/g)].map(r=>+((r[0].match(/<w:sz w:val="(\d+)"/)||[])[1]||0)).filter(Boolean);
+    const sz = szs.length ? Math.max(...szs) : (szVacio || o.sz), pt = sz/2;
+    const natural = pt*20*1.15;
+    const lineaH = o.rule==="exact" ? o.line : o.rule==="atLeast" ? Math.max(o.line, natural) : natural*(o.line/240);
+    // ancho medio de un carácter en Arial ≈ 0,46 × tamaño (0,52 en negrita); los títulos numerados pierden el ancho del número
+    const negrita = /^T(?:tulo|itle)/i.test(st||"") || /<w:b\/>/.test(x), numerado = /^Ttulo\d/.test(st||"") && !/<w:numId w:val="0"\/>/.test(ppr);
+    const util = Math.max(1000, ancho - o.left - (numerado ? 600 : 0)), porLinea = Math.max(10, Math.floor(util/(pt*20*(negrita ? 0.52 : 0.46))));
+    const txt = textoP(x), tabs = (x.match(/<w:tab\/>/g)||[]).length, brs = (x.match(/<w:br\/>|<w:br w:type="textWrapping"\/>/g)||[]).length;
+    let lineas = txt.length ? Math.ceil((txt.length + tabs*4)/porLinea) : 1; lineas += brs;
+    let img = 0; for(const m of x.matchAll(/<wp:extent cx="\d+" cy="(\d+)"\/>/g)) img += +m[1]/TW_EMU;
+    if(/<wp:anchor\b/.test(x)) img = 0;                  // imágenes flotantes (logos de la carátula): no ocupan renglones
+    const cuerpoH = img ? Math.max(img, lineaH) + (txt.length ? lineas*lineaH : 0) : lineas*lineaH;
+    const alto = o.before + o.after + cuerpoH;
+    return { alto, cuerpo:cuerpoH, before:o.before, after:o.after, keepNext: !!o.keepNext, salto: /<w:br w:type="page"\/>/.test(x) || /<w:pageBreakBefore\/>/.test(ppr), finSeccion: /<w:sectPr\b/.test(ppr), linea: lineaH + o.before,
+      inicio: o.before + Math.min(2, lineas)*lineaH };      // control de líneas huérfanas: al menos 2 líneas con su título
+  };
+  const altoT = (x, ancho) => {
+    let tot = 0, primera = 0; const filas = [];
+    for(const tr of x.match(/<w:tr[ >][\s\S]*?<\/w:tr>/g) || []){
+      const min = +((tr.match(/<w:trHeight w:val="(\d+)"/)||[])[1]||0);
+      let alto = 0;
+      // párrafos vacíos de la fila: con la letra de las demás celdas (no la del estilo por defecto)
+      const szFila = Math.max(0, ...[...tr.matchAll(/<w:sz w:val="(\d+)"/g)].map(m=>+m[1]));
+      for(const tc of tr.match(/<w:tc>[\s\S]*?<\/w:tc>|<w:tc [\s\S]*?<\/w:tc>/g) || []){
+        const w = +((tc.match(/<w:tcW w:w="(\d+)" w:type="dxa"/)||[])[1]||0) || ancho/Math.max(1, (tr.match(/<w:tc[ >]/g)||[]).length);
+        let h = 30;                                       // márgenes de la celda
+        for(const pm of tc.match(/<w:p[ >][\s\S]*?<\/w:p>|<w:p\/>/g) || []) h += altoP(pm, w - 200, szFila || null).alto;
+        alto = Math.max(alto, h);
+      }
+      const h = Math.max(alto, min); tot += h; if(!primera) primera = h;
+      filas.push({ h, encabezado: /<w:tblHeader\/>|<w:tblHeader w:val="(?:1|true)"\/>/.test(tr), parte: !/<w:cantSplit\/>/.test(tr) });
+    }
+    return { alto:tot, primera, filas };
+  };
+  // recorrido: página actual y espacio usado
+  let pag = 1, usado = 0, despues = 0;
+  const paginaDe = {};
+  const nuevaPag = () => { pag++; usado = 0; despues = 0; };
+  for(let k = 0; k < elementos.length; k++){
+    const el = elementos[k];
+    if(el.tipo==="t"){
+      const t = altoT(el.xml, g.ancho);
+      // fila por fila: una fila que no se puede partir y no entra pasa a la página siguiente, donde se repiten las filas
+      // de encabezado de la tabla
+      const enc = t.filas.filter(f=>f.encabezado).reduce((a2, f)=>a2 + f.h, 0);
+      t.filas.forEach((f, n)=>{
+        if(usado + f.h > g.alto && usado > 0){
+          if(f.parte && !f.encabezado){ let r = f.h - (g.alto - usado); nuevaPag(); if(enc) usado += enc; while(usado + r > g.alto){ r -= (g.alto - usado); nuevaPag(); } usado += r; return; }
+          nuevaPag(); if(n > 0 && enc && !f.encabezado) usado += enc;
+        }
+        usado += f.h;
+      });
+      despues = 0;
+      continue;
+    }
+    // el «espacio antes» no se suma al del párrafo anterior (cuenta el mayor) ni se aplica al empezar una página
+    const a0 = altoP(el.xml, g.ancho), a = Object.assign({}, a0, { alto: a0.alto - (usado===0 ? a0.before : Math.min(despues, a0.before)) });
+    if(/<w:pageBreakBefore\/>/.test(el.xml) && usado > 0) nuevaPag();
+    // cadena de párrafos «mantener con el siguiente» (título, subtítulo, «a) Parámetros»…) más la primera línea o fila del
+    // elemento que la cierra: si no entra junta, toda la cadena pasa a la página siguiente
+    const encadenado = k > 0 && elementos[k-1].tipo==="p" && altoP(elementos[k-1].xml, g.ancho).keepNext;
+    if(a.keepNext && !encadenado){
+      let h = a.alto, j = k + 1;
+      while(j < elementos.length && elementos[j].tipo==="p"){ const b = altoP(elementos[j].xml, g.ancho); if(!b.keepNext){ h += b.inicio; break; } h += b.alto; j++; }
+      if(j < elementos.length && elementos[j].tipo==="t") h += altoT(elementos[j].xml, g.ancho).primera;
+      if(usado > 0 && usado + h > g.alto) nuevaPag();
+    } else if(!a.keepNext && usado > 0 && usado + a.alto > g.alto) nuevaPag();
+    for(const m of el.xml.matchAll(/<w:bookmarkStart w:id="\d+" w:name="(_Toc9\d+)"\/>/g)) paginaDe[m[1]] = pag;
+    usado += a.alto; despues = a.after;
+    while(usado > g.alto){ usado -= g.alto; pag++; }
+    if(/<w:br w:type="page"\/>/.test(el.xml)) nuevaPag();
+    if(a.finSeccion){ nuevaPag(); iSec++; g = secs[iSec] || g; }
+  }
+  doc = doc.replace(/(<w:instrText xml:space="preserve"> PAGEREF (_Toc9\d+) \\h <\/w:instrText><\/w:r><w:r><w:fldChar w:fldCharType="separate"\/><\/w:r><w:r><w:t>)1(<\/w:t>)/g,
+    (m, a, nombre, b) => a + (paginaDe[nombre] || 1) + b);
+  zip.file(fDoc, doc);
 }

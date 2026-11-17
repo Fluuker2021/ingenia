@@ -184,19 +184,19 @@ export function hojasPuerta(m, gap = 3){
   }
   return out;
 }
-/* placa de identificación (rótulo fondo negro / letras blancas): 140 × 40 mm, centrada en su hoja y a ~12 mm del borde
-   superior de la puerta, como en los planos mecánicos de referencia */
-export const PLACA_ID = { w:140, h:40, margen:12 };
+/* placa de identificación (tipo, nombre, TAG y tensión): 140 × 90 mm, centrada en su hoja y a ~25 mm del borde superior de
+   la puerta — el criterio de 5 de los 7 planos mecánicos de referencia (los otros 2 usan 140 × 40) */
+export const PLACA_ID = { w:140, h:90, margen:25 };
 export function placaId(m){ const H = m.H, y1 = H - 3 - PLACA_ID.margen; return { w:PLACA_ID.w, h:PLACA_ID.h, x:m.placaX ?? (m.secciones[0].x0 + m.secciones[0].x1)/2, y:y1 - PLACA_ID.h/2 }; }
 /* señal de riesgo eléctrico: placa rectangular con el triángulo (ISO 7010 W012) y la leyenda «ATENCIÓN / RIESGO ELÉCTRICO»
    en CADA hoja de puerta, centrada en su hoja y ABAJO (criterio de las referencias: borde inferior a ~230 mm de la base en
-   los autosoportados, ~65 mm del borde inferior en los murales; 200 × 290 mm en puertas de 600 mm o más, 150 × 210 en las
+   los autosoportados, ~65 mm del borde inferior en los murales; 200 × 300 mm en puertas de 600 mm o más, 150 × 210 en las
    menores). Misma altura en todas las hojas si se puede; si un dispositivo ocupa ese lugar (p. ej. un ventilador de entrada)
    sube lo necesario. Devuelve el centro y el tamaño de cada placa. */
 export function senalesRiesgo(m){
   const { H } = m, hojas = hojasPuerta(m), manY = m.manijaY ?? 900, mural = m.montaje==="mural";
   const anchoMin = Math.min(...hojas.map(h=>h.x1 - h.x0));
-  const [w, h] = anchoMin >= 550 && H >= 1200 ? [200, 290] : anchoMin >= 380 ? [150, 210] : [110, 160];
+  const [w, h] = anchoMin >= 550 && H >= 1200 ? [200, 300] : anchoMin >= 380 ? [150, 210] : [110, 160];
   const caja = (x, y) => [x - w/2, y - h/2, x + w/2, y + h/2];
   const pid = placaId(m);
   const obst = hoja => {

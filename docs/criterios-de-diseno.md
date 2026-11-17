@@ -25,6 +25,8 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
 | K2 | Mecánico de tablero de control (4 láminas A1) | Mural 1000x700x250, arrancadores de 5 motores, matriz de mandos por motor |
 | K3 | Mecánico de tablero de fuerza y control (3 láminas A1) | Autosoportado 1200x2000x600 con techo, variador + guardamotores, panel de control con tapa, mandil |
 | K4 | Arreglo mecánico del CCM de U3 (A3) | 1000x1800x500 + zócalo y techo, portacandado |
+| K5–K7 | Mecánicos de tableros de fuerza y control con arrancadores (4 láminas A1) | Murales 1000x1300 / 800x1000 y autosoportado 800x1600; placa única con columna de fuerza a la izquierda |
+| P1 | P&ID (A1) | Colector de polvo húmedo: campanas, colector con boquillas, ventilador, silenciador, agua y lodos |
 
 ## 1. Unifilares
 
@@ -121,10 +123,12 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
 
 **Puerta**
 - ✅ Ventiladores y filtros centrados en su hoja de puerta. Si algo ocupa el centro, solo cambia la altura.
-- ✅ Señal «ATENCIÓN / RIESGO ELÉCTRICO» en placa rectangular, centrada y abajo en cada hoja (K1, K2): 200 × 290 mm en puertas de 600 mm o más, 150 × 210 en las menores. Va en 2D (frontal e isométrica), 3D y lista de materiales.
+- ✅ Señal «ATENCIÓN / RIESGO ELÉCTRICO» en placa rectangular, centrada y abajo en cada hoja (K1, K2, K5–K7): 200 × 300 mm en puertas de 600 mm o más, 150 × 210 en las menores; sube por encima del ventilador inferior. Va en 2D (frontal e isométrica), 3D y lista de materiales.
+  - En los murales K5 y K6 va en el cuadrante libre, sin centrar. Queda como opción.
   - K3 usa en cambio una sola señal de 200 × 300 más una placa de tensión de 200 × 60 en la hoja sin panel, y una señal por mandil. Queda pendiente como opción.
-- ✅ Placa de identificación de 140 × 40 cerca del borde superior, fondo negro y letras blancas (K1, K2).
-  - K3 usa 140 × 90 a unos 180 mm del borde y una placa de logotipo de 180 × 70. Queda pendiente como opción.
+- ✅ Placa de identificación de 140 × 90 (nombre, TAG y tensión) arriba y centrada, a unos 25 mm del borde superior: criterio de 5 de los 7 planos (K3, K5–K7).
+  - K1 y K2 usan 140 × 40 a unos 10 mm del borde. Queda como opción.
+  - ☐ Placa de logotipo de 180 × 70 (K3, K5–K7).
 - ✅ Panel de operación del tablero de fuerza (K3):
   - luces de fase en su propia fila arriba;
   - una fila por equipo (el variador ocupa dos), con columnas y filas a 80 mm, centradas en el eje;
@@ -132,6 +136,9 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
 
   K2 (un tablero de arrancadores sin variador) usa en cambio una columna por motor y una fila por función: horómetro, verde, roja, hongo. Queda pendiente como opción.
 - ✅ Parte trasera de los dispositivos de puerta y contorno del calado visibles en 3D al abrir la puerta; calado en la lista de materiales.
+- ☐ Mandos por equipo en 2 filas × 3 columnas (K5–K7): comandos (arrancar, detener, reset) y estados (funcionando, falla, listo); el arranque directo usa 2 × 2. Última fila: hongo y luz «PARADA DE EMERGENCIA ACTIVADA». Luces de fase amarillas. Contradice la fila única de 4 de K3: debe ser opción.
+- ✅ Manija de la puerta a media altura en los murales (antes quedaba a 900 mm aunque la puerta fuera más baja).
+- ☐ Portaplano de 235 × 250 en la cara interior de la puerta (K5–K7).
 - ☐ Multimedidor de 96 × 96 en la puerta, centrado bajo las luces de fase (K1).
 - ☐ Manija del interruptor general en el parante central de una sección de doble hoja (K3); verificar que quede a 1,7 m o menos del piso.
 - ☐ Fijación según el montaje:
@@ -145,6 +152,7 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
 - ✅ Variador con su subcolumna; reactancia sobre una base al piso.
 - ✅ Canaletas entre filas.
 - ✅ Placa de montaje a unos 50 mm de los laterales.
+- ☐ Placa única para 1 o 2 motores (K5–K7): columna de fuerza angosta a la izquierda y control a la derecha, separadas por una canaleta vertical; holguras acotadas: 60 mm entre equipos de fuerza y 100 mm arriba y abajo del arrancador suave. Hoy Ingenia separa siempre en dos secciones.
 - ☐ Modo «tablero de distribución» (K1): barras verticales 3F+N centradas y modulares en rieles DIN verticales a ambos lados, con placa de cabecera para medición y general 4P.
 - ☐ Contactor con relé térmico acoplado, en filas centradas (K2).
 - ☐ Canaleta perimetral mayor (80 × 60) y canaletas entre filas de 40 × 60 (K2).
@@ -156,7 +164,23 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
   - rótulos y fabricación.
 - ☐ Techo a un agua con voladizos y campanas antilluvia en las rejillas, para intemperie (K3).
 
-## 4. Errores vistos en las referencias (no imitar)
+## 4. P&ID
+
+- ◐ Cadena ISA de cada instrumento (campo → funciones en el PLC → HMI) con las alarmas de la filosofía de control. La referencia usa en cambio una burbuja de campo junto al punto de medición más un bloque compacto de funciones: fila HMI con la indicación y todas las alarmas, y fila PLC solo con las alarmas que ejecutan lógica (P1). Queda como opción de estilo.
+- ☐ Tipo de equipo «colector húmedo» (P1): cabezales de boquillas, chevron, demister, tolva con guillotina motorizada (ZSO/ZSC), rebose y lodos. Lleva PDIT, LIT radar, PIT de agua, PI por cabezal y una SV por cabezal con HS.
+- ☐ Líneas por servicio con color y tipo de línea: aire con polvo azul, agua cian, lodos naranja, rebose naranja discontinuo, existentes en gris. Tipos de señal ISA: eléctrica discontinua, neumática «//», enlace de datos «-o-o-».
+- ☐ Niveles de alarma por servicio: presión diferencial L y HH; presión de agua L y HH; nivel de tolva L y H.
+- ☐ Válvulas manuales (bola, globo, filtro Y, compuerta, junta flexible, manifold), estaciones de solenoide con bloqueo y bypass N.C., números de línea con el formato «diámetro"-servicio-correlativo», PI con válvula de raíz de 1/2".
+- ☐ Motor con su interlock y su botonera local; caja «AS» para el arrancador suave.
+- ☐ Cabecera de datos de los equipos: tag, nombre, caudal, presión y potencia.
+- ☐ Equipos existentes en gris, límite de suministro «contratista | cliente» y llamadas «NOTA n» sobre el dibujo.
+
+## 5. Documentos Word
+
+- ✅ El índice guarda como valor la página estimada de cada título: la paginación se calcula con el estilo, el interlineado, las tablas fila por fila, las imágenes y los saltos. Antes guardaba «1» en todas las entradas, y eso es lo que muestran los visores que no actualizan campos (o Word si no se acepta la actualización). Comparado con la paginación real de LibreOffice, coincide en 111 de 115 entradas en cinco memorias de prueba; el resto queda a ±1 página. Word la recalcula al abrir.
+- ✅ El cuerpo empieza en página nueva con «salto de página anterior» en el primer título: antes, si el índice llenaba justo su hoja, quedaba una hoja en blanco.
+
+## 6. Errores vistos en las referencias (no imitar)
 
 - Guardamotores con un rango que no cubre la corriente del motor.
 - Termostato de ventilación «NA» con un modelo NC.
@@ -171,3 +195,7 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
 - Uc de 440 V en un sistema de 460 V.
 - Azul usado para L y N.
 - Tomacorriente sin diferencial.
+- Interruptor general operado con la puerta abierta, sin mando exterior (IEC 60204-1).
+- Falla señalada en rojo (IEC 60204-1 reserva el rojo para emergencia; ámbar para condición anormal).
+- Guillotina descrita motorizada en las notas pero dibujada como válvula manual.
+- Cajetines y placas copiados de otro tablero.

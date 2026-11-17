@@ -392,8 +392,8 @@ export async function visor3D(cont, modelo, opciones){
   // placa de identificación
   const L0 = lote();
   { const pid = C.placaId(m), h = hojaDe(pid.x); const pl = caja(pid.x - pid.w/2, pid.y - pid.h/2, D + 20, pid.w, pid.h, 1.5, plas(0x17181b), h.grupo, null, false);
-    pl.userData.info = { tag:m.tablero.tag, desc:"Placa de identificación (fondo negro, letras blancas)", modelo:`${pid.w} × ${pid.h} mm` };
-    L0.box(pid.x - pid.w*0.32, pid.y + 4, D + 21.5, pid.w*0.64, 5, 0.3, plas(0xf4f5f6)); L0.box(pid.x - pid.w*0.4, pid.y - 7, D + 21.5, pid.w*0.8, 3, 0.3, plas(0xf4f5f6)); L0.fin(h.grupo); }
+    pl.userData.info = { tag:m.tablero.tag, desc:"Placa de identificación (nombre, TAG y tensión)", modelo:`${pid.w} × ${pid.h} mm` };
+    for(const [dy, f, hh] of [[pid.h*0.25, 0.6, 5], [0, 0.4, 7], [-pid.h*0.25, 0.7, 4]]) L0.box(pid.x - pid.w*f/2, pid.y + dy - hh/2, D + 21.5, pid.w*f, hh, 0.3, plas(0xf4f5f6)); L0.fin(h.grupo); }
   // capa de dispositivos de puerta = todo lo que cuelga de las puertas menos la hoja
   const ocultarPuertas = v => hojas.forEach(h=>h.grupo.children.forEach((ch, i)=>{ if(i>0) ch.visible = v; }));
 

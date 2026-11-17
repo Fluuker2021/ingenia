@@ -62,13 +62,23 @@ function escalaImpresion(ws, unaPagina){
   for(let r=r1; r<=r2; r++) h += pxFila(ws, r);
   return Math.max(0.1, Math.min(1, pw/Math.max(1, w), unaPagina ? ph/Math.max(1, h) : 1));
 }
+/* páginas de alto que ocupará la hoja ajustada a 1 página de ancho */
+function paginasDeAlto(ws){
+  const hor = (ws.pageSetup && ws.pageSetup.orientation)==="landscape";
+  const ph = ((hor ? 21.0 : 29.7) - 4.0)/2.54*96;
+  const m = String((ws.pageSetup && ws.pageSetup.printArea) || "").replace(/\$/g, "").match(/[A-Z]+(\d+):[A-Z]+(\d+)/);
+  let h = 0; for(let r=(m ? +m[1] : 1); r<=(m ? +m[2] : ws.rowCount); r++) h += pxFila(ws, r);
+  return h*escalaImpresion(ws, false)/ph;
+}
 
 /* encabezado / pie de página estándar, márgenes y numeración continua (la carátula es la página 1) */
 export function encabezadoPieExcel(ws, s, o={}){
   const t = textosPagina(s);
   // Excel y LibreOffice achican el encabezado y el pie con la escala de la hoja («ajustar a 1 página de ancho»):
   // se compensa con el tamaño de letra para que impresos midan 8 pt en todas las hojas, también en los listados anchos
-  const pt = Math.min(20, Math.max(8, Math.round(8/escalaImpresion(ws, o.unaPagina))));
+  // si la hoja apenas pasa de una página (unas pocas filas, p. ej. las notas), se ajusta a una sola página
+  const unaPagina = !!o.unaPagina || paginasDeAlto(ws) <= 1.3;
+  const pt = Math.min(20, Math.max(8, Math.round(8/escalaImpresion(ws, unaPagina))));
   ws.headerFooter = {
     differentFirst:false, differentOddEven:false,
     oddHeader: `&L${fx(pt)}${escHF(t.izq)}&R${fx(pt, true)}${escHF(t.der)}`,
@@ -81,7 +91,7 @@ export function encabezadoPieExcel(ws, s, o={}){
   ps.horizontalCentered = true; ps.verticalCentered = false;
   // A4, una página de ancho (la orientación es la de cada formato); las hojas de datos, una página por hoja
   ps.paperSize = 9;
-  ps.fitToPage = true; ps.fitToWidth = 1; ps.fitToHeight = o.unaPagina ? 1 : 0;
+  ps.fitToPage = true; ps.fitToWidth = 1; ps.fitToHeight = unaPagina ? 1 : 0;
 }
 
 function pxFila(ws, r){ const h = ws.getRow(r).height || (ws.properties && ws.properties.defaultRowHeight) || 15; return h*96/72; }
@@ -229,7 +239,7 @@ export function bloqueEncabezadoExcel(ws, r0, c1, c2, titulo, valores={}){
     for(let c=a; c<=b; c++){
       const cell = ws.getCell(r, c);
       cell.font = { name:FUENTE, size:o.size||10, bold:!!o.bold, color:{ argb:"FF"+(o.color||C.grafito) } };
-      cell.alignment = { horizontal:"center", vertical:"middle", wrapText:true };
+      cell.alignment = o.izq ? { horizontal:"left", vertical:"middle", wrapText:true, indent:1 } : { horizontal:"center", vertical:"middle", wrapText:true };
       cell.border = { top:borde, bottom:o.bajo || borde, left:c===a ? borde : undefined, right:c===b ? borde : undefined };
       if(o.fill) cell.fill = { type:"pattern", pattern:"solid", fgColor:{ argb:"FF"+o.fill } };
     }
@@ -239,9 +249,10 @@ export function bloqueEncabezadoExcel(ws, r0, c1, c2, titulo, valores={}){
   ALTOS_ENC.forEach((h, i)=>{ ws.getRow(r0+i).height = h; });
   const et = { bold:true, fill:C.grafito800, color:C.blanco };
   celda(r0+1, [c1, c2], titulo, { size:12, bold:true, fill:C.grafito, color:C.blanco, bajo:{ style:"medium", color:{ argb:"FF"+C.amarillo } } });
-  celda(r0+2, k.lab, "Cliente", et); celda(r0+2, [k.val[0], c2], valores.cliente ?? "{{cliente}}");
-  celda(r0+3, k.lab, "Proyecto", et); celda(r0+3, k.val, valores.proyecto ?? "{{proyecto}}"); celda(r0+3, k.labD, "Fecha", et); celda(r0+3, k.valD, valores.fecha ?? "{{fecha}}");
-  celda(r0+4, k.lab, valores.etiquetaRef || "P&ID", et); celda(r0+4, k.val, valores.referencia ?? "{{referencia}}"); celda(r0+4, k.labD, "Revisión", et); celda(r0+4, k.valD, valores.rev ?? "{{rev}}");
+  // los valores de Cliente, Proyecto y P&ID se leen de izquierda a derecha; Fecha y Revisión, centrados
+  celda(r0+2, k.lab, "Cliente", et); celda(r0+2, [k.val[0], c2], valores.cliente ?? "{{cliente}}", { izq:true });
+  celda(r0+3, k.lab, "Proyecto", et); celda(r0+3, k.val, valores.proyecto ?? "{{proyecto}}", { izq:true }); celda(r0+3, k.labD, "Fecha", et); celda(r0+3, k.valD, valores.fecha ?? "{{fecha}}");
+  celda(r0+4, k.lab, valores.etiquetaRef || "P&ID", et); celda(r0+4, k.val, valores.referencia ?? "{{referencia}}", { izq:true }); celda(r0+4, k.labD, "Revisión", et); celda(r0+4, k.valD, valores.rev ?? "{{rev}}");
   // logos en la fila 1: empresa a la izquierda, cliente a la derecha (cada uno en ~30 % del ancho)
   const W = (()=>{ let a = 0; for(let c=c1; c<=c2; c++) a += anchoCol(ws, c); return a; })();
   const hasta = (desde, paso)=>{ let acc = 0, c = desde; while(c>=c1 && c<=c2){ acc += anchoCol(ws, c); if(acc >= 0.3*W) break; c += paso; } return Math.max(c1, Math.min(c2, c)); };
@@ -391,6 +402,110 @@ export function letraWord(zip){
   }
 }
 
+/* ---------- estilos del cuerpo: títulos en negrita, listas con viñetas, índice ordenado por niveles ---------- */
+const TITULOS = { Ttulo1:0, Ttulo2:1, Ttulo3:2 };
+function estiloXml(st, id){ const m = st.match(new RegExp(`<w:style\\b[^>]*w:styleId="${id}"[^>]*>[\\s\\S]*?</w:style>`)); return m ? m[0] : null; }
+function ponerEstilo(st, id, xml){ const v = estiloXml(st, id); return v ? st.replace(v, xml) : st.replace("</w:styles>", xml+"</w:styles>"); }
+/* numId de una lista con viñetas del documento (o una nueva) */
+function numVineta(zip){
+  const f = "word/numbering.xml"; if(!zip.file(f)) return null;
+  let nb = zip.file(f).asText();
+  const abst = {}; for(const m of nb.matchAll(/<w:abstractNum\b[^>]*w:abstractNumId="(\d+)"[\s\S]*?<\/w:abstractNum>/g)){ const l0 = (m[0].match(/<w:lvl w:ilvl="0"[\s\S]*?<\/w:lvl>/)||[""])[0]; abst[m[1]] = /w:numFmt w:val="bullet"/.test(l0) && !/w:pStyle/.test(m[0]); }
+  for(const m of nb.matchAll(/<w:num w:numId="(\d+)"[^>]*>\s*<w:abstractNumId w:val="(\d+)"\/>\s*<\/w:num>/g)) if(abst[m[2]]) return m[1];
+  // no hay: se agrega una lista de viñetas (•)
+  const a = `<w:abstractNum w:abstractNumId="9001"><w:multiLevelType w:val="hybridMultilevel"/><w:lvl w:ilvl="0"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="•"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="720" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="${FUENTE}" w:hAnsi="${FUENTE}"/></w:rPr></w:lvl></w:abstractNum>`;
+  nb = nb.replace(/(<w:num\b)/, a+"$1").replace("</w:numbering>", `<w:num w:numId="9001"><w:abstractNumId w:val="9001"/></w:num></w:numbering>`);
+  zip.file(f, nb); return "9001";
+}
+function estilosWord(zip, anchoTexto){
+  const fS = "word/styles.xml"; if(!zip.file(fS)) return;
+  let st = zip.file(fS).asText();
+  // títulos del cuerpo (1. / 1.1. / 1.1.1) en negrita
+  for(const id of Object.keys(TITULOS)){ const v = estiloXml(st, id); if(!v) continue;
+    let n = v.replace(/<w:b w:val="(?:0|false)"\/>|<w:bCs w:val="(?:0|false)"\/>/g, "");
+    if(!/<w:b\/>/.test(n)) n = /<w:rPr>/.test(n) ? n.replace(/<w:rPr>((?:<w:rFonts\b[^>]*\/>)?)/, "<w:rPr>$1<w:b/><w:bCs/>") : n.replace("</w:style>", "<w:rPr><w:b/><w:bCs/></w:rPr></w:style>");
+    st = st.replace(v, n); }
+  // listas (Párrafo de lista) con viñetas
+  const nv = numVineta(zip), vl = estiloXml(st, "Prrafodelista");
+  if(nv && vl && !/<w:numPr>/.test(vl)) st = st.replace(vl, vl.replace(/<w:pPr>[\s\S]*?<\/w:pPr>|(?=<\/w:style>)/, `<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${nv}"/></w:numPr><w:spacing w:after="60"/><w:ind w:left="720" w:hanging="360"/><w:contextualSpacing/></w:pPr>`));
+  // índice: número y texto en columnas por nivel, página a la derecha con puntos guía
+  const tab = `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${anchoTexto}"/></w:tabs>`;
+  const toc = (n, izq, colgante, antes, despues, rpr)=>`<w:style w:type="paragraph" w:styleId="TDC${n}"><w:name w:val="toc ${n}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="39"/><w:unhideWhenUsed/><w:pPr>${tab}<w:spacing w:before="${antes}" w:after="${despues}" w:line="240" w:lineRule="auto"/><w:ind w:left="${izq}" w:right="0" w:hanging="${colgante}"/></w:pPr><w:rPr><w:rFonts w:ascii="${FUENTE}" w:hAnsi="${FUENTE}" w:eastAsia="${FUENTE}" w:cs="${FUENTE}"/>${rpr}<w:noProof/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>`;
+  st = ponerEstilo(st, "TDC1", toc(1, 567, 567, 120, 40, "<w:b/><w:bCs/><w:caps/>"));
+  st = ponerEstilo(st, "TDC2", toc(2, 1247, 680, 0, 40, ""));
+  st = ponerEstilo(st, "TDC3", toc(3, 2098, 851, 0, 40, ""));
+  const ti = estiloXml(st, "Tabladeilustraciones");
+  if(ti) st = st.replace(ti, ti.replace(/<w:tabs>[\s\S]*?<\/w:tabs>/, tab));
+  zip.file(fS, st);
+}
+
+const fld = (instr, cache)=>`<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText xml:space="preserve"> ${instr} </w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r><w:r><w:t>${cache}</w:t></w:r><w:r><w:fldChar w:fldCharType="end"/></w:r>`;
+const PARRAFO = /<w:p(?=[ >])(?:(?!<w:p[ >])[\s\S])*?<\/w:p>/g;
+const textoXml = x=>(x.match(/<w:t(?: [^>]*)?>[^<]*<\/w:t>/g)||[]).map(t=>t.replace(/<[^>]+>/g, "")).join("");
+/* números de los títulos (1. / 1.1. / 1.1.1) según la lista de numeración de los estilos de título */
+function formatosTitulo(zip){
+  const st = zip.file("word/styles.xml") ? zip.file("word/styles.xml").asText() : "", nb = zip.file("word/numbering.xml") ? zip.file("word/numbering.xml").asText() : "";
+  const t1 = estiloXml(st, "Ttulo1") || ""; const numId = (t1.match(/<w:numId w:val="(\d+)"/)||[])[1];
+  const abs = numId && (nb.match(new RegExp(`<w:num w:numId="${numId}"[^>]*>\\s*<w:abstractNumId w:val="(\\d+)"`))||[])[1];
+  const a = abs && (nb.match(new RegExp(`<w:abstractNum\\b[^>]*w:abstractNumId="${abs}"[\\s\\S]*?</w:abstractNum>`))||[])[0];
+  const fmts = a ? [0,1,2].map(l=>(a.match(new RegExp(`<w:lvl w:ilvl="${l}"[\\s\\S]*?w:lvlText w:val="([^"]*)"`))||[])[1]) : [];
+  return [0,1,2].map(l=>fmts[l] || ["%1.", "%1.%2.", "%1.%2.%3"][l]);
+}
+/* Índice: «ÍNDICE», entradas por nivel con su número y la página (campos PAGEREF a marcadores en cada título);
+   también los índices de figuras y de tablas. */
+function indiceWord(zip, doc){
+  doc = doc.replace(/>TABLA DE CONTENIDO</g, ">ÍNDICE<");
+  let k = 0; const marca = ()=>`_Toc9${String(++k).padStart(8, "0")}`;
+  const conMarca = (p, nombre)=>p.replace(/(<w:pPr>[\s\S]*?<\/w:pPr>|<w:p(?=[ >])[^>]*>)/, `$1<w:bookmarkStart w:id="${8000+k}" w:name="${nombre}"/>`).replace(/<\/w:p>$/, `<w:bookmarkEnd w:id="${8000+k}"/></w:p>`);
+  const entrada = (estilo, partes, nombre, ini, fin)=>`<w:p><w:pPr><w:pStyle w:val="${estilo}"/></w:pPr>${ini||""}<w:hyperlink w:anchor="${nombre}" w:history="1">${partes}<w:r><w:tab/></w:r>${fld(`PAGEREF ${nombre} \\h`, "1")}</w:hyperlink>${fin||""}</w:p>`;
+  const r = t=>`<w:r><w:t xml:space="preserve">${t}</w:t></w:r>`;
+  // 1) títulos del cuerpo → marcadores + entradas
+  const fmts = formatosTitulo(zip), cont = [0, 0, 0], entradas = [];
+  let enIndice = false;
+  doc = doc.replace(PARRAFO, p=>{
+    if(/TOC \\o/.test(p)){ enIndice = true; return p; }
+    const est = (p.match(/<w:pStyle w:val="([^"]+)"/)||[])[1];
+    if(!(est in TITULOS) || !enIndice) return p;
+    // los títulos se ven en negrita aunque el texto traiga «sin negrita»
+    p = p.replace(/<w:b w:val="(?:0|false)"\/>|<w:bCs w:val="(?:0|false)"\/>/g, "");
+    const txt = textoXml(p).trim(); if(!txt) return p;
+    const nivel = TITULOS[est], sinNum = /<w:numId w:val="0"\/>/.test(p);
+    let num = "";
+    if(!sinNum){ cont[nivel]++; for(let i=nivel+1;i<3;i++) cont[i] = 0; num = fmts[nivel].replace(/%(\d)/g, (m, d)=>String(cont[+d-1] || 1)); }
+    const nombre = marca();
+    entradas.push(entrada(`TDC${nivel+1}`, (num ? r(num)+"<w:r><w:tab/></w:r>" : "") + r(txt), nombre));
+    return conMarca(p, nombre);
+  });
+  // las entradas quedan como párrafos con campos PAGEREF (sin el campo TOC que las envuelve): así Word, al abrir
+  // (actualiza los campos), y LibreOffice / la conversión a PDF muestran las páginas reales
+  if(entradas.length){
+    const m = doc.match(/<w:p(?=[ >])(?:(?!<w:p[ >])[\s\S])*?TOC \\o[\s\S]*?<\/w:p>/);
+    if(m){
+      const i = doc.indexOf(m[0]), resto = doc.slice(i + m[0].length, i + m[0].length + 1500);
+      // el cuerpo empieza en una hoja nueva (salvo que sigan los índices de figuras / tablas, que ya la tienen)
+      const salto = /ÍNDICE DE|w:type="page"/.test(resto.slice(0, resto.indexOf("</w:p>")+6)) ? "" : `<w:p><w:r><w:br w:type="page"/></w:r></w:p>`;
+      doc = doc.slice(0, i) + entradas.join("") + salto + doc.slice(i + m[0].length);
+    }
+  }
+  // 2) índices de figuras / tablas (campos TOC \c "Figura" / "Tabla"): entradas con página
+  for(const tipo of ["Figura", "Tabla"]){
+    const ref = new RegExp(`<w:p(?=[ >])(?:(?!<w:p[ >])[\\s\\S])*?TOC \\\\h \\\\z \\\\c (?:&quot;|")${tipo}(?:&quot;|")[\\s\\S]*?</w:p>`);
+    const m0 = doc.match(ref); if(!m0) continue;
+    const i0 = doc.indexOf(m0[0]);
+    const pFin = /fldCharType="end"/.test(m0[0]) ? i0 + m0[0].length : doc.indexOf("</w:p>", doc.indexOf('w:fldCharType="end"', i0 + m0[0].length)) + 6;
+    const items = [];
+    doc = doc.slice(0, i0) + "\u0000IDX\u0000" + doc.slice(pFin);
+    doc = doc.replace(PARRAFO, p=>{
+      if(!/<w:pStyle w:val="Descripci[oó]n"\/>/.test(p)) return p;
+      const txt = textoXml(p).trim(); if(!txt.startsWith(tipo)) return p;
+      const nombre = marca(); items.push(entrada("Tabladeilustraciones", r(txt), nombre)); return conMarca(p, nombre);
+    });
+    if(!items.length) items.push(`<w:p><w:pPr><w:pStyle w:val="Tabladeilustraciones"/></w:pPr></w:p>`);
+    doc = doc.replace("\u0000IDX\u0000", items.join(""));
+  }
+  return doc;
+}
+
 /* Aplica el formato estándar a un .docx ya rellenado (zip de PizZip): carátula, encabezado y pie.
    Devuelve false si el documento no tiene la estructura esperada (se deja como está). */
 export function formatoWord(zip, s, logos){
@@ -454,11 +569,14 @@ export function formatoWord(zip, s, logos){
     k++;
     return `<w:sectPr${at}>${refs}${cuerpo}</w:sectPr>`;
   });
-  // todo el documento en Arial (cuerpo, títulos, tablas, listas): tema, estilos y textos
-  letraWord(zip);
   // páginas impares/pares iguales
   const fSet = "word/settings.xml";
   if(zip.file(fSet)){ const st = zip.file(fSet).asText(); if(/<w:evenAndOddHeaders\b/.test(st)) zip.file(fSet, st.replace(/<w:evenAndOddHeaders\b[^>]*\/>/g, "")); }
+  // índice ordenado (ÍNDICE, niveles y páginas), títulos en negrita
+  doc = indiceWord(zip, doc);
   zip.file(fDoc, doc); zip.file(fRels, rels); zip.file(fCT, ct);
+  // estilos (títulos, listas con viñetas, índice) y todo el documento en Arial
+  estilosWord(zip, anchoTexto);
+  letraWord(zip);
   return true;
 }

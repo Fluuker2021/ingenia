@@ -59,7 +59,7 @@ function rutaDoc(p, id){
 /* ---------------- 1. datos ---------------- */
 function tabDatos(body, p, id, def){
   if(!def.editores.length){ body.innerHTML = `<div class="empty"><p><strong>No requiere datos adicionales.</strong></p><p>Se arma con los datos del proyecto.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista">Ver vista previa →</a></div>`; return; }
-  body.innerHTML = `<p class="ws-note">Solo los datos de este documento. Los cambios se comparten con los demás documentos del proyecto.</p><div id="eds"></div>
+  body.innerHTML = `<div id="eds"></div>
     <div class="row mt-2" style="justify-content:flex-end"><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista">Ver vista previa →</a></div>`;
   renderEditores($("#eds", body), p, def.editores, id, ()=>{});
 }

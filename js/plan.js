@@ -35,7 +35,8 @@ export function tipoArchivo(e){
 }
 /* etiqueta del documento: con plan Pro, el tipo de archivo; sin él, «Pro» */
 export function etiquetaDoc(e, state){
-  return esPro(state) ? `<span class="badge badge-tipo">${tipoArchivo(e)}</span>` : `<span class="badge badge-pro" title="Disponible con el plan Profesional">Pro</span>`;
+  // tipo de archivo en texto simple, entre paréntesis y sin color: «(EXCEL)»
+  return esPro(state) ? `<span class="tipo-doc">(${String(tipoArchivo(e)).toUpperCase()})</span>` : `<span class="badge badge-pro" title="Disponible con el plan Profesional">Pro</span>`;
 }
 
 function tarjetasPlanes(state){

@@ -262,8 +262,11 @@ tbody tr:hover td{background:#FAFBFC;}
 td.num,th.num{text-align:right; font-family:var(--mono); font-weight:500; font-variant-numeric:tabular-nums;}
 
 /* ---------- tabs ---------- */
-.tabs{display:flex; gap:2px; border-bottom:1px solid var(--border); margin-bottom:20px; overflow:auto;}
-.tabs button{border:none; background:transparent; border-radius:0; padding:10px 14px; color:var(--text-dim); font-weight:500; border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap;}
+/* la línea base va como sombra interior: así las pestañas no desbordan hacia abajo (sin barra de desplazamiento con
+   flechas en Windows) y la línea de la pestaña activa la cubre */
+.tabs{display:flex; gap:2px; box-shadow:inset 0 -1px 0 var(--border); margin-bottom:20px; overflow-x:auto; overflow-y:hidden; scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tabs button{border:none; background:transparent; border-radius:0; padding:10px 14px; color:var(--text-dim); font-weight:500; border-bottom:2px solid transparent; margin-bottom:0; white-space:nowrap;}
 .tabs button:hover{color:var(--grafito); background:transparent; border-color:transparent; border-bottom-color:var(--gris-300);}
 .tabs button.active{color:var(--grafito); border-bottom-color:var(--amarillo); font-weight:600;}
 
@@ -497,6 +500,7 @@ td.num.err{color:var(--err); font-weight:600;}
 .landing section[id]{scroll-margin-top:84px;}
 /* plan Pro */
 .badge-pro{background:var(--grafito); color:var(--amarillo); letter-spacing:.04em;}
+.tipo-doc{font-size:11.5px; font-weight:500; color:var(--text-dim); letter-spacing:.04em; margin-left:2px;}
 .badge-tipo{background:var(--amarillo-50); color:var(--grafito); border-color:var(--amarillo-100); letter-spacing:.06em; font-size:10.5px;}
 .pro-aviso .card-body{display:flex; flex-direction:column; gap:8px; align-items:flex-start;}
 .pro-aviso h2{font-size:17px;}

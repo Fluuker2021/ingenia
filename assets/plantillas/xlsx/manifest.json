@@ -187,7 +187,8 @@
      8
     ],
     "titulo": "ÍNDICE",
-    "espacio": false
+    "espacio": false,
+    "unaPagina": true
    }
   },
   "HD": {
@@ -212,7 +213,8 @@
     ],
     "titulo": "{{titulo_hoja}}",
     "espacio": false,
-    "ajustarAltos": true
+    "ajustarAltos": true,
+    "unaPagina": true
    }
   }
  },

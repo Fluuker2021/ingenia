@@ -50,20 +50,38 @@ export function textosPagina(s){
 const escHF = t => String(t ?? "").replace(/&/g, "&&");
 const fx = (sz, b) => `&"${FUENTE},Regular"&${sz}&K${C.grafito}${b ? "&B" : ""}`;   // &B: negrita sin depender del idioma de Excel
 
+/* escala aproximada con que se imprimirá la hoja (A4, márgenes estándar, 1 página de ancho [y de alto]) */
+function escalaImpresion(ws, unaPagina){
+  const hor = (ws.pageSetup && ws.pageSetup.orientation)==="landscape";
+  const pw = ((hor ? 29.7 : 21.0) - 3.0)/2.54*96, ph = ((hor ? 21.0 : 29.7) - 4.0)/2.54*96;
+  const m = String((ws.pageSetup && ws.pageSetup.printArea) || "").replace(/\$/g, "").match(/([A-Z]+)(\d+):([A-Z]+)(\d+)/);
+  const num = l=>{ let n = 0; for(const ch of l) n = n*26 + ch.charCodeAt(0)-64; return n; };
+  const c1 = m ? num(m[1]) : 1, c2 = m ? num(m[3]) : Math.max(1, ws.columnCount), r1 = m ? +m[2] : 1, r2 = m ? +m[4] : Math.max(1, ws.rowCount);
+  let w = 0, h = 0;
+  for(let c=c1; c<=c2; c++){ const col = ws.getColumn(c); if(!col.hidden) w += pxColumna(ws, c); }
+  for(let r=r1; r<=r2; r++) h += pxFila(ws, r);
+  return Math.max(0.1, Math.min(1, pw/Math.max(1, w), unaPagina ? ph/Math.max(1, h) : 1));
+}
+
 /* encabezado / pie de página estándar, márgenes y numeración continua (la carátula es la página 1) */
-export function encabezadoPieExcel(ws, s){
+export function encabezadoPieExcel(ws, s, o={}){
   const t = textosPagina(s);
+  // Excel y LibreOffice achican el encabezado y el pie con la escala de la hoja («ajustar a 1 página de ancho»):
+  // se compensa con el tamaño de letra para que impresos midan 8 pt en todas las hojas, también en los listados anchos
+  const pt = Math.min(20, Math.max(8, Math.round(8/escalaImpresion(ws, o.unaPagina))));
   ws.headerFooter = {
     differentFirst:false, differentOddEven:false,
-    oddHeader: `&L${fx(8)}${escHF(t.izq)}&R${fx(8, true)}${escHF(t.der)}`,
-    oddFooter: `&L${fx(8)}${escHF(t.pie)}&R${fx(8)}Página &P de &N`,
+    oddHeader: `&L${fx(pt)}${escHF(t.izq)}&R${fx(pt, true)}${escHF(t.der)}`,
+    oddFooter: `&L${fx(pt)}${escHF(t.pie)}&R${fx(pt)}Página &P de &N`,
     evenHeader:null, evenFooter:null, firstHeader:null, firstFooter:null,
   };
   const ps = ws.pageSetup || (ws.pageSetup = {});
   ps.margins = { left:0.59, right:0.59, top:0.79, bottom:0.79, header:0.31, footer:0.31 };
   ps.firstPageNumber = undefined;    // numeración continua entre hojas: «Página X de N» del documento completo
   ps.horizontalCentered = true; ps.verticalCentered = false;
-  ps.paperSize = ps.paperSize || 9;
+  // A4, una página de ancho (la orientación es la de cada formato); las hojas de datos, una página por hoja
+  ps.paperSize = 9;
+  ps.fitToPage = true; ps.fitToWidth = 1; ps.fitToHeight = o.unaPagina ? 1 : 0;
 }
 
 function pxFila(ws, r){ const h = ws.getRow(r).height || (ws.properties && ws.properties.defaultRowHeight) || 15; return h*96/72; }

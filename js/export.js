@@ -46,10 +46,18 @@ function escalaresCtx(ctx){
 function hojaTabla(wb, ctx, nombre, tabla){
   const ws = wb.addWorksheet(nombre.slice(0,31), { pageSetup:{ paperSize:9, orientation:"landscape", fitToPage:true, fitToWidth:1, fitToHeight:0 }, views:[{ showGridLines:false, state:"frozen", ySplit:FILAS_ENCABEZADO+2 }] });
   const cols = tabla.columnas;
-  ws.columns = cols.map(c=>({ width: c.ancho || 16 }));
-  const last = cols.length;
-  const L = n => ws.getColumn(n).letter;
-  const put = (r,c,val,o={})=>{ const cell = ws.getCell(r,c); cell.value = val; cell.font = font(o.font||{}); cell.alignment = Object.assign({ vertical:"middle", wrapText:true }, o.al||{}); if(o.fill) cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:o.fill} }; cell.border = bordes; return cell; };
+  // columnas de la hoja: una columna ancha se parte en dos (combinadas en cada fila) donde el bloque de encabezado
+  // necesita un borde, para que tome las mismas proporciones que el del listado de cargas
+  const anchos = cols.map(c=>c.ancho || 16), W = anchos.reduce((a,b)=>a+b, 0);
+  const bordesCol = anchos.reduce((a, w)=>(a.push((a[a.length-1]||0)+w), a), []);
+  const cortes = [0.13, 0.835, 0.90].map(x=>x*W).filter(t=>!bordesCol.some(b=>Math.abs(b-t) < 0.03*W));
+  const hojaCols = [], mapa = []; let acc = 0;
+  anchos.forEach(w=>{ const pts = [acc, ...cortes.filter(t=>t > acc+3 && t < acc+w-3).sort((a,b)=>a-b), acc+w]; const s0 = hojaCols.length+1; for(let k=0;k<pts.length-1;k++) hojaCols.push(pts[k+1]-pts[k]); mapa.push([s0, hojaCols.length]); acc += w; });
+  ws.columns = hojaCols.map(w=>({ width: w }));
+  const last = hojaCols.length;
+  const putBase = (r,c,val,o={})=>{ const cell = ws.getCell(r,c); cell.value = val; cell.font = font(o.font||{}); cell.alignment = Object.assign({ vertical:"middle", wrapText:true }, o.al||{}); if(o.fill) cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:o.fill} }; cell.border = bordes; return cell; };
+  // i = índice de columna lógica (1..n): escribe en su primera columna de hoja y combina si se partió
+  const put = (r,i,val,o={})=>{ const [a, b] = mapa[i-1]; for(let c=a+1;c<=b;c++) putBase(r,c,null,o); const cell = putBase(r,a,val,o); if(b>a) ws.mergeCells(r,a,r,b); return cell; };
   // bloque de encabezado estándar (el mismo de todos los listados: logo, título, Cliente / Proyecto / Fecha / P&ID / Revisión)
   const enc = bloqueEncabezadoExcel(ws, 1, 1, last, (tabla.titulo||nombre).toUpperCase(), { cliente:ctx.proyecto.cliente||"", proyecto:ctx.proyecto.nombre||"", fecha:fmtF(ctx.doc.fecha), referencia:tabla.referencia||ctx.doc.referencia||"—", rev:ctx.doc.rev||"A" });
   enc.merges.forEach(m=>ws.mergeCells(...m));
@@ -68,7 +76,7 @@ function hojaTabla(wb, ctx, nombre, tabla){
       if(c.formato && typeof v==="number") cell.numFmt = c.formato;
       if(f.__seccion){ cell.font = font({ bold:true }); cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:AZUL_CLARO} }; }
     });
-    if(f.__seccion) ws.mergeCells(r,1,r,last);
+    if(f.__seccion){ for(const [a,b] of mapa) if(b>a) ws.unMergeCells(r,a,r,b); ws.mergeCells(r,1,r,last); }
   });
   // totales
   (tabla.totales||[]).forEach((t,ti)=>{

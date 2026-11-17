@@ -77,6 +77,14 @@ class Hoja {
       }
     }));
     // área de impresión
+    // filas que se repiten al imprimir (p. ej. «1:14»)
+    const pt = ws.pageSetup && ws.pageSetup.printTitlesRow;
+    if(pt && /^\$?\d+:\$?\d+$/.test(pt)){
+      const [p1, p2] = pt.replace(/\$/g, "").split(":").map(Number);
+      const mv = r=>r>=at ? (k<0 && r<=delEnd ? at-1 : r+k) : r;
+      const n1 = mv(p1), n2 = mv(p2);
+      ws.pageSetup.printTitlesRow = n2 >= n1 ? `${n1}:${n2}` : undefined;
+    }
     const pa = ws.pageSetup && ws.pageSetup.printArea;
     if(pa){
       ws.pageSetup.printArea = pa.replace(/(\$?[A-Z]{1,3}\$?)(\d+)$/, (m, c, r)=>{ r=+r; return c + (r>=at ? Math.max(at-1, r+k) : r); });
@@ -319,7 +327,7 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
     if(t.ws.pageSetup && t.ws.pageSetup.firstPageNumber===1) t.ws.pageSetup.firstPageNumber = undefined;
     const esCaratula = /^CAR[ÁA]TULA$/i.test(t.ws.name.trim());
     if(estandar && esCaratula) continue;              // se reconstruye abajo con el formato estándar
-    if(estandar) encabezadoPieExcel(t.ws, datos.scal||{});
+    if(estandar) encabezadoPieExcel(t.ws, datos.scal||{}, { unaPagina: !!(t.man && t.man.encabezado && t.man.encabezado.unaPagina) });
     const man = enc ? Object.assign({}, t.man, enc.logos) : t.man;
     if(man && datos.logos){
       if(man.org && datos.logos.org) colocarLogo(wb, t.ws, datos.logos.org.dataURL, Object.assign({ aspect: datos.logos.org.aspect }, man.org));

@@ -11,7 +11,7 @@
    fila insertada), alturas de fila y área de impresión. Las imágenes del formato se conservan y los logos
    (organización / cliente) se colocan en las posiciones indicadas por el manifiesto de la plantilla. */
 
-import { anclaPx, encabezadoPieExcel, reemplazarCaratulaExcel } from "./formato-doc.js";
+import { encabezadoPieExcel, reemplazarCaratulaExcel, bloqueEncabezadoExcel, FILAS_ENCABEZADO, logoEnCaja } from "./formato-doc.js";
 
 const TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
 const REF = /(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_])/g;
@@ -185,24 +185,69 @@ function rellenarTabla(H, grupo, filas, scal){
 function pxCol(ws, c){ const w = ws.getColumn(c).width || (ws.properties && ws.properties.defaultColWidth) || 8.43; return Math.trunc(w*7+5); }
 function pxRow(ws, r){ const h = ws.getRow(r).height || (ws.properties && ws.properties.defaultRowHeight) || 15; return h*96/72; }
 
-function colocarLogo(wb, ws, dataURL, caja){
-  if(!dataURL || !caja) return;
-  try{
-    const ext = /^data:image\/png/.test(dataURL) ? "png" : "jpeg";
-    const id = wb.addImage({ base64: dataURL.split(",")[1], extension: ext });
-    const [c0, r0] = caja.tl, [c1, r1] = caja.br;
-    let W = 0, Hh = 0;
-    for(let c=c0+1; c<=c1; c++) W += pxCol(ws, c);
-    for(let r=r0+1; r<=r1; r++) Hh += pxRow(ws, r);
-    const ar = caja.aspect || 3;
-    let w = W*0.92, h = w/ar;
-    if(h > Hh*0.86){ h = Hh*0.86; w = h*ar; }
-    const offC = (W-w)/2, offR = (Hh-h)/2;
-    // posición absoluta (px desde A1) → ancla nativa en EMU: centrado exacto en la caja
-    let x0 = 0; for(let c=1; c<=c0; c++) x0 += pxCol(ws, c);
-    let y0 = 0; for(let r=1; r<=r0; r++) y0 += pxRow(ws, r);
-    ws.addImage(id, { tl: anclaPx(ws, x0+offC, y0+offR), ext:{ width:Math.round(w), height:Math.round(h) }, editAs:"oneCell" });
-  }catch(e){ console.warn("logo", e); }
+function colocarLogo(wb, ws, dataURL, caja){ logoEnCaja(wb, ws, dataURL, caja); }
+
+/* Formato Ingenia: reemplaza el bloque de encabezado propio de la plantilla (filas enc.filas, columnas enc.cols)
+   por el bloque estándar (el del listado de cargas), agregando o quitando filas según haga falta. */
+function encabezadoEstandar(H, enc){
+  const ws = H.ws, [a, b] = enc.filas, [c1, c2] = enc.cols;
+  H.merges = H.merges.filter(d=>!(d.r1>=a && d.r2<=b && d.c1<=c2));
+  for(let r=a; r<=b; r++){ const row = ws.getRow(r); for(let c=1; c<=c2; c++){ const cell = row.getCell(c); cell.value = null; cell.style = {}; } }
+  const nuevas = FILAS_ENCABEZADO + (enc.espacio ? 1 : 0), k = nuevas - (b-a+1);
+  if(k > 0) H.shift(b+1, k); else if(k < 0) H.shift(a+nuevas, k);
+  // numeraciones del tipo =ROW()-N (columna ÍTEM) siguen contando desde 1 aunque el bloque cambie de alto
+  if(k) ws.eachRow({ includeEmpty:false }, (row, rn)=>{ if(rn <= a+nuevas-1) return; row.eachCell({ includeEmpty:false }, cell=>{
+    const v = cell.value; if(v && typeof v==="object" && typeof v.formula==="string" && /ROW\(\)\s*-\s*\d+/i.test(v.formula)) cell.value = { formula: v.formula.replace(/ROW\(\)\s*-\s*(\d+)/gi, (m, n)=>"ROW()-"+(+n+k)) };
+  }); });
+  if(enc.espacio) ws.getRow(a+FILAS_ENCABEZADO).height = 15;
+  const r = bloqueEncabezadoExcel(ws, a, c1, c2, enc.titulo);
+  for(const [r1, cc1, r2, cc2] of r.merges) H.merges.push({ r1, c1:cc1, r2, c2:cc2 });
+  return { logos: r.logos, fin: a+nuevas-1 };
+}
+
+/* ancho aproximado (px) de un texto en Arial: anchos por carácter de la fuente (milésimas de em) */
+function anchoArial(t, sz, negrita){
+  let u = 0;
+  for(const ch of t){
+    if(ch===" ") u += 278; else if("ijl|!.,;:'".includes(ch)) u += 240; else if("ftrI()[]-/".includes(ch)) u += 320;
+    else if("mwMW".includes(ch)) u += 850; else if(/[0-9]/.test(ch)) u += 556; else if(/[A-ZÁÉÍÓÚÑ]/.test(ch)) u += 690; else u += 540;
+  }
+  return u/1000 * sz * (negrita ? 1.07 : 1) * 96/72;
+}
+/* líneas que ocupa un texto con ajuste de línea por palabras en un ancho dado (px) */
+function lineasTexto(t, sz, negrita, ancho){
+  if(!t) return 1;
+  let lineas = 1, actual = 0; const esp = anchoArial(" ", sz, negrita);
+  for(const p of t.split(/ +/)){
+    let w = anchoArial(p, sz, negrita);
+    if(actual && actual + esp + w > ancho){ lineas++; actual = 0; }
+    while(w > ancho){ lineas++; w -= ancho; }          // palabra más larga que la celda: se corta
+    actual += (actual ? esp : 0) + w;
+  }
+  return lineas;
+}
+
+/* Ajuste de texto y alto de fila según el largo de los textos (hojas de datos): ninguna celda se sale de su caja. */
+function ajustarAltos(H, desde){
+  const ws = H.ws;
+  const merge = (r, c)=>H.merges.find(d=>r>=d.r1 && r<=d.r2 && c>=d.c1 && c<=d.c2);
+  const ultima = ws.rowCount;
+  for(let r=desde; r<=ultima; r++){
+    const row = ws.getRow(r); let alto = 0;
+    row.eachCell({ includeEmpty:false }, cell=>{
+      const t = textoCelda(cell.value) || (typeof cell.value==="number" ? String(cell.value) : "");
+      if(!t) return;
+      const m = merge(r, cell.col);
+      if(m && (m.c1!==cell.col || m.r1!==r)) return;           // solo la celda principal de una combinación
+      if(m && m.r2 > m.r1) return;                               // combinaciones verticales: se dejan como están
+      let px = 0; for(let c=(m ? m.c1 : cell.col); c<=(m ? m.c2 : cell.col); c++) px += pxCol(ws, c);
+      const sz = (cell.font && cell.font.size) || 10, negrita = !!(cell.font && cell.font.bold);
+      const lineas = t.split("\n").reduce((a, x)=>a + lineasTexto(x, sz, negrita, px - 7), 0);
+      cell.alignment = Object.assign({}, cell.alignment||{}, { wrapText:true, vertical:(cell.alignment && cell.alignment.vertical) || "middle" });
+      alto = Math.max(alto, lineas*sz*1.22 + 3);
+    });
+    if(alto && alto > (row.height || 15)) row.height = Math.ceil(alto*4)/4;
+  }
 }
 
 function reemplazarEncabezados(ws, scal){
@@ -259,8 +304,11 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
   const estandar = !!datos.estandar;   // formatos Ingenia: carátula, encabezado y pie estándar (no en plantillas del cliente)
   for(const t of trabajos){
     const H = new Hoja(t.ws);
+    // formato Ingenia: bloque de encabezado estándar (Cliente / Proyecto / Fecha / P&ID / Revisión) en cada hoja de listado
+    const enc = estandar && t.man && t.man.encabezado ? encabezadoEstandar(H, t.man.encabezado) : null;
     const grupos = anclasDe(t.ws).sort((a,b)=>b.filas[0].rn - a.filas[0].rn);
     for(const g of grupos) rellenarTabla(H, g, t.tablas[g.nombre] || [], t.scal);
+    if(enc && t.man.encabezado.ajustarAltos) ajustarAltos(H, enc.fin+1);
     H.remerge();
     t.ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:false }, cell=>{
       const v = cell.value;
@@ -272,9 +320,10 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
     const esCaratula = /^CAR[ÁA]TULA$/i.test(t.ws.name.trim());
     if(estandar && esCaratula) continue;              // se reconstruye abajo con el formato estándar
     if(estandar) encabezadoPieExcel(t.ws, datos.scal||{});
-    if(t.man && datos.logos){
-      if(t.man.org && datos.logos.org) colocarLogo(wb, t.ws, datos.logos.org.dataURL, Object.assign({ aspect: datos.logos.org.aspect }, t.man.org));
-      if(t.man.cliente && datos.logos.cliente) colocarLogo(wb, t.ws, datos.logos.cliente.dataURL, Object.assign({ aspect: datos.logos.cliente.aspect }, t.man.cliente));
+    const man = enc ? Object.assign({}, t.man, enc.logos) : t.man;
+    if(man && datos.logos){
+      if(man.org && datos.logos.org) colocarLogo(wb, t.ws, datos.logos.org.dataURL, Object.assign({ aspect: datos.logos.org.aspect }, man.org));
+      if(man.cliente && datos.logos.cliente) colocarLogo(wb, t.ws, datos.logos.cliente.dataURL, Object.assign({ aspect: datos.logos.cliente.aspect }, man.cliente));
     }
   }
   if(estandar) reemplazarCaratulaExcel(wb, datos.scal||{}, datos.logos);
@@ -300,7 +349,7 @@ function rgbDe(c){
 }
 /* etiquetas de encabezados (bloque Cliente / Proyecto / Fecha…) y de la tabla de revisiones de la carátula */
 const ETIQUETAS = new Set(["cliente","proyecto","p&id","fecha","revisión","revision","rev.","rev","pág.","documento","referencia","n° documento","n° proyecto",
-  "emitido para","elaboró","elaboró ing. disc.","revisó","revisó jef. proy.","aprobó","aprobó gerente","revisado por el cliente","ing. disc.","coord. proy.","superint. ing.","gerente proy.","comentarios","nota"]);
+  "emitido para","elaboró","elaboró ing. disc.","revisó","revisó jef. proy.","aprobó","aprobó gerente","revisado por el cliente","ing. disc.","coord. proy.","superint. ing.","gerente proy.","comentarios"]);
 const esEtiqueta = t => { const k = String(t||"").trim().toLowerCase().replace(/\s+/g," ").replace(/:$/,""); return ETIQUETAS.has(k) || /^revisado por /.test(k) || /^(cliente|proyecto|fecha|n° documento|rev\.?)\s*:/i.test(k); };
 const textoDe = v => v==null ? "" : typeof v==="object" ? (v.richText ? v.richText.map(r=>r.text).join("") : (v.result!=null ? String(v.result) : "")) : String(v);
 function aplicarPaletaIngenia(wb){

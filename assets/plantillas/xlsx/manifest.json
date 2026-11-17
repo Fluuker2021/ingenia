@@ -32,6 +32,18 @@
      4,
      1
     ]
+   },
+   "encabezado": {
+    "filas": [
+     1,
+     5
+    ],
+    "cols": [
+     2,
+     17
+    ],
+    "titulo": "LISTADO DE INSTRUMENTOS",
+    "espacio": true
    }
   }
  },
@@ -68,6 +80,18 @@
      4,
      1
     ]
+   },
+   "encabezado": {
+    "filas": [
+     1,
+     4
+    ],
+    "cols": [
+     2,
+     14
+    ],
+    "titulo": "LISTADO DE EQUIPOS ELÉCTRICOS",
+    "espacio": false
    }
   }
  },
@@ -104,6 +128,18 @@
      4,
      1
     ]
+   },
+   "encabezado": {
+    "filas": [
+     1,
+     5
+    ],
+    "cols": [
+     2,
+     15
+    ],
+    "titulo": "LISTADO DE CARGAS",
+    "espacio": false
    }
   }
  },
@@ -140,6 +176,18 @@
      8,
      1
     ]
+   },
+   "encabezado": {
+    "filas": [
+     1,
+     5
+    ],
+    "cols": [
+     2,
+     8
+    ],
+    "titulo": "ÍNDICE",
+    "espacio": false
    }
   },
   "HD": {
@@ -152,6 +200,19 @@
      8,
      1
     ]
+   },
+   "encabezado": {
+    "filas": [
+     1,
+     5
+    ],
+    "cols": [
+     2,
+     8
+    ],
+    "titulo": "{{titulo_hoja}}",
+    "espacio": false,
+    "ajustarAltos": true
    }
   }
  },
@@ -198,6 +259,32 @@
      17,
      3
     ]
+   },
+   "encabezado": {
+    "filas": [
+     1,
+     8
+    ],
+    "cols": [
+     1,
+     17
+    ],
+    "titulo": "LISTADO DE SEÑALES I/O",
+    "espacio": true
+   }
+  },
+  "Resumen": {
+   "encabezado": {
+    "filas": [
+     1,
+     3
+    ],
+    "cols": [
+     2,
+     9
+    ],
+    "titulo": "RESUMEN DE SEÑALES I/O {{controladores}}",
+    "espacio": true
    }
   }
  },
@@ -244,6 +331,18 @@
      19,
      4
     ]
+   },
+   "encabezado": {
+    "filas": [
+     1,
+     11
+    ],
+    "cols": [
+     2,
+     20
+    ],
+    "titulo": "LISTADO DE CABLES",
+    "espacio": true
    }
   }
  }

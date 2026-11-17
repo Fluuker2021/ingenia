@@ -7,7 +7,8 @@
      doc:{codigo,titulo,rev,fecha,disciplina,emitidoPara}, revisiones:[{rev,fecha,descripcion,elaboro,reviso,aprobo}],
      tablas:{ NOMBRE:{columnas:[{key,titulo,ancho,num}], filas:[{...}]} }, campos:{...} } */
 
-import { reemplazarCaratulaExcel, encabezadoPieExcel } from "./formato-doc.js";
+import { reemplazarCaratulaExcel, encabezadoPieExcel, bloqueEncabezadoExcel, logoEnCaja, FILAS_ENCABEZADO } from "./formato-doc.js";
+const fmtF = f => { const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (f||""); };
 
 // paleta INGENIA: grafito (encabezados), amarillo suave (resaltados), gris claro
 const AZUL = "FF17191D", AZUL_CLARO = "FFFDF1C4", GRIS = "FFECEFF2", BORDE = "FFC4CBD3";
@@ -43,23 +44,19 @@ function escalaresCtx(ctx){
 }
 
 function hojaTabla(wb, ctx, nombre, tabla){
-  const ws = wb.addWorksheet(nombre.slice(0,31), { pageSetup:{ paperSize:9, orientation:"landscape", fitToPage:true, fitToWidth:1, fitToHeight:0 }, views:[{ showGridLines:false, state:"frozen", ySplit:6 }] });
+  const ws = wb.addWorksheet(nombre.slice(0,31), { pageSetup:{ paperSize:9, orientation:"landscape", fitToPage:true, fitToWidth:1, fitToHeight:0 }, views:[{ showGridLines:false, state:"frozen", ySplit:FILAS_ENCABEZADO+2 }] });
   const cols = tabla.columnas;
   ws.columns = cols.map(c=>({ width: c.ancho || 16 }));
   const last = cols.length;
   const L = n => ws.getColumn(n).letter;
   const put = (r,c,val,o={})=>{ const cell = ws.getCell(r,c); cell.value = val; cell.font = font(o.font||{}); cell.alignment = Object.assign({ vertical:"middle", wrapText:true }, o.al||{}); if(o.fill) cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:o.fill} }; cell.border = bordes; return cell; };
-  // cabecera de hoja (Cliente / Proyecto / Fecha / Rev.) — mismo esquema que los listados de referencia
-  put(1,1,(tabla.titulo||nombre).toUpperCase(), { font:{ bold:true, size:12, color:{argb:"FFFFFFFF"} }, fill:AZUL, al:{ horizontal:"center" } }); ws.mergeCells(1,1,1,last); ws.getRow(1).height = 22;
-  const half = Math.max(2, Math.floor(last/2));
-  put(2,1,"Cliente",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(2,2,ctx.proyecto.cliente||"",{}); ws.mergeCells(2,2,2,half);
-  put(2,half+1,"Fecha",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(2,half+2,ctx.doc.fecha||"",{}); if(half+2<last) ws.mergeCells(2,half+2,2,last);
-  put(3,1,"Proyecto",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(3,2,ctx.proyecto.nombre||"",{}); ws.mergeCells(3,2,3,half);
-  put(3,half+1,"Revisión",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(3,half+2,ctx.doc.rev||"A",{}); if(half+2<last) ws.mergeCells(3,half+2,3,last);
-  put(4,1,"Documento",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(4,2,ctx.doc.titulo||"",{}); ws.mergeCells(4,2,4,half);
-  put(4,half+1,"Referencia",{font:{bold:true,color:{argb:"FFFFFFFF"}},fill:"FF1F2228"}); put(4,half+2,tabla.referencia||ctx.doc.referencia||"—",{}); if(half+2<last) ws.mergeCells(4,half+2,4,last);
+  // bloque de encabezado estándar (el mismo de todos los listados: logo, título, Cliente / Proyecto / Fecha / P&ID / Revisión)
+  const enc = bloqueEncabezadoExcel(ws, 1, 1, last, (tabla.titulo||nombre).toUpperCase(), { cliente:ctx.proyecto.cliente||"", proyecto:ctx.proyecto.nombre||"", fecha:fmtF(ctx.doc.fecha), referencia:tabla.referencia||ctx.doc.referencia||"—", rev:ctx.doc.rev||"A" });
+  enc.merges.forEach(m=>ws.mergeCells(...m));
+  if(ctx.logos && ctx.logos.org) logoEnCaja(wb, ws, ctx.logos.org.dataURL, Object.assign({ aspect:ctx.logos.org.aspect }, enc.logos.org));
+  if(ctx.logos && ctx.logos.cliente) logoEnCaja(wb, ws, ctx.logos.cliente.dataURL, Object.assign({ aspect:ctx.logos.cliente.aspect }, enc.logos.cliente));
   // encabezados
-  const hr = 6;
+  const hr = FILAS_ENCABEZADO+2;
   cols.forEach((c,i)=>{ put(hr, i+1, c.titulo, { font:{ bold:true, size:8.5, color:{argb:"FFFFFFFF"} }, fill:AZUL, al:{ horizontal:"center" } }); });
   ws.getRow(hr).height = 30;
   // filas

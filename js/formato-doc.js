@@ -182,6 +182,72 @@ export function caratulaExcel(wb, ws, s, logos){
   return ws;
 }
 
+/* ---------- bloque de encabezado de las hojas de listado (el del listado de cargas) ----------
+   fila 1: logos · fila 2: título · fila 3: Cliente · fila 4: Proyecto | Fecha · fila 5: P&ID | Revisión
+   (+ fila 6 en blanco si se pide). Las columnas de etiqueta / valor se reparten según los anchos de la tabla. */
+export const FILAS_ENCABEZADO = 5;
+const ALTOS_ENC = [65.25, 25, 15, 15, 15];
+function anchoCol(ws, c){ return ws.getColumn(c).width || (ws.properties && ws.properties.defaultColWidth) || 8.43; }
+/* reparte c1..c2 en [etiqueta | valor | etiqueta derecha | valor derecho] lo más parecido a las proporciones del listado de cargas */
+export function columnasEncabezado(ws, c1, c2){
+  const w = []; for(let c=c1; c<=c2; c++) w.push(anchoCol(ws, c));
+  const W = w.reduce((a, b)=>a+b, 0);
+  // k columnas desde un extremo cuya suma se acerca más a la meta, sin bajar de un ancho mínimo legible
+  const mejor = (desde, paso, meta, max, min)=>{ let acc = 0, k = 0, bestK = 0, bestD = Infinity;
+    for(let i=desde; k<max; i+=paso){ acc += w[i]; k++; if(acc < min) continue; const dd = Math.abs(acc-meta); if(dd < bestD){ bestD = dd; bestK = k; } }
+    return bestK || max; };
+  const n = w.length;
+  const nL = mejor(0, 1, 0.13*W, Math.max(1, n-3), 9);
+  const nVD = mejor(n-1, -1, 0.10*W, Math.max(1, n-nL-2), 9);
+  const nLD = mejor(n-1-nVD, -1, 0.065*W, Math.max(1, n-nL-nVD-1), 8);
+  return { lab:[c1, c1+nL-1], val:[c1+nL, c2-nVD-nLD], labD:[c2-nVD-nLD+1, c2-nVD], valD:[c2-nVD+1, c2] };
+}
+/* escribe el bloque en filas vacías desde r0; devuelve las combinaciones [r1,c1,r2,c2] y las cajas de logo {tl,br} */
+export function bloqueEncabezadoExcel(ws, r0, c1, c2, titulo, valores={}){
+  const k = columnasEncabezado(ws, c1, c2);
+  const merges = [];
+  const borde = { style:"thin", color:{ argb:"FF"+C.grafito } };
+  const celda = (r, [a, b], valor, o={})=>{
+    for(let c=a; c<=b; c++){
+      const cell = ws.getCell(r, c);
+      cell.font = { name:FUENTE, size:o.size||10, bold:!!o.bold, color:{ argb:"FF"+(o.color||C.grafito) } };
+      cell.alignment = { horizontal:"center", vertical:"middle", wrapText:true };
+      cell.border = { top:borde, bottom:o.bajo || borde, left:c===a ? borde : undefined, right:c===b ? borde : undefined };
+      if(o.fill) cell.fill = { type:"pattern", pattern:"solid", fgColor:{ argb:"FF"+o.fill } };
+    }
+    ws.getCell(r, a).value = valor;
+    if(b > a) merges.push([r, a, r, b]);
+  };
+  ALTOS_ENC.forEach((h, i)=>{ ws.getRow(r0+i).height = h; });
+  const et = { bold:true, fill:C.grafito800, color:C.blanco };
+  celda(r0+1, [c1, c2], titulo, { size:12, bold:true, fill:C.grafito, color:C.blanco, bajo:{ style:"medium", color:{ argb:"FF"+C.amarillo } } });
+  celda(r0+2, k.lab, "Cliente", et); celda(r0+2, [k.val[0], c2], valores.cliente ?? "{{cliente}}");
+  celda(r0+3, k.lab, "Proyecto", et); celda(r0+3, k.val, valores.proyecto ?? "{{proyecto}}"); celda(r0+3, k.labD, "Fecha", et); celda(r0+3, k.valD, valores.fecha ?? "{{fecha}}");
+  celda(r0+4, k.lab, valores.etiquetaRef || "P&ID", et); celda(r0+4, k.val, valores.referencia ?? "{{referencia}}"); celda(r0+4, k.labD, "Revisión", et); celda(r0+4, k.valD, valores.rev ?? "{{rev}}");
+  // logos en la fila 1: empresa a la izquierda, cliente a la derecha (cada uno en ~30 % del ancho)
+  const W = (()=>{ let a = 0; for(let c=c1; c<=c2; c++) a += anchoCol(ws, c); return a; })();
+  const hasta = (desde, paso)=>{ let acc = 0, c = desde; while(c>=c1 && c<=c2){ acc += anchoCol(ws, c); if(acc >= 0.3*W) break; c += paso; } return Math.max(c1, Math.min(c2, c)); };
+  const logos = { org:{ tl:[c1-1, r0-1], br:[hasta(c1, 1), r0] }, cliente:{ tl:[hasta(c2, -1)-1, r0-1], br:[c2, r0] } };
+  return { merges, logos };
+}
+
+/* logo centrado (y escalado sin deformar) dentro de una caja de celdas { tl:[col0,fila0], br:[col1,fila1] } (base 0) */
+export function logoEnCaja(wb, ws, dataURL, caja){
+  if(!dataURL || !caja) return;
+  try{
+    const [c0, r0] = caja.tl, [c1, r1] = caja.br;
+    let x0 = 0, y0 = 0, W = 0, H = 0;
+    for(let c=1; c<=c0; c++) x0 += pxColumna(ws, c);
+    for(let r=1; r<=r0; r++) y0 += pxFila(ws, r);
+    for(let c=c0+1; c<=c1; c++) W += pxColumna(ws, c);
+    for(let r=r0+1; r<=r1; r++) H += pxFila(ws, r);
+    const ar = caja.aspect || 3;
+    let w = W*0.92, h = w/ar;
+    if(h > H*0.86){ h = H*0.86; w = h*ar; }
+    imagenExcel(wb, ws, dataURL, x0+(W-w)/2, y0+(H-h)/2, w, h);
+  }catch(e){ console.warn("logo", e); }
+}
+
 /* Reemplaza la hoja de carátula de un libro por la carátula estándar (misma posición y nombre). */
 export function reemplazarCaratulaExcel(wb, s, logos){
   const vieja = wb.worksheets.find(w=>/^CAR[ÁA]TULA$/i.test(w.name.trim()));
@@ -285,6 +351,28 @@ function portadaWord(d, imgs, altoUtil){
 const campo = (instr, sz)=>`<w:r>${rpr(sz)}<w:fldChar w:fldCharType="begin"/></w:r><w:r>${rpr(sz)}<w:instrText xml:space="preserve"> ${instr} </w:instrText></w:r><w:r>${rpr(sz)}<w:fldChar w:fldCharType="separate"/></w:r><w:r>${rpr(sz)}<w:t>1</w:t></w:r><w:r>${rpr(sz)}<w:fldChar w:fldCharType="end"/></w:r>`;
 const parTab = (izq, der, anchoTexto)=>`<w:p><w:pPr><w:tabs><w:tab w:val="right" w:pos="${anchoTexto}"/></w:tabs><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>${rpr(8)}</w:pPr>${izq}<w:r>${rpr(8)}<w:tab/></w:r>${der}</w:p>`;
 
+/* Cambia la letra de un .docx a Arial: fuentes del tema (las que usan los estilos sin letra propia), letra por
+   defecto, estilos y textos. Se respetan las fuentes de símbolos (viñetas Symbol / Wingdings / Courier New),
+   las de ecuaciones (Cambria Math) y Arial Narrow. */
+const LETRA_PROPIA = /Symbol|Wingdings|Webdings|Courier New|Cambria Math|Arial Narrow|Marlett/i;
+const RFONTS_ARIAL = `<w:rFonts w:ascii="${FUENTE}" w:hAnsi="${FUENTE}" w:eastAsia="${FUENTE}" w:cs="${FUENTE}"/>`;
+const aArial = xml => xml.replace(/<w:rFonts\b[^>]*\/>/g, m=>LETRA_PROPIA.test(m) ? m : RFONTS_ARIAL);
+export function letraWord(zip){
+  const fT = "word/theme/theme1.xml";
+  if(zip.file(fT)) zip.file(fT, zip.file(fT).asText().replace(/(<a:(?:major|minor)Font>\s*<a:latin typeface=")[^"]*"(?:\s+panose="[^"]*")?/g, `$1${FUENTE}"`));
+  const fS = "word/styles.xml";
+  if(zip.file(fS)){
+    let st = aArial(zip.file(fS).asText());
+    // letra por defecto explícita (los párrafos sin estilo ni letra propia)
+    st = st.replace(/<w:rPrDefault>\s*<w:rPr>([\s\S]*?)<\/w:rPr>/, (m, cuerpo)=>`<w:rPrDefault><w:rPr>${/<w:rFonts\b/.test(cuerpo) ? cuerpo : RFONTS_ARIAL+cuerpo}</w:rPr>`);
+    zip.file(fS, st);
+  }
+  for(const f of Object.keys(zip.files)){
+    if(!/^word\/(document|numbering|footnotes|endnotes|header\d*|footer\d*|header_[\w]+|footer_[\w]+)\.xml$/.test(f)) continue;
+    zip.file(f, aArial(zip.file(f).asText()));
+  }
+}
+
 /* Aplica el formato estándar a un .docx ya rellenado (zip de PizZip): carátula, encabezado y pie.
    Devuelve false si el documento no tiene la estructura esperada (se deja como está). */
 export function formatoWord(zip, s, logos){
@@ -348,6 +436,8 @@ export function formatoWord(zip, s, logos){
     k++;
     return `<w:sectPr${at}>${refs}${cuerpo}</w:sectPr>`;
   });
+  // todo el documento en Arial (cuerpo, títulos, tablas, listas): tema, estilos y textos
+  letraWord(zip);
   // páginas impares/pares iguales
   const fSet = "word/settings.xml";
   if(zip.file(fSet)){ const st = zip.file(fSet).asText(); if(/<w:evenAndOddHeaders\b/.test(st)) zip.file(fSet, st.replace(/<w:evenAndOddHeaders\b[^>]*\/>/g, "")); }

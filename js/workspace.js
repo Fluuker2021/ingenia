@@ -5,6 +5,7 @@ import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, dropzone, leerComoArrayBuffer, kb, fmtFecha, spinner } from "./ui.js";
 import * as X from "./export.js";
 import { rellenarExcel, marcadoresExcel } from "./xlsx-engine.js";
+import { formatoWord } from "./formato-doc.js";
 import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, dxfBytes, manifiesto, tablasEstandar, refDoc, tituloDoc, descargable } from "./docs.js";
 import { renderEditores } from "./editores.js";
 import { esPro, pantallaPro } from "./plan.js";
@@ -338,7 +339,7 @@ export async function descargarDoc(state, p, id, btn){
     } else if(def.formato==="proceso"){ toast("Este entorno no genera archivo: alimenta el listado de instrumentos."); return;
     } else if(def.estandar || (def.texto && !tplCli)){
       // formatos estándar previos (lista de documentos, cables, criterios)
-      const ctx = { org, proyecto:{ nombre:p.nombre, cliente:p.cliente, unidad:p.unidad, codigo:"", etapaNombre:"" }, doc:{ codigo:"", titulo:tituloDoc(p,id), rev:di.rev, fecha:di.fecha, disciplina:DISCIPLINAS[e.disciplina].nombre, emitidoPara:di.emitido, referencia:p.pidRef||"" }, revisiones: di.revisiones.map(r=>Object.assign({ elaboro:di.elaboro||org.elaboraPor, reviso:di.reviso||org.revisaPor, aprobo:di.aprobo||org.apruebaPor }, r)), tablas:{}, campos:{} };
+      const ctx = { scal: escalares(p, id, org), logos: { org: await logoPNG(org.logoDataURL), cliente: await logoCliente(p) }, org, proyecto:{ nombre:p.nombre, cliente:p.cliente, unidad:p.unidad, codigo:"", etapaNombre:"" }, doc:{ codigo:"", titulo:tituloDoc(p,id), rev:di.rev, fecha:di.fecha, disciplina:DISCIPLINAS[e.disciplina].nombre, emitidoPara:di.emitido, referencia:p.pidRef||"" }, revisiones: di.revisiones.map(r=>Object.assign({ elaboro:di.elaboro||org.elaboraPor, reviso:di.reviso||org.revisaPor, aprobo:di.aprobo||org.apruebaPor }, r)), tablas:{}, campos:{} };
       if(false){
       } else if(id==="gen-registro"){
         const filas = p.entregables.map(entregable).filter(Boolean).map((x,i)=>{ const d=p.documentos[x.id]||{}; return { item:i+1, titulo:x.nombre, disciplina:DISCIPLINAS[x.disciplina].nombre, tipo:TIPOS[x.tipo], rev:d.rev, fecha:d.fecha, emitido:d.emitido||"", estado:d.estado }; });
@@ -353,7 +354,7 @@ export async function descargarDoc(state, p, id, btn){
       const buf = tplCli ? await tplCli.blob.arrayBuffer() : await (await fetch("assets/plantillas/"+def.plantilla)).arrayBuffer();
       const man = tplCli ? {} : ((await manifiesto())[def.man] || {});
       const logos = { org: await logoPNG(org.logoDataURL), cliente: await logoCliente(p) };
-      const out = await rellenarExcel(window.ExcelJS, buf, Object.assign({}, pay, { manifiesto: man, logos }));
+      const out = await rellenarExcel(window.ExcelJS, buf, Object.assign({}, pay, { manifiesto: man, logos, estandar: !tplCli }));
       X.descargar(out, nombre("xlsx"), X.MIME.xlsx);
     } else if(def.formato==="docx"){
       const base = def.aliasDe || id;
@@ -363,10 +364,11 @@ export async function descargarDoc(state, p, id, btn){
       delete data._calc;
       let buf = tplCli ? await tplCli.blob.arrayBuffer() : await (await fetch("assets/plantillas/"+def.plantilla)).arrayBuffer();
       const zip = new PizZip(buf);
-      if(!tplCli) await logosWord(zip, await logoPNG(org.logoDataURL), await logoCliente(p));
       if(def.preparar) await def.preparar(zip, p);   // p. ej. figura de la arquitectura de control
       const doc = new window.docxtemplater(zip, { paragraphLoop:true, linebreaks:true, nullGetter:()=>"" });
       doc.render(data);
+      // formato estándar (igual al de los Excel): carátula con logo, cuadro de revisiones al pie, encabezado y pie de página
+      if(!tplCli) formatoWord(doc.getZip(), scal, { org: await logoPNG(org.logoDataURL), cliente: await logoCliente(p) });
       X.descargar(doc.getZip().generate({ type:"arraybuffer", compression:"DEFLATE", mimeType:X.MIME.docx }), nombre("docx"), X.MIME.docx);
     }
     if(dd.estado==="Por elaborar"){ dd.estado = "En elaboración"; S.save(); }
@@ -378,22 +380,3 @@ export async function descargarDoc(state, p, id, btn){
   }finally{ if(btn){ btn.disabled = false; btn.innerHTML = lbl; } }
 }
 
-/* logos en el encabezado de la plantilla Word por defecto: image1 = organización, image2 = cliente */
-async function logosWord(zip, org, cli){
-  const b64 = d => d.dataURL.split(",")[1];
-  const relsF = "word/_rels/header1.xml.rels", hdrF = "word/header1.xml";
-  if(!zip.file(relsF) || !zip.file(hdrF)) return;
-  const rels = zip.file(relsF).asText(); let hdr = zip.file(hdrF).asText();
-  const rid = target => (rels.match(new RegExp('Id="(rId\\d+)"[^>]*Target="media/'+target+'"'))||rels.match(new RegExp('Target="media/'+target+'"[^>]*Id="(rId\\d+)"'))||[])[1];
-  const ajustar = (r, aspect)=>{
-    if(!r) return;
-    hdr = hdr.replace(new RegExp('(<w:drawing>(?:(?!</w:drawing>).)*?r:embed="'+r+'"(?:(?!</w:drawing>).)*?</w:drawing>)', "s"), blk=>{
-      const m = blk.match(/<wp:extent cx="(\d+)" cy="(\d+)"/); if(!m) return blk;
-      const cx0 = +m[1], cy0 = +m[2]; let cy = cy0, cx = Math.round(cy*aspect); if(cx>cx0*1.6){ cx = Math.round(cx0*1.6); cy = Math.round(cx/aspect); }
-      return blk.replace(/(<wp:extent )cx="\d+" cy="\d+"/, `$1cx="${cx}" cy="${cy}"`).replace(/(<a:ext )cx="\d+" cy="\d+"/, `$1cx="${cx}" cy="${cy}"`);
-    });
-  };
-  if(org){ zip.file("word/media/image1.png", b64(org), { base64:true }); ajustar(rid("image1.png"), org.aspect); }
-  if(cli){ zip.file("word/media/image2.png", b64(cli), { base64:true }); ajustar(rid("image2.png"), cli.aspect); }
-  zip.file(hdrF, hdr);
-}

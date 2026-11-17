@@ -50,7 +50,7 @@ export function escalares(p, id, org){
   const s = {
     cliente: p.cliente||"", proyecto: p.nombre||"", etapa: ETAPA_TXT[p.etapa]||"", disciplina: DISC_TXT[e.disciplina]||"", titulo: tituloDoc(p, id),
     codigo: "", rev: di.rev||"A", fecha: fmtFecha(di.fecha), unidad_etiqueta: p.unidad ? "UNIDAD" : "", unidad: (p.unidad||"").toUpperCase(),
-    org: org.nombre||"", org_corto: (org.nombreCorto||org.nombre||"").toUpperCase(), referencia: p.pidRef||"", emitido: di.emitido||"",
+    org: org.nombre||"", org_direccion: org.direccion||"", org_corto: (org.nombreCorto||org.nombre||"").toUpperCase(), referencia: p.pidRef||"", emitido: di.emitido||"",
     elaboro: di.elaboro||org.elaboraPor||"", reviso: di.reviso||org.revisaPor||"", aprobo: di.aprobo||org.apruebaPor||"",
     sistema: sistemaNombre(p), tag_sistema: sistemaTag(p), tension: v.tension, tension_control: tensionControlTxt(v),
     numero_proyecto: "", cliente_corto: (p.cliente||"").toUpperCase(), oc_texto: p.ordenCompra ? "N° OC: "+p.ordenCompra : "",

@@ -11,6 +11,8 @@
    fila insertada), alturas de fila y área de impresión. Las imágenes del formato se conservan y los logos
    (organización / cliente) se colocan en las posiciones indicadas por el manifiesto de la plantilla. */
 
+import { anclaPx, encabezadoPieExcel, reemplazarCaratulaExcel } from "./formato-doc.js";
+
 const TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
 const REF = /(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_])/g;
 
@@ -180,8 +182,8 @@ function rellenarTabla(H, grupo, filas, scal){
   }
 }
 
-function pxCol(ws, c){ const w = ws.getColumn(c).width || 9; return Math.round(w*7+5); }
-function pxRow(ws, r){ const h = ws.getRow(r).height || 15; return Math.round(h*96/72); }
+function pxCol(ws, c){ const w = ws.getColumn(c).width || (ws.properties && ws.properties.defaultColWidth) || 8.43; return Math.trunc(w*7+5); }
+function pxRow(ws, r){ const h = ws.getRow(r).height || (ws.properties && ws.properties.defaultRowHeight) || 15; return h*96/72; }
 
 function colocarLogo(wb, ws, dataURL, caja){
   if(!dataURL || !caja) return;
@@ -196,12 +198,10 @@ function colocarLogo(wb, ws, dataURL, caja){
     let w = W*0.92, h = w/ar;
     if(h > Hh*0.86){ h = Hh*0.86; w = h*ar; }
     const offC = (W-w)/2, offR = (Hh-h)/2;
-    // posición fraccional de columna/fila para centrar
-    let col = c0, acc = 0; while(col<c1 && acc + pxCol(ws, col+1) <= offC){ acc += pxCol(ws, col+1); col++; }
-    const fc = col + (offC-acc)/pxCol(ws, col+1);
-    let row = r0, accr = 0; while(row<r1 && accr + pxRow(ws, row+1) <= offR){ accr += pxRow(ws, row+1); row++; }
-    const fr = row + (offR-accr)/pxRow(ws, row+1);
-    ws.addImage(id, { tl:{ col:fc, row:fr }, ext:{ width:w, height:h }, editAs:"oneCell" });
+    // posición absoluta (px desde A1) → ancla nativa en EMU: centrado exacto en la caja
+    let x0 = 0; for(let c=1; c<=c0; c++) x0 += pxCol(ws, c);
+    let y0 = 0; for(let r=1; r<=r0; r++) y0 += pxRow(ws, r);
+    ws.addImage(id, { tl: anclaPx(ws, x0+offC, y0+offR), ext:{ width:Math.round(w), height:Math.round(h) }, editAs:"oneCell" });
   }catch(e){ console.warn("logo", e); }
 }
 
@@ -214,8 +214,14 @@ function reemplazarEncabezados(ws, scal){
 
 function clonarHoja(wb, origen, nombre){
   const ws = wb.addWorksheet(nombre);
-  const model = Object.assign({}, origen.model, { name: nombre, id: ws.id, media: [] });
-  model.merges = (origen.model.merges||[]).slice();
+  // copia profunda: la hoja clonada no comparte filas, configuración de página ni encabezados con la original
+  const base = origen.model;
+  const model = JSON.parse(JSON.stringify(Object.assign({}, base, { media: [] })));
+  Object.assign(model, { name: nombre, id: ws.id });
+  // ExcelJS entrega las combinaciones en «merges» pero las lee de «mergeCells»: sin esto la hoja clonada
+  // (2.º tablero / instrumento en adelante) perdía todas las celdas combinadas y se veía desordenada
+  model.mergeCells = (base.merges||[]).slice();
+  if(base.pageSetup && base.pageSetup.printArea) model.pageSetup.printArea = base.pageSetup.printArea;
   ws.model = model;
   ws.name = nombre;
   return ws;
@@ -250,6 +256,7 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
     if(extra.nombre) ws.name = extra.nombre.slice(0,31);
     trabajos.push({ ws, scal: Object.assign({}, datos.scal, extra.scal||{}), tablas: Object.assign({}, datos.tablas, extra.tablas||{}), man: man[nombreOriginal] });
   });
+  const estandar = !!datos.estandar;   // formatos Ingenia: carátula, encabezado y pie estándar (no en plantillas del cliente)
   for(const t of trabajos){
     const H = new Hoja(t.ws);
     const grupos = anclasDe(t.ws).sort((a,b)=>b.filas[0].rn - a.filas[0].rn);
@@ -260,11 +267,17 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
       if(textoCelda(v).includes("{{")) cell.value = sustituir(v, t.scal, null);
     }));
     reemplazarEncabezados(t.ws, t.scal);
+    // ExcelJS fija «primera página = 1» al leer: cada hoja reiniciaba la numeración («Página 1 de N» en todas)
+    if(t.ws.pageSetup && t.ws.pageSetup.firstPageNumber===1) t.ws.pageSetup.firstPageNumber = undefined;
+    const esCaratula = /^CAR[ÁA]TULA$/i.test(t.ws.name.trim());
+    if(estandar && esCaratula) continue;              // se reconstruye abajo con el formato estándar
+    if(estandar) encabezadoPieExcel(t.ws, datos.scal||{});
     if(t.man && datos.logos){
       if(t.man.org && datos.logos.org) colocarLogo(wb, t.ws, datos.logos.org.dataURL, Object.assign({ aspect: datos.logos.org.aspect }, t.man.org));
       if(t.man.cliente && datos.logos.cliente) colocarLogo(wb, t.ws, datos.logos.cliente.dataURL, Object.assign({ aspect: datos.logos.cliente.aspect }, t.man.cliente));
     }
   }
+  if(estandar) reemplazarCaratulaExcel(wb, datos.scal||{}, datos.logos);
   calcularFormulas(wb);
   aplicarPaletaIngenia(wb);
   wb.calcProperties = Object.assign({}, wb.calcProperties, { fullCalcOnLoad: true });
@@ -292,6 +305,7 @@ const esEtiqueta = t => { const k = String(t||"").trim().toLowerCase().replace(/
 const textoDe = v => v==null ? "" : typeof v==="object" ? (v.richText ? v.richText.map(r=>r.text).join("") : (v.result!=null ? String(v.result) : "")) : String(v);
 function aplicarPaletaIngenia(wb){
   wb.eachSheet(ws=>{
+    if(ws._caratulaIngenia) return;   // la carátula estándar ya usa la paleta
     // pie y encabezado de página en grafito (&K = color de fuente en los encabezados de Excel)
     const hf = ws.headerFooter || {};
     for(const k of ["oddHeader","oddFooter","evenHeader","evenFooter","firstHeader","firstFooter"]) if(hf[k] && !/&K/.test(hf[k])) hf[k] = hf[k].replace(/&([LCR])/g, "&$1&K17191D");
@@ -311,7 +325,7 @@ function aplicarPaletaIngenia(wb){
       }
     }));
   });
-  wb.eachSheet(ws=>ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:true }, cell=>{
+  wb.eachSheet(ws=>!ws._caratulaIngenia && ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:true }, cell=>{
     if(cell._ingenia){ delete cell._ingenia; return; }
     const f = cell.fill;
     if(f && f.type==="pattern" && f.pattern==="solid"){

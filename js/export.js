@@ -7,6 +7,8 @@
      doc:{codigo,titulo,rev,fecha,disciplina,emitidoPara}, revisiones:[{rev,fecha,descripcion,elaboro,reviso,aprobo}],
      tablas:{ NOMBRE:{columnas:[{key,titulo,ancho,num}], filas:[{...}]} }, campos:{...} } */
 
+import { reemplazarCaratulaExcel, encabezadoPieExcel } from "./formato-doc.js";
+
 // paleta INGENIA: grafito (encabezados), amarillo suave (resaltados), gris claro
 const AZUL = "FF17191D", AZUL_CLARO = "FFFDF1C4", GRIS = "FFECEFF2", BORDE = "FFC4CBD3";
 const thin = { style:"thin", color:{argb:BORDE} };
@@ -21,64 +23,23 @@ export function nombreArchivo(doc, ext){ return nombreSeguro((doc.titulo||"docum
 export async function excelEstandar(ctx){
   const wb = new ExcelJS.Workbook();
   wb.creator = ctx.org.nombre || "Ingenia"; wb.created = new Date();
-  await caratula(wb, ctx);
+  // carátula, encabezado y pie: formato estándar común a todos los documentos (formato-doc.js)
+  const scal = ctx.scal || escalaresCtx(ctx);
+  reemplazarCaratulaExcel(wb, scal, ctx.logos||null);
   for(const [nombre, tabla] of Object.entries(ctx.tablas||{})){
     if(tabla.alias) continue; // alias para plantillas del cliente ({{tabla:nombre}}), no genera hoja propia
-    hojaTabla(wb, ctx, nombre, tabla);
+    encabezadoPieExcel(hojaTabla(wb, ctx, nombre, tabla), scal);
   }
   return await wb.xlsx.writeBuffer();
 }
 
-async function caratula(wb, ctx){
-  const ws = wb.addWorksheet("CARÁTULA", { pageSetup:{ paperSize:9, orientation:"portrait", fitToPage:true }, views:[{showGridLines:false}] });
-  ws.columns = Array.from({length:12}, ()=>({ width:9 }));
-  const put = (ref, val, o={})=>{ const c = ws.getCell(ref); c.value = val; c.font = font(o.font||{}); c.alignment = Object.assign({ horizontal:"center", vertical:"middle", wrapText:true }, o.al||{}); if(o.fill) c.fill = { type:"pattern", pattern:"solid", fgColor:{argb:o.fill} }; return c; };
-  const box = (range)=>{ ws.mergeCells(range); const [a,b] = range.split(":"); borderRange(ws, a, b); };
-
-  // logo de la organización (si hay)
-  if(ctx.org.logoDataURL){
-    try{
-      const ext = ctx.org.logoDataURL.startsWith("data:image/png") ? "png" : "jpeg";
-      const id = wb.addImage({ base64: ctx.org.logoDataURL.split(",")[1], extension: ext });
-      ws.addImage(id, { tl:{col:0.3,row:1.2}, ext:{ width:150, height:60 } });
-    }catch(e){}
-  }
-  put("E2", (ctx.org.nombre||"").toUpperCase(), { font:{ bold:true, size:11, color:{argb:AZUL} } }); ws.mergeCells("E2:L3");
-  put("E4", ctx.org.direccion||"", { font:{ size:8, color:{argb:"FF66748A"} } }); ws.mergeCells("E4:L4");
-
-  ws.getRow(8).height = 24;
-  put("B8", "CLIENTE: "+(ctx.proyecto.cliente||"—").toUpperCase(), { font:{ bold:true, size:10, color:{argb:"FFFFFFFF"} }, fill:AZUL }); box("B8:L8");
-  for(let c=2;c<=12;c++) ws.getCell(8,c).border = { ...ws.getCell(8,c).border, bottom:{ style:"medium", color:{argb:"FFF5C518"} } };
-  ws.headerFooter.oddFooter = "&L&K17191D"+(ctx.org.nombre||"")+"&C&K17191D"+(ctx.doc.titulo||"")+"&R&K17191DRev. "+(ctx.doc.rev||"A");
-  put("B10", (ctx.proyecto.nombre||"").toUpperCase(), { font:{ bold:true, size:14, color:{argb:AZUL} } }); ws.mergeCells("B10:L12");
-  put("B13", (ctx.proyecto.unidad ? "UNIDAD: "+ctx.proyecto.unidad.toUpperCase()+"   ·   " : "")+"ETAPA: "+(ctx.proyecto.etapaNombre||"").toUpperCase(), { font:{ size:9 } }); ws.mergeCells("B13:L13");
-  put("B15", (ctx.doc.disciplina||"").toUpperCase(), { font:{ bold:true, size:10 } }); ws.mergeCells("B15:L15");
-  put("B17", (ctx.doc.titulo||"").toUpperCase(), { font:{ bold:true, size:16 } }); ws.mergeCells("B17:L20");
-  for(let r=17;r<=20;r++) for(let c=2;c<=12;c++) ws.getCell(r,c).fill = { type:"pattern", pattern:"solid", fgColor:{argb:AZUL_CLARO} };
-  borderRange(ws, "B17", "L20");
-  put("B22", "REVISIÓN", { font:{ bold:true, size:9, color:{argb:"FFFFFFFF"} }, fill:"FF1F2228" }); ws.mergeCells("B22:D22");
-  put("E22", "Rev. "+(ctx.doc.rev||"A"), { font:{ bold:true, size:12 } }); ws.mergeCells("E22:L22");
-  borderRange(ws, "B22", "L22");
-
-  // tabla de revisiones
-  const r0 = 26;
-  const heads = ["Rev.","Fecha","Emitido para","Elaboró","Revisó","Aprobó"]; const spans = [["B","B"],["C","D"],["E","H"],["I","J"],["K","K"],["L","L"]];
-  heads.forEach((h,i)=>{ put(spans[i][0]+r0, h, { font:{ bold:true, size:9, color:{argb:"FFFFFFFF"} }, fill:AZUL }); if(spans[i][0]!==spans[i][1]) ws.mergeCells(`${spans[i][0]}${r0}:${spans[i][1]}${r0}`); });
-  const revs = (ctx.revisiones && ctx.revisiones.length) ? ctx.revisiones : [{ rev:ctx.doc.rev||"A", fecha:ctx.doc.fecha, descripcion:ctx.doc.emitidoPara||"Emitido para revisión", elaboro:ctx.org.elaboraPor||"", reviso:ctx.org.revisaPor||"", aprobo:ctx.org.apruebaPor||"" }];
-  revs.forEach((rv,i)=>{
-    const r = r0+1+i; const vals = [rv.rev, rv.fecha, rv.descripcion, rv.elaboro||ctx.org.elaboraPor||"", rv.reviso||ctx.org.revisaPor||"", rv.aprobo||ctx.org.apruebaPor||""];
-    vals.forEach((v,j)=>{ put(spans[j][0]+r, v, { font:{ size:9 } }); if(spans[j][0]!==spans[j][1]) ws.mergeCells(`${spans[j][0]}${r}:${spans[j][1]}${r}`); });
-  });
-  borderRange(ws, "B"+r0, "L"+(r0+revs.length));
-  put("B"+(r0+revs.length+2), "Generado con Ingenia — la generación automática no reemplaza la revisión y aprobación de un ingeniero competente.", { font:{ size:7, italic:true, color:{argb:"FF66748A"} }, al:{ horizontal:"left" } }); ws.mergeCells(`B${r0+revs.length+2}:L${r0+revs.length+2}`);
-}
-
-function borderRange(ws, a, b){
-  const A = ws.getCell(a), B = ws.getCell(b);
-  for(let r=A.row; r<=B.row; r++) for(let c=A.col; c<=B.col; c++){
-    const cell = ws.getCell(r,c);
-    cell.border = { top: r===A.row?thin:cell.border?.top, bottom: r===B.row?thin:cell.border?.bottom, left: c===A.col?thin:cell.border?.left, right: c===B.col?thin:cell.border?.right };
-  }
+/* escalares de la carátula estándar cuando el llamador no los entrega (ver docs.js → escalares) */
+function escalaresCtx(ctx){
+  const s = { org:ctx.org.nombre||"", org_direccion:ctx.org.direccion||"", org_corto:(ctx.org.nombreCorto||ctx.org.nombre||"").toUpperCase(),
+    cliente:ctx.proyecto.cliente||"", proyecto:ctx.proyecto.nombre||"", unidad:ctx.proyecto.unidad||"", etapa:ctx.proyecto.etapaNombre||"",
+    disciplina:ctx.doc.disciplina||"", titulo:ctx.doc.titulo||"", rev:ctx.doc.rev||"A", fecha:ctx.doc.fecha||"", emitido:ctx.doc.emitidoPara||"" };
+  (ctx.revisiones||[]).slice(0,8).forEach((r,i)=>{ for(const k of ["rev","fecha","descripcion","elaboro","reviso","aprobo"]) s[`rev${i+1}.${k}`] = r[k]||""; });
+  return s;
 }
 
 function hojaTabla(wb, ctx, nombre, tabla){
@@ -118,7 +79,7 @@ function hojaTabla(wb, ctx, nombre, tabla){
     cols.forEach((c,i)=>{ const v = t[c.key]; put(r, i+1, v===undefined?"":v, { font:{ bold:true, size:8.5 }, fill:GRIS, al:{ horizontal:(c.num||typeof v==="number")?"right":"left" } }); });
   });
   (tabla.notas||[]).forEach((n,ni)=>{ const r = hr+2+tabla.filas.length+(tabla.totales||[]).length+ni; const cell = ws.getCell(r,1); cell.value = n; cell.font = font({ size:8, italic:true }); ws.mergeCells(r,1,r,last); });
-  ws.headerFooter.oddFooter = "&L&K17191D"+(ctx.org.nombre||"")+"&C&K17191D"+(ctx.doc.titulo||"")+" Rev. "+(ctx.doc.rev||"")+"&R&K17191DPág. &P de &N";
+  return ws;
 }
 
 /* ---------------- EXCEL CON PLANTILLA DEL CLIENTE ----------------

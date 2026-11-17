@@ -430,7 +430,7 @@ function estilosWord(zip, anchoTexto){
   if(nv && vl && !/<w:numPr>/.test(vl)) st = st.replace(vl, vl.replace(/<w:pPr>[\s\S]*?<\/w:pPr>|(?=<\/w:style>)/, `<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="${nv}"/></w:numPr><w:spacing w:after="60"/><w:ind w:left="720" w:hanging="360"/><w:contextualSpacing/></w:pPr>`));
   // índice: número y texto en columnas por nivel, página a la derecha con puntos guía
   const tab = `<w:tabs><w:tab w:val="right" w:leader="dot" w:pos="${anchoTexto}"/></w:tabs>`;
-  const toc = (n, izq, colgante, antes, despues, rpr)=>`<w:style w:type="paragraph" w:styleId="TDC${n}"><w:name w:val="toc ${n}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="39"/><w:unhideWhenUsed/><w:pPr>${tab}<w:spacing w:before="${antes}" w:after="${despues}" w:line="240" w:lineRule="auto"/><w:ind w:left="${izq}" w:right="0" w:hanging="${colgante}"/></w:pPr><w:rPr><w:rFonts w:ascii="${FUENTE}" w:hAnsi="${FUENTE}" w:eastAsia="${FUENTE}" w:cs="${FUENTE}"/>${rpr}<w:noProof/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>`;
+  const toc = (n, izq, colgante, antes, despues, rpr)=>`<w:style w:type="paragraph" w:styleId="TDC${n}"><w:name w:val="toc ${n}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:uiPriority w:val="39"/><w:unhideWhenUsed/><w:pPr>${tab}<w:spacing w:before="${antes}" w:after="${despues}" w:line="240" w:lineRule="auto"/><w:ind w:left="${izq}" w:right="567" w:hanging="${colgante}"/></w:pPr><w:rPr><w:rFonts w:ascii="${FUENTE}" w:hAnsi="${FUENTE}" w:eastAsia="${FUENTE}" w:cs="${FUENTE}"/>${rpr}<w:noProof/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>`;
   st = ponerEstilo(st, "TDC1", toc(1, 567, 567, 120, 40, "<w:b/><w:bCs/><w:caps/>"));
   st = ponerEstilo(st, "TDC2", toc(2, 1247, 680, 0, 40, ""));
   st = ponerEstilo(st, "TDC3", toc(3, 2098, 851, 0, 40, ""));
@@ -496,7 +496,7 @@ function indiceWord(zip, doc){
     const items = [];
     doc = doc.slice(0, i0) + "\u0000IDX\u0000" + doc.slice(pFin);
     doc = doc.replace(PARRAFO, p=>{
-      if(!/<w:pStyle w:val="Descripci[oó]n"\/>/.test(p)) return p;
+      if(!/<w:pStyle w:val="Descripci[oó]?n"\/>/.test(p)) return p;
       const txt = textoXml(p).trim(); if(!txt.startsWith(tipo)) return p;
       const nombre = marca(); items.push(entrada("Tabladeilustraciones", r(txt), nombre)); return conMarca(p, nombre);
     });

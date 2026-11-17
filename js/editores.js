@@ -4,21 +4,22 @@ import * as S from "./store.js";
 import { save } from "./store.js";
 import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { renderEditor } from "./modules/tablas.js";
-import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl, instrumentos, sistemaTag, uidc, APPLICATIONS,
+import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl, dimensionarCircuito, instrumentos, sistemaTag, uidc, APPLICATIONS,
   TIPOS_TABLERO, nuevoTablero, tableros, tablerosPotencia, tablerosControl, tableroPorId, esControl, esFuerza, tf, tc, desdeTxt, aplicarTipicos, REGIMENES,
-  calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2 } from "./datos.js";
+  calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, calcularTodos } from "./datos.js";
 import { camposHD, camposHDEq } from "./docs.js";
 import { filosofiaDe, filosofiaAuto, guardarTabla, guardarTexto, guardarAreas, filosofiaOps, arquitecturaSVG, TEXTOS_FIL, TIPOS_ALARMA, TIPOS_INTERLOCK } from "./modules/filosofia.js";
 import { EQUIPOS_PROCESO, recomendarInstrumentos } from "./modules/proceso.js";
 import { elementosArreglo, sugerirTableros } from "./cad/planos2.js";
 import { parseDXF, drawPreview } from "./dxf.js";
 import { cfgMecanico, arregloTablero } from "./mecanico/arreglo.js";
+import { FAMILIAS_MARCA, marcasProyecto, modeloEnMarca, modeloCorto } from "./engine/marcas.js";
 import { arregloControl } from "./mecanico/arreglo-control.js";
 import { FAMILIAS, LISTA_FAMILIAS, familiaPorTexto, modeloFamilia, modulosFamilia, infoModulo } from "./control/plc-modulos.js";
 
 export const TITULOS = {
   criterios:"Criterios de diseño", cargas:"Cargas por tablero", cargasControl:"Cargas de 120 Vac de los tableros de control",
-  tableros:"Tableros del proyecto", instrumentos:"Listado de instrumentos", io:"Lista de entradas y salidas", tablerocontrol:"Configuración de los tableros de control", circuitos:"Circuitos de los tableros de control",
+  tableros:"Tableros del proyecto", marcas:"Marcas de los equipos", instrumentos:"Listado de instrumentos", io:"Lista de entradas y salidas", tablerocontrol:"Configuración de los tableros de control", circuitos:"Circuitos de los tableros de control",
   memoria:"Criterios de la memoria de cálculo", hd:"Datos por instrumento", hdEq:"Datos por tablero", notas:"Notas del documento", cables:"Cables por carga",
   equiposCfg:"Alcance del listado", proceso:"Proceso y recomendación de instrumentos", filosofia:"Filosofía de control", arreglo:"Planta y ubicación de equipos",
   mecanico:"Arreglo mecánico del tablero",
@@ -32,6 +33,7 @@ export const AYUDA = {
   hdEq:"Valores del cálculo del tablero y del sitio. Lo que escribas tiene prioridad.",
   cables:"Tipo y sección salen del listado de cargas. Completa TAG, longitud y canalización.",
   tableros:"Las cargas e instrumentos se asignan a estos tableros.",
+  marcas:"Confirma o cambia la marca de cada familia: Ingenia elige los modelos por sus características eléctricas y los actualiza en el unifilar, el multifilar, el mecánico y los listados.",
   arreglo:"Carga la planta del cliente (DXF) e ingresa X, Y de cada equipo en las mismas unidades del plano.",
   mecanico:"Ingenia ordena los equipos con criterio de diseño y elige el gabinete con las dimensiones reales de cada componente. Deja en «Automático» lo que no quieras fijar; también puedes pedirle los cambios a Copito.",
 };
@@ -83,6 +85,11 @@ export function enlazarDiseno(root, onCambio){
 
 /* tabla editable genérica */
 function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, onCell, clase, extraBotones, mover }){
+  // ancho de un campo: el mínimo de la columna o el del valor más largo (en caracteres), para que no se corte
+  const anchoCol = c => { const largo = Math.max(String(c.t||"").length*0.6, ...filas.map(f=>String(f[c.k]??"").length));
+    return `max(${c.w||110}px, calc(${Math.ceil(largo)}ch + ${c.n ? 34 : 18}px))`; };
+  // listas: el mismo ancho en toda la columna (la opción más larga de todas sus filas)
+  const anchoSel = c => Math.max(3, ...(typeof c.op==="function" ? filas.flatMap(f=>c.op(f)) : c.op).map(o=>String(Array.isArray(o)?o[1]:o).length));
   const render = ()=>{
     // al redibujar se conserva el desplazamiento horizontal de la tabla y el campo en edición
     const wrap0 = $(".table-wrap", el), sl = wrap0 ? wrap0.scrollLeft : 0;
@@ -93,12 +100,14 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
       </div><span class="muted">${filas.length} registro(s)</span></div>
       <div class="table-wrap"><table class="ed-table"><thead><tr>${columnas.map(c=>`<th>${esc(c.t)}</th>`).join("")}${nuevo||mover?"<th></th>":""}</tr></thead>
       <tbody>${filas.map((f,i)=>`<tr data-i="${i}">${columnas.map(c=>{
-        const cls = clase ? (clase(f, c.k)||"") : "";
-        if(c.calc) return `<td class="mono muted">${esc(c.calc(f,i))}</td>`;
+        // valores centrados (la descripción a la izquierda) y anchos que crecen con el texto más largo de la columna
+        const cls = (clase ? (clase(f, c.k)||"") : "") + (c.izq ? " izq" : "");
+        if(c.calc) return `<td class="mono muted${c.izq?"":" centro"}">${esc(c.calc(f,i))}</td>`;
         const ops = typeof c.op==="function" ? c.op(f) : c.op;
-        if(ops) return `<td><select data-c="${c.k}" class="${cls}" style="min-width:${c.w||90}px">${ops.map(o=>{ const [v,l] = Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(f[c.k]??"")===String(v)?"selected":""}>${esc(l)}</option>`; }).join("")}</select></td>`;
+        if(ops){ const largo = anchoSel(c);
+          return `<td><select data-c="${c.k}" class="${cls}" style="width:calc(${largo}ch + 34px)" ${ops.length===1?"disabled":""}>${ops.map(o=>{ const [v,l] = Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(f[c.k]??"")===String(v)?"selected":""}>${esc(l)}</option>`; }).join("")}</select></td>`; }
         if(c.chk) return `<td style="text-align:center"><input type="checkbox" data-c="${c.k}" ${f[c.k]?"checked":""}></td>`;
-        return `<td><input type="${c.n?"number":"text"}" ${c.n?'step="any"':""} data-c="${c.k}" value="${esc(f[c.k]??"")}" class="${cls}" style="width:${c.w||110}px"></td>`;
+        return `<td><input type="${c.n?"number":"text"}" ${c.n?'step="any"':""} data-c="${c.k}" value="${esc(f[c.k]??"")}" class="${cls}" style="width:${anchoCol(c)}"></td>`;
       }).join("")}${nuevo||mover?`<td style="white-space:nowrap">${mover?`<button class="btn-ghost btn-sm" data-up title="Subir">↑</button><button class="btn-ghost btn-sm" data-dn title="Bajar">↓</button>`:""}${nuevo?`<button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button>`:""}</td>`:""}</tr>`).join("") || `<tr><td colspan="${columnas.length+1}" class="muted" style="text-align:center;padding:20px">${esc(vacio||"Sin registros")}</td></tr>`}</tbody></table></div><div data-pie></div>`;
     const ad = $("[data-add]", el); if(ad) ad.onclick = ()=>{ filas.push(nuevo()); onChange(); render(); };
     const ej = $("[data-ej]", el); if(ej) ej.onclick = ()=>{ ejemplo().forEach(x=>filas.push(x)); onChange(); render(); toast("Ejemplo cargado — edítalo según tu proyecto"); };
@@ -116,6 +125,14 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
   };
   el._render = render;
   render();
+}
+
+/* arranque y filtros del variador: N.A. en las cargas que no son motores (alimentador, carga general, transformador de
+   control) y filtros N.A. si el motor no tiene variador; al volver a motor se proponen «Directo» y «Sin filtro» */
+function normalizarArranque(l){
+  if(l.kind!=="motor"){ l.starter = "na"; l.filtroVdf = "na"; return; }
+  if(!l.starter || l.starter==="na") l.starter = "dol";
+  if(l.starter!=="vfd") l.filtroVdf = "na"; else if(!l.filtroVdf || l.filtroVdf==="na") l.filtroVdf = "ninguno";
 }
 
 /* ---------------- editores ---------------- */
@@ -179,26 +196,73 @@ const ED = {
   },
   tableros(el, p, cambio){
     const d = datos(p);
+    // ancho de un campo de texto según su contenido (los textos no se cortan)
+    const ancho = (v, min) => `width:calc(${Math.max(min, String(v||"").length + 2)}ch + 18px)`;
+    const casillas = (lista, valores) => `<div class="acc-lista">${lista.map(([k, l, ayuda])=>`<label class="checkbox" ${ayuda ? `title="${esc(ayuda)}"` : ""}><input type="checkbox" data-acc="${k}" ${valores[k] ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div>`;
+    const AYUDA_ACC = {
+      ventilacion:"Ventiladores con filtro en la puerta y su circuito en el unifilar (automático: con variadores o arrancadores suaves)",
+      calefaccion:"Resistencia anticondensación con termostato (automático: temperatura mínima ≤ 5 °C, exterior o altitud ≥ 3000 m)",
+      lockout:"Bloqueo con candado del mando del interruptor general (lock out / tag out)",
+      luces:"Luces piloto de presencia de las tres fases",
+      luminaria:"Luminaria LED con interruptor de puerta y su circuito",
+      tomacorriente:"Tomacorriente doble de servicio y su circuito",
+    };
     const render = ()=>{
       const pot = tablerosPotencia(p), ctl = tablerosControl(p);
-      el.innerHTML = `<div class="table-wrap"><table class="ed-table"><thead><tr><th>Tipo</th><th>TAG</th><th>Nombre</th><th>Alimentado desde</th><th>Controlado desde</th><th>Marca</th><th>Modelo</th><th>Accesorios</th><th></th></tr></thead><tbody>
-        ${d.tableros.map((t,i)=>`<tr data-i="${i}"><td>${esc(TIPOS_TABLERO[t.tipo].nombre)}</td>
-          <td><input type="text" data-c="tag" value="${esc(t.tag)}" style="width:100px"></td><td><input type="text" data-c="nombre" value="${esc(t.nombre)}" style="width:190px"></td>
-          <td><select data-c="desde"><option value="">Externo / existente</option>${pot.filter(x=>x!==t).map(x=>`<option value="${x.id}" ${t.desde===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>${t.desde?"":` <input type="text" data-c="desdeTexto" value="${esc(t.desdeTexto||"")}" placeholder="Ej: SE-01" style="width:140px">`}</td>
-          <td>${esFuerza(t) && t.tipo!=="fuerzacontrol" ? `<select data-c="control"><option value="">${ctl[0] ? esc(ctl[0].tag)+" (por defecto)" : "—"}</option>${ctl.map(x=>`<option value="${x.id}" ${t.control===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>` : `<span class="muted">—</span>`}</td>
-          <td><input type="text" data-c="marca" value="${esc(t.marca||"")}" style="width:90px"></td><td><input type="text" data-c="modelo" value="${esc(t.modelo||"")}" style="width:90px"></td>
-          <td style="white-space:nowrap">${t.tipo!=="control" ? [["spd","SPD"],["releFase","Relé fases"],["luces","Luces"]].map(([k,l])=>`<label class="checkbox" style="font-size:12px"><input type="checkbox" data-acc="${k}" ${(t.accesorios||{})[k]?"checked":""}> ${l}</label>`).join(" ") : '<span class="muted">—</span>'}</td>
-          <td><button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button></td></tr>`).join("")}
+      el.innerHTML = `<div class="table-wrap"><table class="ed-table tb-tableros"><thead><tr><th>Tipo</th><th>TAG</th><th>Nombre</th><th>Alimentado desde</th><th>Controlado desde</th><th>Protección</th><th>Accesorios</th><th></th></tr></thead><tbody>
+        ${d.tableros.map((t,i)=>{
+          const conAcc = t.tipo!=="control", acc = conAcc ? accesoriosTablero(p, t) : {};
+          const ctlInt = t.tipo==="fuerza" || t.tipo==="fuerzacontrol";
+          return `<tr data-i="${i}"><td class="centro">${esc(TIPOS_TABLERO[t.tipo].nombre)}</td>
+          <td><input type="text" class="mono" data-c="tag" value="${esc(t.tag)}" style="${ancho(t.tag, 9)}"></td><td><input type="text" data-c="nombre" value="${esc(t.nombre)}" style="${ancho(t.nombre, 18)}"></td>
+          <td><div class="acc-lista"><select data-c="desde"><option value="">Externo / existente</option>${pot.filter(x=>x!==t).map(x=>`<option value="${x.id}" ${t.desde===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>${t.desde?"":`<input type="text" data-c="desdeTexto" value="${esc(t.desdeTexto||"")}" placeholder="Ej: SE-01" style="${ancho(t.desdeTexto, 14)}">`}
+            ${ctlInt ? `<label class="muted" style="font-size:11.5px;margin-top:4px">Control interno</label><select data-c="fuenteServicios" title="Alimentación del control interno (ventilación, luminaria, tomacorriente y tableros de control)"><option value="trafo" ${t.fuenteServicios!=="externa"?"selected":""}>Transformador propio</option><option value="externa" ${t.fuenteServicios==="externa"?"selected":""}>Segunda fuente externa</option></select>${t.fuenteServicios==="externa" ? `<input type="text" data-c="fuenteServiciosDesde" value="${esc(t.fuenteServiciosDesde||"")}" placeholder="Viene de… (ej: TD-02)" style="${ancho(t.fuenteServiciosDesde, 16)}">` : ""}` : ""}</div></td>
+          <td class="centro">${esFuerza(t) && t.tipo!=="fuerzacontrol" ? `<select data-c="control"><option value="">${ctl[0] ? esc(ctl[0].tag)+" (por defecto)" : "—"}</option>${ctl.map(x=>`<option value="${x.id}" ${t.control===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>` : `<span class="muted">—</span>`}</td>
+          <td class="centro">${conAcc ? casillas(ACC_PROTECCION, acc) : '<span class="muted">—</span>'}</td>
+          <td class="centro">${conAcc ? casillas(ACC_ACCESORIOS.map(([k, l])=>[k, l, AYUDA_ACC[k]]), acc) : '<span class="muted">—</span>'}</td>
+          <td><button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button></td></tr>`; }).join("")}
         </tbody></table></div>
         <div class="row mt-1">${Object.entries(TIPOS_TABLERO).map(([k,T])=>`<button class="btn-sm" data-addt="${k}">${ICON.plus} ${esc(T.nombre)}</button>`).join("")}</div>`;
       $$("[data-addt]", el).forEach(b=>b.onclick = ()=>{ const k = b.dataset.addt; d.tableros.push(nuevoTablero(k, d.tableros.filter(t=>t.tipo===k).length+1)); cambio(); render(); });
       $$("[data-del]", el).forEach(b=>b.onclick = ()=>{ const t = d.tableros[+b.closest("tr").dataset.i]; if(d.tableros.length<=1){ toast("El proyecto debe tener al menos un tablero", true); return; } d.tableros.splice(+b.closest("tr").dataset.i,1); d.tableros.forEach(x=>{ if(x.desde===t.id) x.desde=""; if(x.control===t.id) x.control=""; }); d.cargas.forEach(l=>{ if(l.tablero===t.id) l.tablero=""; }); instrumentos(p).forEach(i=>{ if(i.tablero===t.tag) i.tablero=""; }); cambio(); render(); });
-      $$("tr[data-i] [data-acc]", el).forEach(i=>i.onchange = ()=>{ const t = d.tableros[+i.closest("tr").dataset.i]; t.accesorios = t.accesorios || {}; t.accesorios[i.dataset.acc] = i.checked; cambio(); });
+      // ventilación y calefacción se guardan en la configuración mecánica del tablero (la usan el arreglo y el unifilar)
+      $$("tr[data-i] [data-acc]", el).forEach(i=>i.onchange = ()=>{
+        const t = d.tableros[+i.closest("tr").dataset.i], k = i.dataset.acc;
+        if(k==="ventilacion" || k==="calefaccion"){ const cfg = cfgMecanico(p, t); cfg[k] = k==="ventilacion" ? (i.checked ? "forzada" : "natural") : (i.checked ? "si" : "no"); }
+        else { t.accesorios = t.accesorios || {}; t.accesorios[k] = i.checked; }
+        cambio();
+      });
       $$("tr[data-i] [data-c]", el).forEach(i=>i.onchange = ()=>{
         const t = d.tableros[+i.closest("tr").dataset.i], k = i.dataset.c, v = i.value.trim();
         if(k==="tag"){ if(!v || d.tableros.some(x=>x!==t && x.tag===v)){ toast("TAG vacío o repetido", true); i.value = t.tag; return; } instrumentos(p).forEach(x=>{ if(x.tablero===t.tag) x.tablero = v; }); d["ins-io"].forEach(x=>{ if(x.tablero===t.tag) x.tablero = v; }); }
-        t[k] = v; cambio(); if(k==="desde") render();
+        t[k] = v; cambio(); if(k==="desde" || k==="fuenteServicios") render();
       });
+    };
+    render();
+  },
+  marcas(el, p, cambio){
+    const d = datos(p);
+    // equipos del proyecto por familia, con el modelo que resulta de la marca elegida
+    const FAM_COMP = [["interruptores", /^ITM|^Interruptor/], ["maniobra", /^Guardamotor|^Contactor|^Relé de sobrecarga/], ["variadores", /^Variador/], ["arrancadores", /^Arrancador suave/]];
+    const render = ()=>{
+      const mr = marcasProyecto(p), equipos = {};
+      for(const f of FAMILIAS_MARCA) equipos[f.k] = [];
+      for(const calc of calcularTodos(p)) for(const c of calc.circuits) for(const it of c.items||[]){
+        const f = it.rama ? ["interruptores"] : FAM_COMP.find(([, re])=>re.test(it.comp||"")); if(!f || !it.model || it.devtag==="—") continue;
+        equipos[f[0]].push(`${it.devtag} ${String(it.val||"").split(" · ")[0]} — ${modeloCorto(it.model)}`);
+      }
+      for(const t of tablerosPotencia(p)){ const a = accesoriosTablero(p, t);
+        if(a.spd) equipos.spd.push(`SPD1 (${t.tag}) — ${modeloCorto(modeloEnMarca("OVR T1-T2 3L 12.5-440s P QS", "", mr))}`);
+        if(a.releFase) equipos.reles.push(`RF (${t.tag}) — ${modeloCorto(modeloEnMarca("CM-MPS.41S", "", mr))}`); }
+      for(const t of d.tableros) equipos.gabinetes.push(`${t.tag} — ${mr.gabinetes}`);
+      const lista = eq => eq.length ? eq.slice(0, 8).map(esc).join("<br>") + (eq.length > 8 ? `<br><span class="muted">y ${eq.length - 8} más</span>` : "") : `<span class="muted">Sin equipos de esta familia en el proyecto</span>`;
+      el.innerHTML = `<div class="table-wrap"><table class="ed-table"><thead><tr><th>Familia de equipos</th><th>Sugerida</th><th>Marca</th><th>Equipos y modelos seleccionados</th></tr></thead><tbody>
+        ${FAMILIAS_MARCA.map(f=>`<tr><td>${esc(f.nombre)}</td><td class="centro">${esc(f.def)}</td>
+          <td class="centro"><select data-marca="${f.k}" style="width:calc(${Math.max(...f.opciones.map(o=>o.length))}ch + 34px)">${f.opciones.map(o=>`<option ${mr[f.k]===o?"selected":""}>${esc(o)}</option>`).join("")}</select></td>
+          <td class="izq" style="font-size:12.5px">${lista(equipos[f.k])}</td></tr>`).join("")}
+        </tbody></table></div>
+        <p class="muted mt-1" style="font-size:12px">Las equivalencias son de selección preliminar (misma corriente, polos y tipo); verifica el código final con el catálogo del fabricante elegido. Las dimensiones del arreglo mecánico son las de los equipos de referencia.</p>`;
+      $$("[data-marca]", el).forEach(sl=>sl.onchange = ()=>{ d.marcas = Object.assign({}, d.marcas||{}, { [sl.dataset.marca]: sl.value }); cambio(); render(); });
     };
     render();
   },
@@ -266,7 +330,7 @@ const ED = {
     const pot = tablerosPotencia(p);
     const def = tf(p);
     const opsT = pot.map(t=>[t.id, t.tag]);
-    d.cargas.forEach(l=>{ if(!pot.some(t=>t.id===l.tablero)) l.tablero = def.id; });
+    d.cargas.forEach(l=>{ if(!pot.some(t=>t.id===l.tablero)) l.tablero = def.id; normalizarArranque(l); });
     const nota = `<div class="ws-note mb-2">Sistema: <strong class="mono">${esc(v.tension)} Vac · 3F · ${esc(v.frecuencia)} Hz</strong> · control <strong class="mono">${esc(tensionControlTxt(v))}</strong> <a href="#/proyecto/${p.id}/editar/1" style="font-size:12px">cambiar</a></div>`;
     const wrap = document.createElement("div"); el.innerHTML = nota; el.appendChild(wrap);
     wrap._pie = pie => {
@@ -275,16 +339,18 @@ const ED = {
     tablaEditable(wrap, { filas: d.cargas, onChange: cambio, vacio:"Sin cargas. Agrega la primera fila.",
       nuevo: ()=>nuevaCarga("motor", def.id),
       extraBotones: `<button class="btn-sm" data-tip title="Vuelve a proponer FDP, EFF, FU y FS típicos en todas las cargas">Restablecer valores típicos</button>`,
-      onCell: (f, k)=>{ if(["fp","effPct","fu","fs"].includes(k)){ f.man = f.man||{}; f.man[k] = true; } if(k==="kind" && f.kind==="general"){ f.powerUnit = "kw"; if(!(f.man||{}).fp) f.fp = 0.9; } if(["power","powerUnit","regimen","kind"].includes(k)) aplicarTipicos(f); },
+      onCell: (f, k)=>{ if(["fp","effPct","fu","fs"].includes(k)){ f.man = f.man||{}; f.man[k] = true; } if(k==="kind" && f.kind==="general"){ f.powerUnit = "kw"; if(!(f.man||{}).fp) f.fp = 0.9; } if(["power","powerUnit","regimen","kind"].includes(k)) aplicarTipicos(f);
+        if(k==="kind" || k==="starter") normalizarArranque(f); },
       clase: (f, k)=>["fp","effPct","fu","fs"].includes(k) && !(f.man||{})[k] ? "tipico" : "",
       columnas:[
         { k:"tablero", t:"Tablero", op: opsT, w:100 },
-        { k:"tag", t:"TAG", w:110 }, { k:"desc", t:"Nombre de la carga", w:180 },
+        { k:"tag", t:"TAG", w:110 }, { k:"desc", t:"Nombre de la carga", w:180, izq:true },
         { k:"kind", t:"Tipo", op:[["motor","Motor"],["general","Carga general (kW)"],["control","Transformador de control"],["feeder","Alimentador"]], w:120 },
         { k:"application", t:"Aplicación", op: apps, w:200 },
         { k:"power", t:"Potencia", n:true, w:70 }, { k:"powerUnit", t:"Unidad", op:[["hp","HP"],["kw","kW"]], w:70 },
-        { k:"starter", t:"Arranque", op:[["dol","Directo"],["vfd","Variador"],["ss","Arrancador suave"]], w:130 },
-        { k:"filtroVdf", t:"Filtros del variador", op:[["ambos","Línea y carga"],["linea","Solo de línea"],["carga","Solo de carga"],["ninguno","Sin filtro"]], w:130 },
+        // arranque y filtros solo para motores (y los filtros solo con variador); en las demás cargas: N.A.
+        { k:"starter", t:"Arranque", op: f=>f.kind==="motor" ? [["dol","Directo"],["vfd","Variador"],["ss","Arrancador suave"]] : [["na","N.A."]], w:130 },
+        { k:"filtroVdf", t:"Filtros del variador", op: f=>f.kind==="motor" && f.starter==="vfd" ? [["ninguno","Sin filtro"],["linea","Solo de línea"],["carga","Solo de carga"],["ambos","Línea y carga"]] : [["na","N.A."]], w:130 },
         { k:"regimen", t:"Régimen", op: REGIMENES.map(r=>[r.v, r.label]), w:120 },
         { k:"fp", t:"FDP", n:true, w:58 }, { k:"effPct", t:"EFF (%)", n:true, w:60 }, { k:"fu", t:"FU", n:true, w:52 }, { k:"fs", t:"FS", n:true, w:52 },
         { k:"fases", t:"Fases", op:[["3","3F"],["1","1F"]], w:60 },
@@ -336,11 +402,14 @@ const ED = {
     $("[data-regen]", el).onclick = ()=>{ if(auto) d.circuitosCtl[t.id] = derivarCircuitosControl(p, t); else delete d.circuitosCtl[t.id]; cambio(); ED.circuitos(el, p, cambio, docId); };
     const box = $("[data-t]", el);
     if(auto){
-      box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Barra</th><th>Circuito</th><th>Descripción</th><th class="num">Protección (A)</th><th>Cable</th><th class="num">Potencia (W)</th></tr></thead><tbody>${filas.map(c=>`<tr><td>${esc(c.barra)}</td><td class="mono">${esc(c.circuito)}</td><td>${esc(c.descripcion)}${c.diferencial?' <span class="chip">ID 30 mA</span>':""}</td><td class="num">${c.proteccion}</td><td class="mono">${esc(c.cable)}</td><td class="num">${c.potencia??""}</td></tr>`).join("")}</tbody></table></div><p class="muted mt-1" style="font-size:12px">Potencias de 120 Vac estimadas (se usan en el listado de cargas estabilizadas); edítalas con los datos del fabricante.</p>`;
+      box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Barra</th><th>Circuito</th><th>Descripción</th><th class="num">Potencia (W)</th><th class="num">Protección (A)</th><th>Cable</th></tr></thead><tbody>${filas.map(c=>`<tr><td class="centro">${esc(c.barra)}</td><td class="mono centro">${esc(c.circuito)}</td><td>${esc(c.descripcion)}${c.diferencial?' <span class="chip">ID 30 mA</span>':""}</td><td class="num centro">${c.potencia??""}</td><td class="num centro">${c.proteccion}</td><td class="mono centro">${esc(c.cable)}</td></tr>`).join("")}</tbody></table></div><p class="muted mt-1" style="font-size:12px">Potencias de 120 Vac estimadas (se usan en el listado de cargas estabilizadas); edítalas con los datos del fabricante.</p>`;
       return;
     }
     tablaEditable(box, { filas, onChange: cambio, nuevo: ()=>({ barra:"120 Vac", circuito:"C"+(filas.length+1), descripcion:"", proteccion:6, cable:"2C#14AWG+14AWG(T)", potencia:0 }),
-      columnas:[ { k:"barra", t:"Barra", op:["24 Vdc","120 Vac","220 Vac"] }, { k:"circuito", t:"Circuito", w:60 }, { k:"descripcion", t:"Descripción", w:240 }, { k:"proteccion", t:"Protección (A)", n:true, w:70 }, { k:"diferencial", t:"ID 30 mA", chk:true }, { k:"cable", t:"Cable", w:160 }, { k:"potencia", t:"Potencia (W)", n:true, w:70 } ] });
+      // protección y cable: los calcula Ingenia con la potencia y la barra (dimensionarCircuito); el usuario edita lo demás
+      onCell: (f, k)=>{ if(k==="potencia" || k==="barra") dimensionarCircuito(f); },
+      columnas:[ { k:"barra", t:"Barra", op:["24 Vdc","120 Vac","220 Vac"] }, { k:"circuito", t:"Circuito", w:60 }, { k:"descripcion", t:"Descripción", w:240, izq:true }, { k:"potencia", t:"Potencia (W)", n:true, w:70 },
+        { calc:f=>dimensionarCircuito(f).proteccion, k:"_prot", t:"Protección (A)" }, { k:"diferencial", t:"ID 30 mA", chk:true }, { calc:f=>f.cable, k:"_cable", t:"Cable" } ] });
   },
   instrumentos(el, p, cambio){
     const d = datos(p);

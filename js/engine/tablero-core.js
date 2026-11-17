@@ -446,27 +446,37 @@ function computeCircuit(load, idx, g){
   }
 
   if(load.kind==="control"){
+    // control interno (ver controlInterno en datos.js): tensión, nombres de los equipos y derivaciones calculadas; una
+    // carga «Transformador de control» antigua sin esos datos usa la tensión de control del proyecto y los TAG por circuito
+    const nom = load.nombres || {};
     const totalBranchVA = load.controlBranches.reduce((a,br)=>a+(br.va>=0?br.va:0), 0);
-    const ctrlVA = pickStep(CTRL_XFMR_STEPS, totalBranchVA);
-    const ctrlV = parseFloat(g.ctrlVoltage) || 120, ctrlDC = g.ctrlTipo==="Vdc";
-    const secFLA = ctrlVA / ctrlV;
+    const ctrlV = parseFloat(load.ctrlV || g.ctrlVoltage) || 120, ctrlDC = (load.ctrlTipo || g.ctrlTipo)==="Vdc";
+    const externa = !!load.externa;
+    // transformador con 25 % de reserva sobre la suma de las derivaciones (potencias comerciales)
+    const ctrlVA = externa ? 0 : pickStep(CTRL_XFMR_STEPS, totalBranchVA*1.25);
+    const secFLA = (externa ? totalBranchVA : ctrlVA) / ctrlV;
     const vaPrimaryA = ctrlVA / g.voltage;
-    const mainBrk = pickStep(CTRL_BREAKER_STEPS, secFLA*1.25);
+    // el general de control es selectivo con la mayor derivación (un escalón por encima)
+    const mayor = Math.max(0, ...load.controlBranches.map(br=>+br.breaker||0));
+    const mainBrk = Math.max(pickStep(CTRL_BREAKER_STEPS, secFLA*1.25), CTRL_BREAKER_STEPS.find(a=>a > mayor) || mayor);
     const fuse = pickStep(FUSE_STEPS, vaPrimaryA*2.0);
     const ctrlEgc = egcFor(mainBrk);
     const ctrlEgcMig = miguelezCableFor(ctrlEgc[2], 1);
-    const items = [
-      {comp:"Portafusible primario (antes del transformador)", devtag:"F"+tag, model:"Fusible gG", val: fuse+"A", src:null},
-      {comp: ctrlDC ? "Fuente de alimentación de control" : "Transformador de control", devtag:"T"+tag, model: ctrlDC ? g.voltage+" Vac / "+ctrlV+" Vdc" : g.voltage+"/"+ctrlV+" Vac+T", val: ctrlVA+" VA (Σ derivaciones "+totalBranchVA.toFixed(0)+" VA)", src:null},
-      {comp:"ITM principal de control (después del transformador)", devtag:"Q"+tag, model:"ABB System pro M compact (2P)", val: "2x"+mainBrk+"A", src:DS.tmax},
-      {comp:"Conductor de puesta a tierra (EGC), secundario", devtag:"—", model: egcModelText(ctrlEgc, ctrlEgcMig), val:"NEC Tabla 250.122", src:null},
+    const kva = ctrlVA >= 1000 ? (ctrlVA/1000)+" kVA" : ctrlVA+" VA";
+    const items = externa ? [] : [
+      {comp:"Portafusible primario (antes del transformador)", devtag: nom.f ? nom.f.join(",") : "F"+tag, devtags: nom.f || null, model:"Fusible gG", val: fuse+"A", src:null},
+      {comp: ctrlDC ? "Fuente de alimentación de control" : "Transformador de control", devtag: nom.t || "T"+tag, model: ctrlDC ? g.voltage+" Vac / "+ctrlV+" Vdc" : g.voltage+"/"+ctrlV+" Vac+T", val: kva+" (Σ derivaciones "+totalBranchVA.toFixed(0)+" VA)", src:null},
     ];
-    load.controlBranches.forEach((br, bi)=>{ items.push({comp:br.label, devtag:"QC"+(bi+1)+"."+tag, model:"ABB System pro M compact (2P)", val: "2x"+br.breaker+"A"+(br.va?" · "+br.va+"VA":""), src:DS.tmax}); });
+    items.push(
+      {comp:"ITM principal de control"+(externa ? " (segunda fuente)" : " (después del transformador)"), devtag: nom.q || "Q"+tag, model:"ABB S202-C"+mainBrk+" (System pro M compact 2P)", val: "2x"+mainBrk+"A", src:DS.tmax},
+      {comp:"Conductor de puesta a tierra (EGC), secundario", devtag:"—", model: egcModelText(ctrlEgc, ctrlEgcMig), val:"NEC Tabla 250.122", src:null});
+    load.controlBranches.forEach((br, bi)=>{ items.push({comp:br.label, devtag: br.cb || "QC"+(bi+1)+"."+tag, rama:true, destino:br.destino||null, cable:br.cable||null, id: br.idTag || (br.id ? "ID"+(bi+1) : null), cfg:br.cfg||null, model:"ABB S202-C"+br.breaker+" (System pro M compact 2P)", val: "2x"+br.breaker+"A"+(br.va?" · "+br.va+"VA":""), src:DS.tmax}); });
     const installedKVA = ctrlVA/1000;
     const demandKVA = installedKVA*fu0*fs0;
     const installedCurrent = vaPrimaryA;
-    return { tag, loadId: load.id, kind:"control", title: load.desc || "Distribución de control", meta: ctrlVA+" VA (Σ derivaciones "+totalBranchVA.toFixed(0)+"VA) · sec. "+secFLA.toFixed(1)+"A · S "+demandKVA.toFixed(2)+" kVA",
-      mainContribution: fuse, demandKVA, installedKVA, installedCurrent, powerHP:null, powerKWelec:null, fp:null, effPct:null, fu:fu0, fs:fs0, conductorMemo:null, items };
+    return { tag, loadId: load.id, kind:"control", externa, ctrlV, ctrlTipo: ctrlDC ? "Vdc" : "Vac", grupoCtrl: load.grupoCtrl || 0, title: load.desc || "Distribución de control",
+      meta: (externa ? "Segunda fuente" : kva)+" (Σ derivaciones "+totalBranchVA.toFixed(0)+"VA) · sec. "+secFLA.toFixed(1)+"A · S "+demandKVA.toFixed(2)+" kVA",
+      mainContribution: externa ? 0 : fuse, demandKVA, installedKVA, installedCurrent, powerHP:null, powerKWelec:null, fp:null, effPct:null, fu:fu0, fs:fs0, conductorMemo:null, items };
   }
 
   // ---- motor ----
@@ -534,8 +544,8 @@ function computeCircuit(load, idx, g){
         loadFltItem = {comp:"Filtro de carga (dv/dt / senoidal)", devtag:"M"+tag, model:"Filtro clase "+loadFlt+"A (verificar con fabricante)", val: loadFlt+"A", src:DS.vfd};
       }
       // el usuario puede prescindir de la reactancia de línea o del filtro de carga (Copito: «Elimina LC1»)
-      // filtroVdf: "ambos" (por defecto) | "linea" | "carga" | "ninguno"
-      const fv = load.filtroVdf || "ambos";
+      // filtroVdf: "ninguno" (por defecto) | "linea" | "carga" | "ambos"
+      const fv = load.filtroVdf && load.filtroVdf!=="na" ? load.filtroVdf : "ninguno";
       if(load.sinFiltroLinea || fv==="carga" || fv==="ninguno") lineFltItem = null;
       if(load.sinFiltroCarga || fv==="linea" || fv==="ninguno") loadFltItem = null;
       const memoEgc = withEGC(cmemo, brk);

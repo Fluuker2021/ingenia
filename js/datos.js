@@ -6,6 +6,7 @@
 import { computeCircuit, pickStep, BREAKER_STEPS, tempCorrFactor, buildMainConductorSpec, APPLICATIONS, egcFor, miguelezCableFor, configurarMotor, CABLE_TABLE } from "./engine/tablero-core.js";
 import { valoresDiseno, tempDiseno, tensionControlTxt, controlEnDC } from "./modules/criterios.js";
 import { save } from "./store.js";
+import { marcasProyecto, modeloEnMarca } from "./engine/marcas.js";
 import { FAMILIAS, MODULOS, familiaPorTexto } from "./control/plc-modulos.js";
 
 export const uidc = (p="x") => p+"_"+Math.random().toString(36).slice(2,8);
@@ -101,7 +102,30 @@ export function parametrosG(p){
     flaNorma: /IEC/.test(v.corrienteMotores||"") ? "IEC" : "NEC", metodoAmp: /^75/.test(v.columnaAmpacidad||"") ? "75" : "90", minMM2: ((CABLE_TABLE.find(r=>r[0]===v.seccionMinima)||[0,0])[1]) };
 }
 const FP_CIRC = c => c.kind==="motor" ? (+c.fp||0.85) : c.kind==="control" ? 0.88 : (+c.load.fp||0.85);
-export const ACC_DEF = () => ({ spd:true, releFase:true, luces:true });
+/* accesorios de un tablero de fuerza o distribución. PROTECCIÓN: supresor de sobretensiones (OVR / SPD), relé de
+   monitoreo de fases y diferencial de 30 mA en el tomacorriente; ACCESORIOS: luminaria interna, tomacorriente, bloqueo
+   del mando del general (lock out) y luces de energizado (presencia de fases). La ventilación y la calefacción se guardan
+   en la configuración mecánica del tablero (auto / sí / no) para que el arreglo, el unifilar y el multifilar coincidan. */
+export const ACC_DEF = () => ({ spd:true, releFase:true, diferencial:true, luces:true, luminaria:true, tomacorriente:true, lockout:true });
+export const ACC_PROTECCION = [["spd","OVR / SPD","Supresor de sobretensiones tipo 1+2 en la acometida"],["releFase","Relé de fases","Relé de monitoreo de tensión: secuencia, falta y asimetría de fases"],["diferencial","Diferencial","Interruptor diferencial de 30 mA en el circuito de tomacorriente"]];
+export const ACC_ACCESORIOS = [["luminaria","Luminaria interna"],["calefaccion","Calefacción"],["ventilacion","Ventilación"],["tomacorriente","Tomacorriente"],["lockout","Lock out"],["luces","Luces de energizado"]];
+/* accesorios efectivos (con la ventilación y la calefacción resueltas): ventilación «auto» = forzada si el tablero tiene
+   variadores o arrancadores suaves (el arreglo mecánico verifica el balance térmico y avisa si no alcanza) */
+export function accesoriosTablero(p, t){
+  const a = Object.assign(ACC_DEF(), (t && t.accesorios) || {});
+  const m = (((datos(p).mecanico)||{})[t && t.id]) || {};
+  a.calefaccion = calefaccionTablero(p, t);
+  a.ventilacion = m.ventilacion==="forzada" ? true : m.ventilacion==="natural" ? false : cargasPropias(p, t).some(l=>l.kind==="motor" && (l.starter==="vfd" || l.starter==="ss"));
+  return a;
+}
+/* fusibles de la acometida de un tablero de fuerza, numerados en el orden en que aparecen: luces de fases (3), relé de
+   fases (3) y transformador de la bobina de mínima tensión del general (2); siguen los del control interno */
+export function fusiblesAcometida(acc){
+  let n = 0; const sig = k => Array.from({ length:k }, ()=>"F"+(++n));
+  const r = { luces: acc.luces ? sig(3) : [], rf: acc.releFase ? sig(3) : [], uvr: sig(2) };
+  r.siguiente = () => "F"+(++n);
+  return r;
+}
 
 /* ---------------- valores típicos de cargas ---------------- */
 // Eficiencia nominal NEMA Premium, motor TEFC 4 polos 60 Hz (NEMA MG-1, Tabla 12-12)
@@ -131,15 +155,90 @@ export function aplicarTipicos(l){
 
 /* ---------------- cargas ---------------- */
 export function nuevaCarga(kind="motor", tablero=""){
-  return aplicarTipicos({ id: uidc("L"), kind, tablero, tag:"", application:"otro", desc:"", power:10, powerUnit:"hp", starter:"dol", vfdBrand:"abb", filtroVdf:"ambos", regimen:"continuo", man:{},
+  return aplicarTipicos({ id: uidc("L"), kind, tablero, tag:"", application:"otro", desc:"", power:10, powerUnit:"hp", starter: kind==="motor" ? "dol" : "na", vfdBrand:"abb", filtroVdf: kind==="motor" ? "ninguno" : "na", regimen:"continuo", man:{},
     fp:0.85, effPct:90, fu:1, fs:1, cableLength:30, feederAmps:30, cableTag:"", canalizacion:"",
     controlBranches:[{label:"Control (PLC / instrumentación)", breaker:10, va:150},{label:"Ventiladores internos", breaker:6, va:200},{label:"Calefacción interna", breaker:6, va:300},{label:"Luminaria interna", breaker:4, va:60}] });
 }
-/* cargas de un tablero: las asignadas + (tablero de distribución) un alimentador por cada tablero aguas abajo */
+/* cargas asignadas a un tablero (las que no tienen tablero válido van al tablero de fuerza principal) */
+export function cargasPropias(p, t){
+  const d = datos(p), ids = new Set(tableros(p).map(x=>x.id)), def = tf(p);
+  return d.cargas.filter(l=> ids.has(l.tablero) ? l.tablero===t.id : t && t.id===def.id);
+}
+/* ---------------- control interno de un tablero de fuerza ----------------
+   Criterio (unifilar de referencia): portafusibles → transformador (p. ej. 460/220 Vac+T) → interruptor general de
+   control → barra «R,S 220 Vac, 1F, 60 Hz, 10 kA» → un circuito por destino con su ITM 2P y su cable: alimentación a los
+   tableros de control que dependen del tablero, ventiladores, calefacción, luminaria y tomacorriente (con diferencial de
+   30 mA). Con dos tensiones de control (p. ej. 120 y 220 Vac) hay un transformador por tensión: la principal alimenta el
+   control (barra estabilizada de los tableros de control) y la segunda los servicios. La barra de servicios puede llegar
+   de una segunda fuente externa (t.fuenteServicios = "externa") en lugar del transformador. */
+const ESC_CTRL = [2, 4, 6, 10, 16, 20, 25, 32, 40, 50, 63];
+const escalon = (a, min=2) => ESC_CTRL.find(x=>x >= Math.max(min, a) - 1e-9) || 63;
+const sobre = a => ESC_CTRL.find(x=>x > a) || 63;            // escalón siguiente (selectividad con el interruptor aguas abajo)
+const awgCtrl = (a, interno) => a <= 6 && interno ? 16 : a <= 15 ? 14 : a <= 20 ? 12 : a <= 30 ? 10 : 8;
+export function controlInterno(p, t){
+  if(!t || !(t.tipo==="fuerza" || t.tipo==="fuerzacontrol")) return [];
+  const v = valoresDiseno(p), acc = accesoriosTablero(p, t);
+  const v1 = parseFloat(v.tensionControl) || 120, dc1 = controlEnDC(v);
+  // tableros de control que se alimentan de este tablero: barra estabilizada (desde) y servicios de 220 Vac
+  const ctls = tablerosControl(p).filter(x=>x.tipo==="control");
+  const primeraFuerza = tablerosPotencia(p).find(esFuerza);
+  const est = ctls.filter(x=>x.desde===t.id);
+  const aux = ctls.filter(x=>{ if(x.alimAux==="no") return false; const up = x.desde ? tableroPorId(p, x.desde) : null; return (up && esFuerza(up) ? up : primeraFuerza) === t; })
+    .filter(x=>circuitosControl(p, x).some(c=>c.barra==="220 Vac"));
+  const v2in = parseFloat(v.tensionControl2), v2ok = v2in > 0 && v.tensionControl2Tipo!=="Vdc" && v2in!==v1;
+  // segunda tensión: la indicada; si no hay y un tablero de control necesita sus servicios de 220 Vac, 220 Vac
+  const v2 = v2ok ? v2in : (aux.length && (dc1 || v1!==220) ? 220 : null);
+  const w = (x, barra) => circuitosControl(p, x).filter(c=>c.barra===barra).reduce((a, c)=>a + (+c.potencia||0), 0);
+  const ramasCtl = [], ramasSrv = [];
+  for(const x of est){
+    // el interruptor del circuito es un escalón mayor que el general de la acometida del tablero de control (MCB1)
+    const wE = w(x, "120 Vac") + w(x, "24 Vdc")*1.5, a = sobre(escalon(1.25*wE/120, 16));
+    ramasCtl.push({ label:`Hacia el tablero de control ${x.tag}`, destino:`HACIA EL ${(x.nombre||"tablero de control").toUpperCase()} ${x.tag}`, breaker:a, va:Math.round(wE), cfg:"tc:"+x.id, externo:true });
+  }
+  for(const x of aux){
+    const wA = w(x, "220 Vac"), a = sobre(escalon(1.25*wA/220, 10));
+    (v2 ? ramasSrv : ramasCtl).push({ label:`Hacia el tablero de control ${x.tag} (servicios)`, destino:`HACIA EL ${(x.nombre||"tablero de control").toUpperCase()} ${x.tag} (SERVICIOS)`, breaker:a, va:Math.round(wA), cfg:"tca:"+x.id, externo:true });
+  }
+  const srv = v2 ? ramasSrv : ramasCtl, vs = v2 || v1;
+  const rama = (label, destino, va, min, cfg, extra) => { const a = escalon(1.25*va/(vs*0.9), min); srv.push(Object.assign({ label, destino, breaker:a, va, cfg }, extra||{})); };
+  if(acc.ventilacion) rama("Ventiladores", "VENTILADORES", 200, 6, "ventilacion");
+  if(acc.calefaccion) rama("Calefacción anticondensación", "CALEFACCIÓN", 100, 6, "calefaccion");
+  if(acc.luminaria) rama("Luminaria interna", "LUMINARIA", 40, 4, "luminaria");
+  if(acc.tomacorriente) rama("Tomacorriente", "TOMACORRIENTE", 180, 4, "tomacorriente", { id: acc.diferencial!==false });
+  const fuente = t.fuenteServicios==="externa" ? "externa" : "trafo";
+  const grupos = [];
+  if(ramasCtl.length || !v2) grupos.push({ v:v1, tipo: dc1 ? "Vdc" : "Vac", ramas:ramasCtl, fuente: !v2 ? fuente : "trafo", desde: t.fuenteServiciosDesde || "" });
+  if(v2 && ramasSrv.length) grupos.push({ v:v2, tipo:"Vac", ramas:ramasSrv, fuente, desde: t.fuenteServiciosDesde || "" });
+  // nombres comunes a todos los entregables: fusibles después de los de la acometida, transformadores después del de la
+  // bobina de mínima tensión (T1), interruptores generales QG2…, circuitos CB2… (CB1 es el de la bobina) y diferenciales ID1…
+  const fus = fusiblesAcometida(acc); let nCB = 1, nID = 0;
+  grupos.forEach((g, i)=>{
+    g.n = i + 1;
+    g.nombres = { f: g.fuente==="trafo" ? [fus.siguiente(), fus.siguiente()] : [], t: g.fuente==="trafo" ? "T"+(i+2) : "", q:"QG"+(i+2) };
+    g.ramas.forEach(r=>{ r.cb = "CB"+(++nCB); if(r.id) r.idTag = "ID"+(++nID); const a = r.breaker; r.cable = `2C#${awgCtrl(a, !r.externo)}AWG+${awgCtrl(a, !r.externo)}AWG(T)`; });
+  });
+  return grupos;
+}
+/* circuito del tablero de fuerza que alimenta a un tablero de control («CB2»): barra estabilizada (est) o servicios (aux) */
+export function circuitoHaciaControl(p, x, cual="est"){
+  const clave = (cual==="aux" ? "tca:" : "tc:") + x.id;
+  for(const t of tablerosPotencia(p)) for(const g of controlInterno(p, t)){ const r = g.ramas.find(r=>r.cfg===clave); if(r) return r.cb; }
+  return "";
+}
+/* cargas de un tablero: las asignadas + (tablero de distribución) un alimentador por cada tablero aguas abajo + (tablero
+   de fuerza) su control interno: un transformador de control por tensión (si el usuario agregó cargas «Transformador de
+   control», la primera toma el lugar del primer grupo con sus derivaciones calculadas) */
 export function cargasDe(p, t, _depth=0){
-  const d = datos(p), ids = new Set(tableros(p).map(x=>x.id));
-  const def = tf(p);
-  const propias = d.cargas.filter(l=> ids.has(l.tablero) ? l.tablero===t.id : t.id===def.id);
+  const d = datos(p);
+  const propias = cargasPropias(p, t).slice();
+  const grupos = _depth < 4 ? controlInterno(p, t) : [];
+  grupos.forEach((g, i)=>{
+    const ramas = g.ramas.map(r=>({ label:r.label, destino:r.destino, breaker:r.breaker, va:r.va, cfg:r.cfg, cb:r.cb, id:!!r.id, idTag:r.idTag, cable:r.cable, externo:!!r.externo }));
+    const k = i===0 ? propias.findIndex(l=>l.kind==="control") : -1;
+    const base = k >= 0 ? propias[k] : { id:`ctl_${t.id}_${g.n}`, kind:"control", tag:"", desc:`Control interno ${g.v} ${g.tipo}`, fu:1, fs:1, cableLength:0, auto:true };
+    const l = Object.assign({}, base, { controlBranches: ramas, ctrlV:g.v, ctrlTipo:g.tipo, externa: g.fuente==="externa", externaDesde:g.desde, nombres:g.nombres, grupoCtrl:g.n });
+    if(k >= 0) propias[k] = l; else propias.push(l);
+  });
   const extra = [];
   if(_depth<4) for(const h of tableros(p).filter(x=>x.desde===t.id && esPotencia(x))){
     const ch = calcularTablero(p, h, _depth+1);
@@ -154,7 +253,7 @@ export function calcularTablero(p, t, _depth=0){
   const g = parametrosG(p);
   configurarMotor({ flaNorma: g.flaNorma, minMM2: g.minMM2, metodo: g.metodoAmp, ambient: g.ambientTemp, kGroup: g.kGroup });
   const loads = cargasDe(p, t, _depth);
-  const circuits = [];
+  const circuits = [], mr = marcasProyecto(p);
   loads.forEach((l, i)=>{
     let c;
     if(l.kind==="general"){
@@ -171,8 +270,10 @@ export function calcularTablero(p, t, _depth=0){
     } else {
       // la corriente nominal siempre se calcula (no se usa corriente de placa ingresada a mano) y el
       // transformador de control trabaja con la tensión de control del proyecto
-      c = computeCircuit(Object.assign({}, l, { inPlaca: 0 }), i, g);
+      c = computeCircuit(Object.assign({}, l, { inPlaca: 0 }, mr.variadores==="Allen-Bradley" ? { vfdBrand:"rockwell" } : mr.variadores==="ABB" ? { vfdBrand:"abb" } : {}), i, g);
     }
+    // modelos en la marca confirmada por el usuario (panel «Marcas de los equipos»)
+    if(c) for(const it of c.items||[]) if(it.model) it.model = modeloEnMarca(it.model, it.val, mr);
     if(c){ c.load = l; c.cargaTag = l.tag || c.tag; c.descLabel = c.descLabel || l.desc || c.title; c.tablero = t; circuits.push(c); }
   });
   let mainBreaker = 0, totalKVA = 0, demandCurrent = 0, requiredNEC = 0, requiredDemand = 0, installedKVA = 0, installedCurrent = 0, maxC = 0, sumOthers = 0, fpSistema = 0, fpInstalado = 0;
@@ -425,12 +526,27 @@ export function derivarCircuitosControl(p, t){
   c220.push({ descripcion:"Alimentación al tomacorriente", proteccion:4, diferencial:true, cfg:"tomacorriente" });
   if(calefaccionTablero(p, t)) c220.push({ descripcion:"Calefacción anticondensación", proteccion:6, potencia:100, cfg:"calefaccion" });
   if(luces && !omL.includes("220")) c220.push({ descripcion:"Luz piloto de presencia de tensión 220 Vac", proteccion:2, potencia:1, cfg:"luz220" });
-  const add = (arr, barra, cable)=>arr.map((c,i)=>Object.assign({ barra, circuito:"C"+(i+1), cable }, c));
+  const add = (arr, barra, cable)=>arr.map((c,i)=>dimensionarCircuito(Object.assign({ barra, circuito:"C"+(i+1), cable }, c)));
   return [
     ...add(c24, "24 Vdc", "2C#14AWG+14AWG(T)"),
     ...add(c120, "120 Vac", "2C#14AWG+14AWG(T)"),
     ...add(c220, "220 Vac", "2C#14AWG+14AWG(T)"),
   ];
+}
+/* protección y cable de un circuito de control: los calcula Ingenia (el usuario no los ingresa).
+   I = P / V (P / (V · 0,9) en alterna), corriente de diseño 1,25 · I, el escalón siguiente de fusible (24 Vdc) o de ITM
+   curva C (alterna), sin bajar del mínimo del tipo de circuito (fuente de 24 Vdc 10 A por la corriente de conexión,
+   ventilación 4 A, luminaria y calefacción 6 A, tomacorriente 4 A; 1 A en 24 Vdc y 2 A en alterna); cable según la
+   protección (14 AWG hasta 15 A, 12 AWG hasta 20 A, 10 AWG hasta 30 A). */
+const MIN_CIRCUITO = { fuente:10, ventilacion:4, luminaria:6, calefaccion:6, tomacorriente:4 };
+export function dimensionarCircuito(c){
+  const dc = /24\s*V/i.test(c.barra||""), v = dc ? 24 : (parseFloat(c.barra)||120);
+  const i = (+c.potencia||0)/(dc ? v : v*0.9), req = 1.25*i;
+  const pasos = dc ? [0.5, 1, 2, 4, 6, 10] : [2, 4, 6, 10, 16, 20, 25, 32];
+  const min = (c.cfg && MIN_CIRCUITO[c.cfg]) || (dc ? 1 : 2);
+  const a = Math.max(min, pasos.find(x=>x >= req - 1e-9) ?? pasos[pasos.length-1]);
+  const awg = a <= 15 ? 14 : a <= 20 ? 12 : a <= 30 ? 10 : 8;
+  return Object.assign(c, { proteccion:a, cable:`2C#${awg}AWG+${awg}AWG(T)` });
 }
 /* circuitos del tablero de control: los derivados del proyecto o los editados por el usuario, sincronizados:
    los circuitos de instrumentos y equipos que ya no existen se retiran y los nuevos se agregan antes de las
@@ -438,7 +554,7 @@ export function derivarCircuitosControl(p, t){
 export function circuitosControl(p, t){
   t = t || tc(p); const d = datos(p); const man = d.circuitosCtl[t.id];
   const auto = derivarCircuitosControl(p, t);
-  return man && man.length ? sincronizarCircuitos(man, auto) : auto;
+  return man && man.length ? sincronizarCircuitos(man, auto).map(dimensionarCircuito) : auto;
 }
 const CFG_DESC = [["luz24",/luz piloto de 24/i],["luz120",/luces piloto de presencia/i],["luz220",/luz piloto de presencia de tensi[oó]n 220/i],["calefaccion",/calefacci/i],["plc",/al plc/i],["ai",/entradas anal/i],["ao",/salidas anal/i],["hmi",/\bhmi\b/i],["router",/router/i],["switch",/switch/i],["fuente",/fuente de 24/i],["di",/entradas digitales/i],["do",/salidas digitales/i],["limpieza",/controlador de limpieza/i],["ventilacion",/ventilaci/i],["luminaria",/luminaria/i],["tomacorriente",/tomacorriente/i]];
 export function sincronizarCircuitos(man, auto){
@@ -470,15 +586,16 @@ export function equiposElectricos(p){
   const sist = sistemaNombre(p).toUpperCase() + (sistemaTag(p) ? "\n"+sistemaTag(p) : "");
   const filas = [];
   const fuerza = `${v.tension} Vac / ${v.frecuencia} Hz / 3F`, ctrl = controlEnDC(v) ? tensionControlTxt(v) : `${tensionControlTxt(v)} / ${v.frecuencia} Hz / 1F`;
+  const mr = marcasProyecto(p);
   for(const t of tableros(p)){
-    filas.push({ sistema:sist, cant:1, tag:t.tag, descripcion:(t.nombre||TIPOS_TABLERO[t.tipo].nombre).toUpperCase(), marca:t.marca||"", modelo:t.modelo||"", tension: t.tipo==="control" ? ctrl : fuerza, plano:"", notas: "", _doc: t.tipo==="control" ? "ins-unifilar-tc" : "ele-unifilar" });
+    filas.push({ sistema:sist, cant:1, tag:t.tag, descripcion:(t.nombre||TIPOS_TABLERO[t.tipo].nombre).toUpperCase(), marca:t.marca || mr.gabinetes, modelo:t.modelo||"", tension: t.tipo==="control" ? ctrl : fuerza, plano:"", notas: "", _doc: t.tipo==="control" ? "ins-unifilar-tc" : "ele-unifilar" });
   }
   if(d.equiposCfg.incluirEquipos) for(const calc of calcularTodos(p)) for(const c of calc.circuits){
     if(c.kind!=="motor") continue;
     const l = c.load;
     filas.push({ sistema:sist, cant:1, tag:l.tag||("M"+c.tag), descripcion:"MOTOR "+(l.desc||"").toUpperCase()+" · "+l.power+" "+(l.powerUnit==="hp"?"HP":"kW"), marca:"", modelo:"", tension:fuerza, plano:"", notas:"Tablero "+calc.tablero.tag, _doc:"ele-unifilar" });
     const vfd = c.items.find(it=>/^VDF/.test(it.devtag||""));
-    if(vfd) filas.push({ sistema:sist, cant:1, tag:(l.tag||c.tag)+"-VFD", descripcion:"VARIADOR DE FRECUENCIA "+(l.desc||"").toUpperCase(), marca:/Allen|PowerFlex/.test(vfd.model)?"Allen-Bradley":"ABB", modelo:vfd.model.replace(/^ABB /,""), tension:fuerza, plano:"", notas:"Tablero "+calc.tablero.tag, _doc:"ele-unifilar" });
+    if(vfd) filas.push({ sistema:sist, cant:1, tag:(l.tag||c.tag)+"-VFD", descripcion:"VARIADOR DE FRECUENCIA "+(l.desc||"").toUpperCase(), marca:/Allen|PowerFlex/.test(vfd.model) ? "Allen-Bradley" : mr.variadores, modelo:vfd.model.replace(/^(ABB|Schneider|Siemens|Danfoss|Allen-Bradley) /,""), tension:fuerza, plano:"", notas:"Tablero "+calc.tablero.tag, _doc:"ele-unifilar" });
   }
   return filas;
 }

@@ -6,7 +6,7 @@ import { esc } from "./ui.js";
 import { valoresDiseno, tensionControlTxt, tensionEstabilizada, tempDiseno, seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { procesarFilas, resumenIO, ESQUEMAS } from "./modules/tablas.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, circuitosControl, instrumentos, expandirTag, tipoInstrumento, esAnalogico, sistemaTag, sistemaNombre, r2, parametrosG,
-  tableros, tablerosControl, tableroPorId, tf, tc, desdeTxt, esControl, esPotencia, TIPOS_TABLERO, ipRecomendado, cablesFuerza, CLASES_CABLE, CANALIZACIONES } from "./datos.js";
+  tableros, tablerosControl, tableroPorId, tf, tc, desdeTxt, esControl, esPotencia, TIPOS_TABLERO, ipRecomendado, cablesFuerza, CLASES_CABLE, CANALIZACIONES, controlInterno, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS } from "./datos.js";
 import { seccionesFilosofia, seccionesTipicos, datosFilosofia, prepararFilosofia } from "./modules/filosofia.js";
 import { tempCorrFactor, cableFor, miguelezCableFor } from "./engine/tablero-core.js";
 import { rellenarExcel } from "./xlsx-engine.js";
@@ -201,6 +201,9 @@ export function camposHDEq(p, t){
     const c = calcularTablero(p, t);
     sec("CARACTERÍSTICAS ELÉCTRICAS");
     f("Tensión nominal", "Vac", g.voltage); f("Número de fases / hilos", "", "3F + T"); f("Frecuencia", "Hz", g.freq); f("Tensión de control", v.tensionControlTipo, v.tensionControl);
+    { const ci = controlInterno(p, t); if(ci.length > 1) f("Tensión de servicios (ventilación, luminaria, tomacorriente)", ci[1].tipo, ci[1].v);
+      if(ci.some(g=>g.fuente==="externa")) f("Alimentación del control interno", "", `Segunda fuente externa${t.fuenteServiciosDesde ? " desde "+t.fuenteServiciosDesde : ""}`);
+      const a = accesoriosTablero(p, t); f("Protecciones de la acometida", "", ACC_PROTECCION.filter(([k])=>a[k]).map(([, l])=>l).join(", ") || "—"); f("Accesorios", "", ACC_ACCESORIOS.filter(([k])=>a[k]).map(([, l])=>l).join(", ") || "—"); }
     f("Nivel de cortocircuito (capacidad mínima de interrupción)", "kA", g.faultLevel);
     f("Interruptor general", "A", c.mainBreaker ? "3x"+c.mainBreaker : ""); f("Corriente nominal de barras (mínima)", "A", c.mainBreaker || "");
     f("Potencia instalada", "kVA", r2(c.installedKVA,2)); f("Máxima demanda", "kVA", r2(c.totalKVA,2)); f("Corriente de máxima demanda", "A", r2(c.demandCurrent,2));
@@ -242,9 +245,9 @@ export const DOCS = {
   "ele-hd": { formato:"xlsx", plantilla:"xlsx/hoja_datos_instrumentos.xlsx", man:"hoja_datos_instrumentos", ref:"Hoja de datos: carátula + índice + una hoja por tablero", editores:["hdEq"] },
   "ele-mc": { formato:"docx", plantilla:"docx/memoria_conductores.docx", ref:"Memoria de cálculo con anexos de conductores y protecciones", editores:["memoria"] },
   "ele-md": { formato:"docx", plantilla:"docx/memoria_md.docx", ref:"Memoria de cálculo con anexo de máxima demanda", editores:[] },
-  "ele-unifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros"] },
-  "ele-multifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["cargas"] },
-  "ele-mecanico": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["mecanico"], vista3d:true },
+  "ele-unifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros","marcas"] },
+  "ele-multifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["cargas","marcas"] },
+  "ele-mecanico": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["mecanico","marcas"], vista3d:true },
   "ele-arreglo": { formato:"dxf", ref:"Lámina A1 sobre la planta del cliente", editores:["arreglo"] },
   "ins-pid": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["proceso"] },
   "ins-instrumentos": { formato:"xlsx", plantilla:"xlsx/lista_instrumentos.xlsx", man:"lista_instrumentos", ref:"Listado de instrumentos: carátula + listado", editores:["instrumentos","notas"] },

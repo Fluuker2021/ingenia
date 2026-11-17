@@ -8,8 +8,11 @@ export const PARAMETROS_DISENO = [
     { key:"tension", label:"Tensión de fuerza (Vac)", tipo:"numero", def:"460", ph:"Ej: 460" },
     { key:"frecuencia", label:"Frecuencia (Hz)", tipo:"select", opciones:["50","60"], def:"60" },
     { key:"tensionControl", label:"Tensión de control", tipo:"tension", unidad:"tensionControlTipo", unidades:["Vac","Vdc"], def:"120", ph:"Ej: 120" },
+    // segunda tensión de control (p. ej. 120 y 220 Vac): opcional; el control interno de los tableros de fuerza deriva una
+    // barra por cada tensión desde su transformador
+    { key:"tensionControl2", label:"2.ª tensión de control (opcional)", tipo:"tension", unidad:"tensionControl2Tipo", unidades:["Vac","Vdc"], def:"", ph:"Ej: 220" },
     { key:"tensionInstr", label:"Tensión de instrumentación (Vdc)", tipo:"numero", def:"24", ph:"Ej: 24" },
-    { key:"icc", label:"Nivel de cortocircuito en el punto de conexión (kA)", tipo:"numero", def:"25" },
+    { key:"icc", label:"Cortocircuito en la conexión (kA)", tipo:"numero", def:"25", hint:"Nivel de cortocircuito en el punto de conexión." },
   ]},
   { grupo:"Condiciones ambientales del sitio", campos:[
     { key:"ubicacion", label:"Ubicación (región / distrito)", tipo:"text", def:"" },
@@ -42,10 +45,14 @@ export function valoresDiseno(p){
   return d;
 }
 /* tensión de control con su tipo (p. ej. «120 Vac» o «24 Vdc») */
-export const tensionControlTxt = v => `${v.tensionControl} ${v.tensionControlTipo==="Vdc" ? "Vdc" : "Vac"}`;
+/* tensión de control principal («120 Vac») y, con la segunda fuente, ambas («120 Vac y 220 Vac») */
+export const tensionControl1Txt = v => `${v.tensionControl} ${v.tensionControlTipo==="Vdc" ? "Vdc" : "Vac"}`;
+export const tensionControlTxt = v => tensionControl1Txt(v) + (parseFloat(v.tensionControl2) > 0 && parseFloat(v.tensionControl2)!==parseFloat(v.tensionControl) ? ` y ${parseFloat(v.tensionControl2)} ${v.tensionControl2Tipo==="Vdc" ? "Vdc" : "Vac"}` : "");
+/* tensiones de control del proyecto: [{ v:120, tipo:"Vac" }, …] (la segunda es opcional) */
+export const tensionesControl = v => [[v.tensionControl, v.tensionControlTipo], [v.tensionControl2, v.tensionControl2Tipo]].filter(([x])=>parseFloat(x) > 0).map(([x, t])=>({ v:parseFloat(x), tipo: t==="Vdc" ? "Vdc" : "Vac" }));
 export const controlEnDC = v => v.tensionControlTipo==="Vdc";
 /* tensión estabilizada que alimenta los tableros de control (barra de 120 Vac si el control es en Vdc) */
-export const tensionEstabilizada = v => controlEnDC(v) ? "120 Vac" : tensionControlTxt(v);
+export const tensionEstabilizada = v => controlEnDC(v) ? "120 Vac" : tensionControl1Txt(v);
 /* temperatura de diseño = temperatura máxima del sitio */
 export const tempDiseno = v => { const t = parseFloat(v.tempMax); return isNaN(t) ? 40 : t; };
 

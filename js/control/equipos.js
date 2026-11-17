@@ -10,7 +10,7 @@
    · servicios del tablero en 220 Vac (ventilación, luminaria y tomacorriente con diferencial de 30 mA);
    · PLC con su CPU en el slot 0 y los módulos de E/S por tipo (AI, AO, DO, DI), relés de interfaz CRn para las
      salidas digitales y una bornera por módulo (TB = slot + desplazamiento, como el listado I/O). */
-import { datos, tablerosControl, tablerosPotencia, tableroPorId, circuitosControl, desdeTxt, esFuerza, tc as tcPrincipal, instrumentos, expandirTag } from "../datos.js";
+import { datos, tablerosControl, tablerosPotencia, tableroPorId, circuitosControl, desdeTxt, esFuerza, tc as tcPrincipal, instrumentos, expandirTag, circuitoHaciaControl } from "../datos.js";
 import { valoresDiseno, tensionEstabilizada } from "../modules/criterios.js";
 import { procesarFilas } from "../modules/tablas.js";
 import { FAMILIAS, familiaPorTexto, modeloFamilia, infoModulo, terminalesCanal } from "./plc-modulos.js";
@@ -53,11 +53,11 @@ export function equiposControl(p, t){
   const w220 = c220.reduce((a, c)=>a + (+c.potencia||0), 0);
   const conAux = c220.length > 0 && t.alimAux!=="no";
   const acometidas = [{
-    id:"est", tb:"TB1", tension:vEst, fases:"1F+N+T", desde: t.desde120 || (t.desdeTexto && !up ? t.desdeTexto : desdeTxt(p, t)), circuito: t.circuito120 || "",
+    id:"est", tb:"TB1", tension:vEst, fases:"1F+N+T", desde: t.desde120 || (t.desdeTexto && !up ? t.desdeTexto : desdeTxt(p, t)), circuito: t.circuito120 || circuitoHaciaControl(p, t, "est"),
     q:{ tag:"MCB1", tipo:"mcb", polos:2, in:itmPara(w120, 120, 16), desc:`Interruptor general de ${vEst}` }, cable:"2C#12AWG+12AWG(T)",
   }];
   if(conAux) acometidas.push({
-    id:"aux", tb:"TB2", tension:"220 Vac", fases:"2F+T", desde: fuerza ? `${fuerza.nombre||"Tablero de fuerza"} ${fuerza.tag}` : "Tablero de fuerza", circuito: t.circuito220 || "",
+    id:"aux", tb:"TB2", tension:"220 Vac", fases:"2F+T", desde: fuerza ? `${fuerza.nombre||"Tablero de fuerza"} ${fuerza.tag}` : "Tablero de fuerza", circuito: t.circuito220 || circuitoHaciaControl(p, t, "aux"),
     q:{ tag:"MCB2", tipo:"mcb", polos:2, in:itmPara(w220, 220, 10), desc:"Interruptor general de 220 Vac (servicios del tablero)" }, cable:"2C#12AWG+12AWG(T)",
   });
   acometidas.forEach(a=>{ a.q.modelo = mcbModelo(2, a.q.in); a.q.val = `2x${a.q.in}A`; });

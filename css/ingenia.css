@@ -255,7 +255,7 @@ details.more > summary::-webkit-details-marker{display:none;}
 /* ---------- tablas ---------- */
 .table-wrap{overflow:auto; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface);}
 table{border-collapse:collapse; width:100%; font-size:13px;}
-th{background:var(--gris-50); text-align:left; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--acero); padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap;}
+th{background:var(--gris-50); text-align:center; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--acero); padding:9px 12px; border-bottom:1px solid var(--border); white-space:nowrap;}
 td{padding:8px 12px; border-bottom:1px solid var(--border); vertical-align:top;}
 tr:last-child td{border-bottom:none;}
 tbody tr:hover td{background:#FAFBFC;}
@@ -378,6 +378,11 @@ canvas.preview{width:100%; border:1px solid var(--border); border-radius:var(--r
 .ed-table input[type=text], .ed-table input[type=number]{padding:5px 7px; font-size:12.5px;}
 .ed-table select{padding:5px 6px; font-size:12.5px;}
 .ed-table td{padding:4px 6px;}
+/* valores centrados (la descripción a la izquierda) */
+.ed-table input[type=text], .ed-table input[type=number], .ed-table select{text-align:center; text-align-last:center;}
+.ed-table input.izq, .ed-table select.izq{text-align:left; text-align-last:left;}
+.ed-table td.centro{text-align:center;}
+.ed-table th{white-space:normal; vertical-align:middle;}
 .sec-row td{background:var(--gris-50); font-weight:600; font-size:12px; color:var(--grafito);}
 /* vista previa de documentos con los colores de INGENIA: grafito (negro) y amarillo eléctrico */
 .xl-sheet{background:#fff; border:1px solid var(--border); border-top:4px solid var(--grafito); border-radius:var(--radius); padding:14px;}
@@ -559,3 +564,7 @@ td.num.err{color:var(--err); font-weight:600;}
 .cp-afect{ margin-top:8px; padding:8px 10px; border-left:3px solid var(--amarillo); background:rgba(245,197,24,.08); border-radius:6px; font-size:12.5px; line-height:1.5 }
 .cp-afect a{ white-space:nowrap }
 .cp-docbar .muted{ font-size:12.5px }
+/* tabla de tableros: listas de casillas (protección / accesorios) en columna, sin cortar los textos */
+.acc-lista{display:flex; flex-direction:column; gap:3px; align-items:flex-start;}
+.acc-lista .checkbox{font-size:12.5px; white-space:nowrap; margin:0;}
+.tb-tableros td{vertical-align:top;}

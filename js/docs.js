@@ -164,7 +164,7 @@ export function datosMemoria(p){
       const iprot = parseFloat(String(main.val||"").replace(/^.*?x/,"")) || parseFloat(main.val) || 0;
       const id = m ? m.designCurrent : (c.installedCurrent||0)*1.25;
       const ic = m && m.cable ? (m.iadm ?? m.cable[2])*(m.kt ?? kt)*kg : null;
-      const tipo = /Guardamotor/i.test(main.comp) ? "Guardamotor" : /fusible/i.test(main.comp) ? "Fusible" : (iprot<=63 && /2P|System pro/i.test(main.model) ? "MCB" : "MCCB");
+      const tipo = /Guardamotor/i.test(main.comp) ? "Guardamotor" : /fusible/i.test(main.comp) ? "Fusible" : (main.mcb || (iprot<=63 && /2P|System pro|\bS20\d|MCB/i.test(main.model)) ? "MCB" : "MCCB");
       prot.push({ titulo: `${tb.tag} — ${c.load.desc || c.title}`, i: r2(m ? m.baseCurrent : c.installedCurrent, 2), fases:"Trifásico", tipo, iprot, id: r2(id,2), kh, ireq: r2(id/kh,2), cumple_prot: iprot >= id/kh - 1e-9 ? "CUMPLE" : "VERIFICAR", ic: ic!=null ? r2(ic,1) : "—", iprot_kh: r2(iprot*kh,1), cumple_comp: ic==null ? "—" : (ic >= iprot*kh*0.8 ? "CUMPLE" : "VERIFICAR") });
       anexoP.push({ circuito:tb.tag+" "+c.tag, descripcion:c.load.desc||c.title, i: r2(m ? m.baseCurrent : c.installedCurrent,2), tipo, modelo: main.model, iprot: main.val, criterio: ((main.model||"").match(/\(([^)]*)\)/)||[])[1]||"" });
       anexoMD.push({ n:anexoMD.length+1, tag:(c.load.tag||c.tag)+" ("+tb.tag+")", descripcion:c.load.desc||c.title, kw: c.kind==="motor"? r2(c.powerKWelec,2) : "-", fp: c.kind==="motor"? c.fp : "-", eff: c.kind==="motor"? r2(c.effPct/100,3) : "-", si: r2(c.installedKVA,2), fu:c.fu, fs:c.fs, md: r2(c.installedKVA*c.fu*c.fs,2), in: r2(c.installedCurrent,2) });

@@ -403,6 +403,16 @@ function buildMainConductorSpec(designCurrent, tempF){
 }
 
 function tagFor(idx){ return "C"+(idx+1); }
+/* interruptor de un alimentador / carga general: hasta 63 A, interruptor miniatura (MCB) curva C en los escalones de
+   2…63 A, como en los tableros de distribución de referencia (no una caja moldeada de 16 A para una carga de 2 A);
+   por encima, caja moldeada. polos: 3 (trifásico) o 2 (monofásico entre fases). */
+const MCB_MAX = 63, MCB_STEPS = CTRL_BREAKER_STEPS.filter(a=>a <= MCB_MAX);
+function breakerAlimentador(amps, polos=3){
+  const req = amps*1.25;
+  if(req <= MCB_MAX){ const a = pickStep(MCB_STEPS, req); return { a, mcb:true, model:`ABB S20${polos}-C${a} (MCB curva C, 10 kA)`, val:`${polos}x${a}A` }; }
+  const a = pickStep(BREAKER_STEPS, req);
+  return { a, mcb:false, model:breakerFamilyLabel(a), val:`${polos}x${a}A` };
+}
 function breakerFamilyLabel(rating){
   return rating<=BREAKER_XT_CONFIRMED_MAX ? "ABB Tmax XT3/XT4" : "ABB Tmax T5 o superior (confirmar marco)";
 }
@@ -417,7 +427,7 @@ function computeCircuit(load, idx, g){
 
   if(load.kind==="feeder"){
     const amps = load.feederAmps;
-    const brk = pickStep(BREAKER_STEPS, amps*1.25);
+    const bA = breakerAlimentador(amps, +load.fases===1 ? 2 : 3), brk = bA.a;
     const tb = pick(TERMINAL_BLOCK, amps, 0);
     const cmemo0 = buildConductorMemo(amps, 1, tempF, load.cableLength, g.voltage, g.maxVD);
     const cmemo = withEGC(cmemo0, brk);
@@ -428,7 +438,7 @@ function computeCircuit(load, idx, g){
     return { tag, loadId: load.id, kind:"feeder", title: load.desc || "Alimentación a tablero", meta: amps.toFixed(1)+" A (estimada) · S "+demandKVA.toFixed(1)+" kVA",
       mainContribution: amps, demandKVA, installedKVA, installedCurrent, powerHP:null, powerKWelec:null, fp:null, effPct:null, fu:fu0, fs:fs0, conductorMemo: cmemo,
       items: [
-        {comp:"ITM", devtag:"Q"+tag, model:breakerFamilyLabel(brk), val: "3x"+brk+"A", src:DS.tmax},
+        {comp:"ITM", devtag:"Q"+tag, model:bA.model, val:bA.val, src: bA.mcb ? null : DS.tmax, mcb:bA.mcb},
         {comp:"Cable de fuerza", devtag:"—", model: cableModelText(cable, cmemo.miguelez), val:"—", src:null},
         {comp:"Conductor de puesta a tierra (EGC)", devtag:"—", model: egcModelText(cmemo.egc, cmemo.egcMiguelez), val:"NEC Tabla 250.122", src:null},
         {comp:"Bornera de derivación", devtag:"X"+tag, model: tb[1], val:"—", src:null},

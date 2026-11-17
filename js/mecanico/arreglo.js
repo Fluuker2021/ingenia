@@ -146,8 +146,10 @@ function listaEquipos(p, t, calc, cfg, v){
     }
     // alimentador / carga general
     const q = item(c, /^ITM/);
-    const a = ampsDe(q && q.val) || 16, dq = C.interruptor(a, false);
-    E.pot.push({ circ, cable:cab, tb:nTB(c), amps:c.installedCurrent, tipo:"feeder", partes:[ mk({ tag:q.devtag, tipo:"interruptor", desc:"Interruptor del alimentador", modelo:dq.modelo, val:q.val, rol:"derivacion", circ }, dq) ] });
+    const a = ampsDe(q && q.val) || 16, polos = parseInt(q && q.val) || 3;
+    // hasta 63 A el alimentador lleva interruptor miniatura (MCB) en riel; por encima, caja moldeada
+    const dq = q && q.mcb ? Object.assign(C.mcb(polos), { familia:"S200", modelo:String(q.model||"").replace(/^ABB\s+/, "").replace(/\s*\(.*$/, "") }) : C.interruptor(a, false);
+    E.pot.push({ circ, cable:cab, tb:nTB(c), amps:c.installedCurrent, tipo:"feeder", partes:[ mk({ tag:q.devtag, tipo: q && q.mcb ? "mcb" : "interruptor", desc:"Interruptor del alimentador", modelo:dq.modelo, val:q.val, rol:"derivacion", circ }, dq) ] });
     E.bornes.push({ grupo:nTB(c), desc:`Salida a ${circ.carga || ""} ${circ.desc}`.trim(), potencia:true, sec:"pot", circ, bornes: ["L1","L2","L3"].map(f=>({ n:f, modelo:C.borneFuerza(c.installedCurrent) })).concat([{ n:"PE", modelo:C.borneFuerza(c.installedCurrent)+"-PE", pe:true }]) });
   });
   return E;
@@ -547,24 +549,25 @@ export function arregloTablero(p, t, calc){
   // ===== 5) puerta: mando del Q1, panel de operación, teclados de variadores, ventilación =====
   const yPanel = Math.min(H - 150, 1650 - zocalo + panelAlt);
   puerta.push({ tag:"Q1", tipo:"manija", desc:"Manija del interruptor general (bloqueo con candado)", modelo:C.MANIJA.modelo, x:q1.x + q1.w/2, y:q1.y + q1.h/2, w:C.MANIJA.w, h:C.MANIJA.h, seccion:sQ1.id });
-  const ops = [];
-  if((t.accesorios||{}).luces!==false) ["R","S","T"].forEach(f=>ops.push({ tag:"LT", tipo:"luz", color:"rojo", leyenda:`FASE ${f}` }));
+  // panel de operación (criterio de los planos de referencia): luces de fase en su propia fila arriba; debajo UNA FILA POR
+  // EQUIPO con sus mandos juntos (el variador ocupa dos: [L/R, arrancar, parar, reset] y [velocidad, falla, encendido,
+  // detenido]; el arranque directo [arrancar, parar, encendido, falla]); columnas a 80 mm, filas a 80 mm, cada fila
+  // centrada en el eje del panel; la parada de emergencia va FUERA del panel, debajo y en su eje
+  const filasOp = [];
+  if((t.accesorios||{}).luces!==false) filasOp.push(["R","S","T"].map(f=>({ tag:"LT", tipo:"luz", color:"rojo", leyenda:`FASE ${f}` })));
   const motores = calc.circuits.filter(c=>c.kind==="motor");
   if(mandos){
     for(const c of motores){
       const l = c.load || {}, tg = l.tag || c.tag, vfd = l.starter==="vfd";
       if(vfd){
-        ops.push({ tipo:"selector", leyenda:"L       R", tag:"SS-"+tg, color:"negro" }, { tipo:"pulsador", color:"verde", leyenda:`ARRANCAR ${tg}`, tag:"PB-"+tg+"A" }, { tipo:"pulsador", color:"rojo", leyenda:`PARAR ${tg}`, tag:"PB-"+tg+"P" }, { tipo:"pulsador", color:"azul", leyenda:`RESET ${tg}`, tag:"PB-"+tg+"R" });
-        ops.push({ tipo:"potenciometro", leyenda:"VELOCIDAD", tag:"POT-"+tg, color:"negro" }, { tipo:"luz", color:"ambar", leyenda:`${tg} EN FALLA`, tag:"LF-"+tg }, { tipo:"luz", color:"verde", leyenda:`${tg} ENCENDIDO`, tag:"LE-"+tg }, { tipo:"luz", color:"rojo", leyenda:`${tg} DETENIDO`, tag:"LD-"+tg });
-      } else ops.push({ tipo:"pulsador", color:"verde", leyenda:`ARRANCAR ${tg}`, tag:"PB-"+tg+"A" }, { tipo:"pulsador", color:"rojo", leyenda:`PARAR ${tg}`, tag:"PB-"+tg+"P" }, { tipo:"luz", color:"verde", leyenda:`${tg} ENCENDIDO`, tag:"LE-"+tg }, { tipo:"luz", color:"ambar", leyenda:`${tg} EN FALLA`, tag:"LF-"+tg });
+        filasOp.push([{ tipo:"selector", leyenda:"L       R", tag:"SS-"+tg, color:"negro" }, { tipo:"pulsador", color:"verde", leyenda:`ARRANCAR ${tg}`, tag:"PB-"+tg+"A" }, { tipo:"pulsador", color:"rojo", leyenda:`PARAR ${tg}`, tag:"PB-"+tg+"P" }, { tipo:"pulsador", color:"azul", leyenda:`RESET ${tg}`, tag:"PB-"+tg+"R" }]);
+        filasOp.push([{ tipo:"potenciometro", leyenda:"VELOCIDAD", tag:"POT-"+tg, color:"negro" }, { tipo:"luz", color:"ambar", leyenda:`${tg} EN FALLA`, tag:"LF-"+tg }, { tipo:"luz", color:"verde", leyenda:`${tg} ENCENDIDO`, tag:"LE-"+tg }, { tipo:"luz", color:"rojo", leyenda:`${tg} DETENIDO`, tag:"LD-"+tg }]);
+      } else filasOp.push([{ tipo:"pulsador", color:"verde", leyenda:`ARRANCAR ${tg}`, tag:"PB-"+tg+"A" }, { tipo:"pulsador", color:"rojo", leyenda:`PARAR ${tg}`, tag:"PB-"+tg+"P" }, { tipo:"luz", color:"verde", leyenda:`${tg} ENCENDIDO`, tag:"LE-"+tg }, { tipo:"luz", color:"ambar", leyenda:`${tg} EN FALLA`, tag:"LF-"+tg }]);
     }
   }
-  // panel de operación: 4 columnas a 75 mm, filas a 85 mm, parada de emergencia al pie
   const sPanel = cfg.panelSeccion==="potencia" && sPot.length ? sPot[0] : sCtrl;
-  const colsP = 4, pasoX = 75, pasoY = 85;
-  const filasP = Math.ceil(ops.length/colsP);
-  const panelW = colsP*pasoX + 30, panelH = filasP*pasoY + 130;
-  const pcx = sPanel.x0 + sPanel.W/2 - (sPanel===sQ1 && sPanel.W < 1000 ? 0 : 0);
+  const pasoX = 80, pasoY = 80, colsP = Math.max(3, ...filasOp.map(f=>f.length));
+  const panelW = colsP*pasoX + 40, panelH = Math.max(1, filasOp.length)*pasoY + 10;
   let panelY0 = yPanel - panelH;
   if(panelY0 < 700) panelY0 = 700;
   // posición libre en la puerta: sin cruzar la junta de una puerta doble, la manija de Q1 ni los teclados de los variadores
@@ -576,10 +579,8 @@ export function arregloTablero(p, t, calc){
     && !obst.some(([ox, oy, ow, oh])=>Math.abs(ox - cx) < (ow + panelW)/2 && Math.abs(oy - (panelY0 + panelH/2)) < (oh + panelH)/2);
   const cands = (dobleP ? [0.25, 0.75, 0.2, 0.8] : [0.5, 0.3, 0.7, 0.25, 0.75]).map(f=>sPanel.x0 + sPanel.W*f);
   const pcx2 = cands.find(libre) ?? cands[0];
-  // cada fila centrada en el eje del panel (la última, incompleta, también): disposición simétrica
-  ops.forEach((o, i)=>{ const r = Math.floor(i/colsP), k = i%colsP, nr = Math.min(colsP, ops.length - r*colsP);
-    puerta.push(Object.assign({ x:pcx2 + (k - (nr-1)/2)*pasoX, y:panelY0 + panelH - 50 - r*pasoY, seccion:sPanel.id, diam:30, desc:descOp(o) }, o)); });
-  puerta.push({ tag:"EPB1", tipo:"seta", desc:"Parada de emergencia (actúa sobre la bobina de mínima tensión de Q1)", modelo:C.PUERTA.seta.modelo, leyenda:"PARADA DE EMERGENCIA", x:pcx2, y:panelY0 + 45, diam:40, anillo:60, seccion:sPanel.id });
+  filasOp.forEach((fila, r)=>fila.forEach((o, k)=>puerta.push(Object.assign({ x:pcx2 + (k - (fila.length-1)/2)*pasoX, y:panelY0 + panelH - 45 - r*pasoY, seccion:sPanel.id, diam:30, desc:descOp(o) }, o))));
+  puerta.push({ tag:"EPB1", tipo:"seta", desc:"Parada de emergencia (actúa sobre la bobina de mínima tensión de Q1)", modelo:C.PUERTA.seta.modelo, leyenda:"PARADA DE EMERGENCIA", x:pcx2, y:panelY0 - 75, diam:40, anillo:60, seccion:sPanel.id, fueraPanel:true });
   const panel = { x:pcx2 - panelW/2, y:panelY0, w:panelW, h:panelH, seccion:sPanel.id };
   // teclados de los variadores en la puerta de su sección, alineados con el variador
   for(const c of comps.filter(c=>c.tipo==="variador")){
@@ -702,7 +703,7 @@ export function arregloTablero(p, t, calc){
 
   /* --- columna de potencia: disposición relativa de sus equipos --- */
   function disponerColumna(col){
-    const P = col.partes, q = P.find(x=>x.tipo==="interruptor"), f = P.find(x=>x.tipo==="xlp");
+    const P = col.partes, q = P.find(x=>x.tipo==="interruptor" || x.tipo==="mcb"), f = P.find(x=>x.tipo==="xlp");
     const dr = P.find(x=>x.tipo==="variador"), ss = P.find(x=>x.tipo==="arrancador"), k = P.find(x=>x.tipo==="contactor"), ft = P.find(x=>x.tipo==="sobrecarga");
     const rs = P.filter(x=>x.tipo==="reactancia");
     const PIE = 110;   // bornera de salida y su canaleta al pie de la placa

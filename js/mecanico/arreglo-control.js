@@ -372,7 +372,7 @@ export function arregloControl(p, t){
   const manijaY = montaje==="mural" ? Math.round(H/2 - 80) : 900;
   const hojas = puertas===2 ? [[3, W/2 - 1.5], [W/2 + 1.5, W - 3]] : [[3, W - 3]];
   const placaX = puertas===2 ? W/4 : W/2, senalX = puertas===2 ? 3*W/4 : W/2;   // placa de identificación y señalética (cada una en una hoja si hay dos puertas)
-  const obst = [[placaX - 160, H - 180, 320, 110]];
+  const obst = [[placaX - C.PLACA_ID.w/2 - 20, H - 3 - C.PLACA_ID.margen - C.PLACA_ID.h - 20, C.PLACA_ID.w + 40, C.PLACA_ID.h + 40]];
   hojas.forEach(([x0, x1], i)=>{ const xm = (puertas===2 ? (i ? "der" : "izq") : "izq")==="izq" ? x1 - 45 : x0 + 25; obst.push([xm - 25, manijaY - 20, 70, 200]); });
   const libre = (cx, cy, w, h) => hojas.some(([x0, x1])=>cx - w/2 > x0 + 35 && cx + w/2 < x1 - 35) && cy - h/2 > 40 && cy + h/2 < H - 40 && !obst.some(([ox, oy, ow, oh])=>cx + w/2 > ox && cx - w/2 < ox + ow && cy + h/2 > oy && cy - h/2 < oy + oh);
   const cxP = puertas===2 ? W/4 : W/2;

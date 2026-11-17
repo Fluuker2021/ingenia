@@ -435,20 +435,24 @@ function dibujarFrente(v, m, llam){
     for(const d of m.puerta.filter(d=>d.tipo==="ventilador" && d.rol==="salida")) llam.push({ x:d.x + d.w/2, y:d.y, texto:`VENTILADOR ${d.tag} CON FILTRO (EXTRACCIÓN DE AIRE)` });
     const lz = m.puerta.find(d=>d.tipo==="luz"); if(lz) llam.push({ x:lz.x + 15, y:lz.y, texto:"LUCES PILOTO DE TENSIÓN PRESENTE" });
   }
-  // placa de identificación y señalética de riesgo eléctrico
-  const s1 = m.secciones[0], cx = m.placaX ?? (s1.x0 + s1.x1)/2;
-  v.R(cx - 150, H - 170, 300, 90, "M-EQUIPO");
-  v.T(cx, H - 105, 1.7, (m.tablero.nombre||"").toUpperCase(), "M-TEXTO", { halign:1, valign:2 });
-  v.T(cx, H - 125, 1.9, m.tablero.tag, "M-ETIQUETA", { halign:1, valign:2 });
-  v.T(cx, H - 145, 1.5, m.placaTxt || `${m.tension} Vac, 3F+T, ${m.frecuencia} Hz`, "M-TEXTO", { halign:1, valign:2 });
-  llam.push({ x:cx - 150, y:H - 125, texto:"PLACA DE IDENTIFICACIÓN (ACERO INOXIDABLE GRABADO)" });
-  // señal de riesgo eléctrico en cada hoja de puerta, centrada en su hoja (misma altura en todas si se puede)
+  // placa de identificación (140 × 40, arriba) y señal de riesgo eléctrico en cada hoja de puerta (abajo, centrada)
+  const pid = C.placaId(m);
+  v.R(pid.x - pid.w/2, pid.y - pid.h/2, pid.w, pid.h, "M-EQUIPO");
+  v.T(pid.x, pid.y + 9, 1.3, m.tablero.tag, "M-ETIQUETA", { halign:1, valign:2 });
+  v.T(pid.x, pid.y - 1, 1.0, (m.tablero.nombre||"").toUpperCase(), "M-TEXTO", { halign:1, valign:2 });
+  v.T(pid.x, pid.y - 11, 0.9, m.placaTxt || `${m.tension} Vac, 3F+T, ${m.frecuencia} Hz`, "M-TEXTO", { halign:1, valign:2 });
+  llam.push({ x:pid.x - pid.w/2, y:pid.y, texto:"PLACA DE IDENTIFICACIÓN (FONDO NEGRO, LETRAS BLANCAS)" });
   const sen = C.senalesRiesgo(m);
-  for(const { x:xs, y:ys } of sen){
-    v.P([[xs - 55, ys - 45], [xs + 55, ys - 45], [xs, ys + 50]], "M-SENAL", null, true); v.L(xs + 8, ys + 18, xs - 8, ys - 5, "M-SENAL"); v.L(xs - 8, ys - 5, xs + 8, ys - 5, "M-SENAL"); v.L(xs + 8, ys - 5, xs - 8, ys - 30, "M-SENAL");
-    v.T(xs, ys - 62, 1.3, m.peligroTxt || `PELIGRO ${m.tension} V`, "M-SENAL", { halign:1 });
+  for(const { x, y, w, h } of sen){
+    v.R(x - w/2, y - h/2, w, h, "M-SENAL");
+    // triángulo con rayo en la mitad superior y la leyenda debajo
+    const t = w*0.36, yc = y + h*0.16;
+    v.P([[x - t, yc - t*0.8], [x + t, yc - t*0.8], [x, yc + t*0.95]], "M-SENAL", null, true);
+    v.L(x + t*0.12, yc + t*0.45, x - t*0.12, yc - t*0.05, "M-SENAL"); v.L(x - t*0.12, yc - t*0.05, x + t*0.12, yc - t*0.05, "M-SENAL"); v.L(x + t*0.12, yc - t*0.05, x - t*0.12, yc - t*0.6, "M-SENAL");
+    v.T(x, y - h*0.22, 1.3, "ATENCIÓN", "M-SENAL", { halign:1, valign:2 });
+    v.T(x, y - h*0.36, 1.1, "RIESGO ELÉCTRICO", "M-SENAL", { halign:1, valign:2 });
   }
-  if(sen.length) llam.push({ x:sen[0].x - 55, y:sen[0].y - 30, texto:`SEÑALÉTICA DE RIESGO ELÉCTRICO EN ${sen.length > 1 ? "CADA PUERTA" : "LA PUERTA"} (NOTA 5)` });
+  if(sen.length) llam.push({ x:sen[0].x - sen[0].w/2, y:sen[0].y, texto:`SEÑAL «ATENCIÓN / RIESGO ELÉCTRICO» EN ${sen.length > 1 ? "CADA PUERTA" : "LA PUERTA"} (NOTA 5)` });
 }
 function dibujarLateral(v, m){
   const { D, H, zocalo } = m;
@@ -492,9 +496,9 @@ function isometrica(doc, ox, oy, s, m){
     else { elipse(d.x, d.y, (d.anillo||d.diam||30)/2, d.tipo==="seta" ? "M-SENAL" : "M-EQUIPO"); }
   }
   // placa de identificación y señal de riesgo eléctrico de cada puerta
-  const s1 = m.secciones[0], cx = m.placaX ?? (s1.x0 + s1.x1)/2;
-  poly([P(cx - 150, H - 170, 0), P(cx + 150, H - 170, 0), P(cx + 150, H - 80, 0), P(cx - 150, H - 80, 0)], "M-EQUIPO");
-  for(const { x, y } of C.senalesRiesgo(m)) poly([P(x - 55, y - 45, 0), P(x + 55, y - 45, 0), P(x, y + 50, 0)], "M-SENAL");
+  const pid = C.placaId(m), rectIso = (x0, y0, x1, y1, ly) => poly([P(x0, y0, 0), P(x1, y0, 0), P(x1, y1, 0), P(x0, y1, 0)], ly);
+  rectIso(pid.x - pid.w/2, pid.y - pid.h/2, pid.x + pid.w/2, pid.y + pid.h/2, "M-EQUIPO");
+  for(const { x, y, w, h } of C.senalesRiesgo(m)){ rectIso(x - w/2, y - h/2, x + w/2, y + h/2, "M-SENAL"); const t = w*0.36, yc = y + h*0.16; poly([P(x - t, yc - t*0.8, 0), P(x + t, yc - t*0.8, 0), P(x, yc + t*0.95, 0)], "M-SENAL"); }
   // techo y cáncamos
   if(m.techo){ poly([P(-40, H + 30, -40), P(W + 40, H + 30, -40), P(W + 40, H + 30, D + 40), P(-40, H + 30, D + 40)]); L(P(-40, H, -40), P(-40, H + 30, -40)); L(P(W + 40, H, -40), P(W + 40, H + 30, -40)); L(P(W + 40, H, D + 40), P(W + 40, H + 30, D + 40)); L(P(-40, H, -40), P(W + 40, H, -40)); L(P(W + 40, H, -40), P(W + 40, H, D + 40)); }
   const yE = H + (m.techo ? 30 : 0);
@@ -602,7 +606,9 @@ export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
     ox = lam("PANEL DE OPERACIÓN Y BASE");
     const pn = m.panel || { x:m.W/2 - 150, y:m.H*0.55, w:300, h:200, seccion:m.secciones[0].id, zona:true, titulo:"PUERTA (SIN DISPOSITIVOS DE OPERACIÓN)" }, ops = m.puerta.filter(d=>d.seccion===pn.seccion && ["luz","pulsador","selector","potenciometro","seta","hmi"].includes(d.tipo));
     const colIzq = 290;
-    const s3 = [2, 2.5, 3, 4, 5, 7.5].find(s=>pn.h/s <= 300 && pn.w/s <= colIzq - 40) || 7.5;
+    // la parada de emergencia puede ir fuera del panel (debajo, en su eje): la vista abarca ambos
+    const yMinP = Math.min(pn.y, ...ops.map(d=>d.y - (d.anillo || d.diam || 30)/2 - 40)), hP = pn.y + pn.h - yMinP;
+    const s3 = [2, 2.5, 3, 4, 5, 7.5].find(s=>hP/s <= 300 && pn.w/s <= colIzq - 40) || 7.5;
     const vP = vista(doc, ox + AR.x0 + 30 + (colIzq - 40 - pn.w/s3)/2 - pn.x/s3, AR.y1 - 16 - (pn.y + pn.h)/s3, s3);
     if(pn.zona) vP.R(pn.x, pn.y, pn.w, pn.h, "M-OCULTO");
     else { vP.R(pn.x, pn.y, pn.w, pn.h, "M-EQUIPO"); vP.R(pn.x + 12, pn.y + 12, pn.w - 24, pn.h - 24, "M-DETALLE");
@@ -619,11 +625,11 @@ export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
     }
     const epb = ops.find(d=>d.tipo==="seta"); if(epb){ vP.T(epb.x, epb.y - 38, 1.6, "PARADA DE EMERGENCIA", "M-SENAL", { halign:1 }); vP.T(epb.x + 34, epb.y, 1.6, "EPB1", "M-ETIQUETA", { valign:2 }); }
     if(pn.zona){ const hm = ops.find(d=>d.tipo==="hmi"); if(hm) doc.text(vP.X(pn.x + pn.w/2), vP.Y(pn.y) - 7, 1.9, `CENTRO DEL RECORTE A ${r1(hm.y + m.zocalo)} mm DE LA BASE DEL GABINETE Y A ${r1(hm.x - m.secciones.find(x=>x.id===pn.seccion).x0)} mm DE SU BORDE IZQUIERDO`, "M-TEXTO", { halign:1 }); }
-    else { cotaH(doc, vP.X(pn.x), vP.X(pn.x + pn.w), vP.Y(pn.y) - 7, vP.Y(pn.y), String(r1(pn.w)));
+    else { cotaH(doc, vP.X(pn.x), vP.X(pn.x + pn.w), vP.Y(pn.y + pn.h) + 7, vP.Y(pn.y + pn.h), String(r1(pn.w)));
     cotaV(doc, vP.Y(pn.y), vP.Y(pn.y + pn.h), vP.X(pn.x) - 7, vP.X(pn.x), String(r1(pn.h))); }
-    tituloVista(doc, vP.X(pn.x + pn.w/2), vP.Y(pn.y) - 17, (pn.titulo || "PANEL DE OPERACIÓN") + " (PUERTA " + (m.secciones.findIndex(x=>x.id===pn.seccion) + 1) + ")", escTxt(s3));
+    tituloVista(doc, vP.X(pn.x + pn.w/2), vP.Y(yMinP) - 17, (pn.titulo || "PANEL DE OPERACIÓN") + " (PUERTA " + (m.secciones.findIndex(x=>x.id===pn.seccion) + 1) + ")", escTxt(s3));
     // leyenda de dispositivos de puerta (debajo del panel)
-    const xLey = ox + AR.x0 + 8, yLey = vP.Y(pn.y) - 30;
+    const xLey = ox + AR.x0 + 8, yLey = vP.Y(yMinP) - 30;
     doc.text(xLey, yLey, 2.8, "%%ULEYENDA DE DISPOSITIVOS DE PUERTA", "M-TEXTO");
     const filasLey = m.puerta.map(d=>({ tag:d.tag||"", tipo:d.leyenda || d.desc || "", modelo:d.modelo || (C.PUERTA[d.tipo]||{}).modelo || "", color:d.color||"" }));
     const nLey = Math.max(3, Math.floor((yLey - 4 - (AR.y0 + 6) - 6)/3.8));

@@ -190,18 +190,20 @@ export async function visor3D(cont, modelo, opciones){
     const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; texturas.push(t); return t;
   };
   const RAN = { py:texRanura(false, true), ny:texRanura(false, false), px:texRanura(true, true), nx:texRanura(true, false) };
-  /* señal de riesgo eléctrico: triángulo amarillo con borde y rayo negros y la leyenda debajo (124 × 128 mm) */
+  /* señal de riesgo eléctrico: placa rectangular (proporción 200 × 290) con el triángulo amarillo de borde y rayo negros
+     arriba y la leyenda «ATENCIÓN / RIESGO ELÉCTRICO» debajo */
   const texSenal = (() => {
-    const cv = document.createElement("canvas"); cv.width = 248; cv.height = 256; const g = cv.getContext("2d");
-    const tri = (m0) => { g.beginPath(); g.moveTo(124, 8 + m0); g.lineTo(234 - m0*1.15, 196 - m0*0.6); g.lineTo(14 + m0*1.15, 196 - m0*0.6); g.closePath(); };
-    g.lineJoin = "round"; tri(0); g.fillStyle = "#17181b"; g.fill(); tri(14); g.fillStyle = "#f5c518"; g.fill();
-    g.fillStyle = "#17181b"; g.beginPath(); [[136, 62], [104, 128], [124, 128], [110, 176], [146, 108], [126, 108], [140, 62]].forEach(([x, y], i)=>i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill();
-    g.fillStyle = "#f4f5f6"; g.fillRect(14, 206, 220, 44); g.strokeStyle = "#17181b"; g.lineWidth = 3; g.strokeRect(14, 206, 220, 44);
-    g.fillStyle = "#c62828"; g.font = "bold 30px Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("PELIGRO", 124, 229);
+    const cv = document.createElement("canvas"); cv.width = 200; cv.height = 290; const g = cv.getContext("2d");
+    g.fillStyle = "#f4f5f6"; g.fillRect(0, 0, 200, 290); g.strokeStyle = "#17181b"; g.lineWidth = 6; g.strokeRect(3, 3, 194, 284);
+    const tri = (m0) => { g.beginPath(); g.moveTo(100, 22 + m0); g.lineTo(178 - m0*1.15, 158 - m0*0.6); g.lineTo(22 + m0*1.15, 158 - m0*0.6); g.closePath(); };
+    g.lineJoin = "round"; tri(0); g.fillStyle = "#17181b"; g.fill(); tri(11); g.fillStyle = "#f5c518"; g.fill();
+    g.fillStyle = "#17181b"; g.beginPath(); [[110, 60], [84, 112], [100, 112], [88, 148], [118, 94], [102, 94], [114, 60]].forEach(([x, y], i)=>i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill();
+    g.fillStyle = "#c62828"; g.font = "bold 30px Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("ATENCIÓN", 100, 196);
+    g.fillStyle = "#17181b"; g.font = "bold 21px Arial, sans-serif"; g.fillText("RIESGO", 100, 232); g.fillText("ELÉCTRICO", 100, 258);
     const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; texturas.push(t); return t;
   })();
   const matSenal = new THREE.MeshStandardMaterial({ map:texSenal, transparent:true, alphaTest:0.5, roughness:0.5, side:THREE.FrontSide }); mats.__senal = matSenal;
-  const geoSenal = new THREE.PlaneGeometry(124, 128); compartidas.add(geoSenal);
+  const geoSenal = new THREE.PlaneGeometry(1, 1); compartidas.add(geoSenal);
   /* parte trasera de un dispositivo de puerta (se ve al abrir la puerta): cuerpo, bloques de contacto o carcasa hacia el
      interior y el contorno del calado en la cara interior, con sus medidas al hacer clic */
   const matCalado = mat(0x111214, { roughness:0.9 });
@@ -383,12 +385,15 @@ export async function visor3D(cont, modelo, opciones){
   // señal de riesgo eléctrico en cada hoja de puerta (la misma posición que en el plano 2D)
   for(const sr of C.senalesRiesgo(m)){
     const h = hojaDe(sr.x), pl = new THREE.Mesh(geoSenal, matSenal);
-    pl.position.set(sr.x*k, (sr.y - 8)*k, (D + 20.6)*k); pl.scale.set(k, k, 1);
-    pl.userData.info = { tag:"Señal", desc:"Señal de riesgo eléctrico (ISO 7010 W012) con la leyenda «PELIGRO» — una en cada puerta", modelo:"Señal autoadhesiva de vinilo, 110 mm de lado" };
+    pl.position.set(sr.x*k, sr.y*k, (D + 20.6)*k); pl.scale.set(sr.w*k, sr.h*k, 1);
+    pl.userData.info = { tag:"Señal", desc:"Señal «ATENCIÓN / RIESGO ELÉCTRICO» (triángulo ISO 7010 W012) — una en cada puerta", modelo:`Placa ${sr.w} × ${sr.h} mm` };
     h.grupo.add(pl);
   }
   // placa de identificación
-  { const s1 = m.secciones[0], cx = m.placaX ?? (s1.x0 + s1.x1)/2, h = hojaDe(cx); caja(cx - 150, H - 170, D + 20, 300, 90, 2, metal(0xc9ced4), h.grupo); }
+  const L0 = lote();
+  { const pid = C.placaId(m), h = hojaDe(pid.x); const pl = caja(pid.x - pid.w/2, pid.y - pid.h/2, D + 20, pid.w, pid.h, 1.5, plas(0x17181b), h.grupo, null, false);
+    pl.userData.info = { tag:m.tablero.tag, desc:"Placa de identificación (fondo negro, letras blancas)", modelo:`${pid.w} × ${pid.h} mm` };
+    L0.box(pid.x - pid.w*0.32, pid.y + 4, D + 21.5, pid.w*0.64, 5, 0.3, plas(0xf4f5f6)); L0.box(pid.x - pid.w*0.4, pid.y - 7, D + 21.5, pid.w*0.8, 3, 0.3, plas(0xf4f5f6)); L0.fin(h.grupo); }
   // capa de dispositivos de puerta = todo lo que cuelga de las puertas menos la hoja
   const ocultarPuertas = v => hojas.forEach(h=>h.grupo.children.forEach((ch, i)=>{ if(i>0) ch.visible = v; }));
 

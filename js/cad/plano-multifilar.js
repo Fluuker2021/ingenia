@@ -9,7 +9,7 @@
    Las referencias cruzadas a las hojas de control del plano original se retiran. */
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS } from "./formato.js";
-import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos } from "../datos.js";
+import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, ACC_DEF } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza } from "./kit.js";
 import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/componentes.js";
@@ -32,6 +32,17 @@ const PUENTE = { contactor:[420.9,404.9], filtro:[492.9,342.9] };
 // referencias cruzadas a otras hojas del plano original (control) y textos propios del variador
 const REF = /^\/?\s*\d+\.[A-H]:\d+\s*\/?$|^\/$|^(CB|ID|RF)\d*\.\d+$|^RL\d*\.T\d+$/;
 const SOLO_VFD = /^(DC Bus Terminals|Dynamic Brake Resistor|Filtering and|Leistung Klemme Block)/;
+// zonas de la pieza de acometida (coordenadas de la pieza) que pertenecen a cada accesorio del tablero
+const ACC_ZONAS = {
+  // luces piloto: derivaciones de L1-L2-L3-PE, fusibles F1-F3, luz LT y marcas de sus cables
+  luces: [[120, 100, 272, 668], [256, 550, 286, 563]],
+  // relé de fases: derivación de L2, tramos de L1 / L3 bajo el alimentador del transformador de la bobina, fusibles F4-F6,
+  // el relé con sus contactos 15 / 18 y las flechas de esos contactos en la cadena de la bobina de mínima tensión
+  releFase: [[264, 300, 390, 551], [264, 262, 500, 382], [368, 540, 376, 556], [366, 430, 452, 445], [322, 549, 352, 668], [364, 551, 400, 573.5], [580, 360, 625.5, 393], [590, 376, 646, 381],
+    [286, 544, 290, 553], [370, 568, 374, 577.5]],      // tramos bajo las uniones en «T» de L1 / L3 (quedan esquinas)
+  // supresor: derivaciones de L1-L2-L3-PE (con sus puntos y rótulos), seccionador-fusible FS1, SPD y marcas de sus cables
+  spd: [[687, 200, 697, 667], [703, 200, 713, 651], [719, 200, 729, 635], [735, 200, 745, 619], [628, 200, 750, 606], [736, 550, 772, 568]],
+};
 
 const awgTxt = s => String(s||"").replace(/\s*AWG/i," AWG").replace(/\s*kcmil/i," kcmil");
 const item = (c, re) => c.items.find(x=>re.test(x.comp)) || {};
@@ -93,11 +104,32 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
     const nombre = `${(t.nombre||"").toUpperCase()} ${t.tag}`;
     // 1) acometida
     let ox = lam(`${nombre} - ACOMETIDA`);
+    // accesorios del tablero (los mismos que dibujan el unifilar y el mecánico): sin luces piloto, relé de fases o supresor
+    // se omiten sus ramas de la pieza; sin relé de fases la cadena de la bobina de mínima tensión se cierra directo
+    const acc = Object.assign(ACC_DEF(), t.accesorios||{});
+    const om = [];
+    if(!acc.luces) om.push(...ACC_ZONAS.luces);
+    if(!acc.releFase) om.push(...ACC_ZONAS.releFase);
+    if(!acc.spd) om.push(...ACC_ZONAS.spd);
+    // fusibles renumerados en el orden de los accesorios presentes (luces F1-F3, relé F4-F6, bobina F7-F8 en la referencia)
+    const ren = {}; let nf = 0;
+    for(const [on, fs] of [[acc.luces, ["F1","F2","F3"]], [acc.releFase, ["F4","F5","F6"]], [true, ["F7","F8"]]]) for(const f of fs) if(on) ren[f] = "F"+(++nf);
+    const hojaAc = k + 1;
+    const textoAc = s => { const tt = String(s).trim(); if(ren[tt]) return ren[tt];
+      // referencias de la pieza: las barras siguen en la hoja siguiente y los contactos del relé están en esta misma hoja
+      if(/^2\.A:1$/.test(tt)) return `${hojaAc+1}.A:1`; const m = /^1\.([A-H]:\d)$/.exec(tt); if(m) return `${hojaAc}.${m[1]}`;
+      return barraTxt(s); };
     // la leyenda de conexión se separa del marco izquierdo lo mismo que del cajetín (≈5 mm)
-    pieza(doc, kit, "h_acometida", ox+DX, DY, { lineas:{ acometida:16, notas:48 }, texto: barraTxt, mover:[{ r:[-0.6, 157, 117, 192], dx:5, dy:0 }], vars:{
+    pieza(doc, kit, "h_acometida", ox+DX, DY, { omitir:om, lineas:{ acometida:16, notas:48 }, texto: textoAc, mover:[{ r:[-0.6, 157, 117, 192], dx:5, dy:0 }], vars:{
       acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}`, alim:`Alimentación\n${g.voltage} V ${g.freq} Hz 3F\n+PE`,
       q:"Q1", qv:`${calc.mainBreaker}A`, qm:`Tmax XT ${calc.mainBreaker}A 3P (Ekip LS/I)`, t1:`${g.voltage}/120Vac+T`, vp:`${g.voltage}V`, vs:"120V",
       notas: notasU.length ? "NOTAS :\n" + notasU.map((n, i)=>`${i+1}.${n}`).join("\n") : `NOTAS :\n1.LA ACOMETIDA PARA EL ${nombre} DE ${g.voltage} Vac, 3F + T, ${g.freq} HZ ES SUMINISTRADA POR EL CLIENTE.\n2.BARRA A TIERRA FIJA DEL TABLERO DE FUERZA Y CONTROL.\n3.LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A ${v.altitud} m.s.n.m.` } });
+    // sin relé de fases: el tramo de la cadena de la bobina de mínima tensión que pasaba por su contacto 15-18 queda directo
+    if(!acc.releFase){
+      doc.line(ox+DX+625, 390.85+DY, ox+DX+625, 362.85+DY, "E-CONTROL");
+      // L1 y L3 bajan solo al transformador de la bobina: las uniones en «T» pasan a esquinas
+      doc.line(ox+DX+288, 548.85+DY, ox+DX+292, 548.85+DY, "E-FZA-BT-PRI"); doc.line(ox+DX+372, 572.85+DY, ox+DX+376, 572.85+DY, "E-FZA-BT-PRI");
+    }
     k++;
     // 2) hojas de fuerza
     const hojaSec = new Map(); let ks = base + 1 + fuerza.length;

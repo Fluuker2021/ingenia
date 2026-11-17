@@ -184,28 +184,36 @@ export function hojasPuerta(m, gap = 3){
   }
   return out;
 }
-/* señal de riesgo eléctrico (triángulo con rayo, ISO 7010 W012, 110 mm de lado + leyenda «PELIGRO») en CADA hoja de puerta,
-   centrada en su hoja y, si se puede, a la misma altura en todas (simetría). Evita los dispositivos de puerta, el panel de
-   operación, la placa de identificación y la manija. */
-export const SENAL_RIESGO = { lado:110, alto:95 };
+/* placa de identificación (rótulo fondo negro / letras blancas): 140 × 40 mm, centrada en su hoja y a ~12 mm del borde
+   superior de la puerta, como en los planos mecánicos de referencia */
+export const PLACA_ID = { w:140, h:40, margen:12 };
+export function placaId(m){ const H = m.H, y1 = H - 3 - PLACA_ID.margen; return { w:PLACA_ID.w, h:PLACA_ID.h, x:m.placaX ?? (m.secciones[0].x0 + m.secciones[0].x1)/2, y:y1 - PLACA_ID.h/2 }; }
+/* señal de riesgo eléctrico: placa rectangular con el triángulo (ISO 7010 W012) y la leyenda «ATENCIÓN / RIESGO ELÉCTRICO»
+   en CADA hoja de puerta, centrada en su hoja y ABAJO (criterio de las referencias: borde inferior a ~230 mm de la base en
+   los autosoportados, ~65 mm del borde inferior en los murales; 200 × 290 mm en puertas de 600 mm o más, 150 × 210 en las
+   menores). Misma altura en todas las hojas si se puede; si un dispositivo ocupa ese lugar (p. ej. un ventilador de entrada)
+   sube lo necesario. Devuelve el centro y el tamaño de cada placa. */
 export function senalesRiesgo(m){
-  const { H } = m, hojas = hojasPuerta(m), manY = m.manijaY ?? 900;
-  const caja = (x, y) => [x - 62, y - 72, x + 62, y + 56];               // triángulo + leyenda debajo
+  const { H } = m, hojas = hojasPuerta(m), manY = m.manijaY ?? 900, mural = m.montaje==="mural";
+  const anchoMin = Math.min(...hojas.map(h=>h.x1 - h.x0));
+  const [w, h] = anchoMin >= 550 && H >= 1200 ? [200, 290] : anchoMin >= 380 ? [150, 210] : [110, 160];
+  const caja = (x, y) => [x - w/2, y - h/2, x + w/2, y + h/2];
+  const pid = placaId(m);
   const obst = hoja => {
     const o = [];
-    for(const d of m.puerta||[]){ if(d.x < hoja.x0 - 1 || d.x > hoja.x1 + 1) continue; const w = d.anillo || d.w || d.diam || 60, h = d.anillo || d.h || d.diam || 60;
-      o.push([d.x - w/2 - 25, d.y - h/2 - 25, d.x + w/2 + 25, d.y + h/2 + (d.leyenda ? 50 : 25)]); }
+    for(const d of m.puerta||[]){ if(d.x < hoja.x0 - 1 || d.x > hoja.x1 + 1) continue; const dw = d.anillo || d.w || d.diam || 60, dh = d.anillo || d.h || d.diam || 60;
+      o.push([d.x - dw/2 - 25, d.y - dh/2 - 25, d.x + dw/2 + 25, d.y + dh/2 + (d.leyenda ? 50 : 25)]); }
     if(m.panel && m.panel.x + m.panel.w > hoja.x0 && m.panel.x < hoja.x1) o.push([m.panel.x - 20, m.panel.y - 20, m.panel.x + m.panel.w + 20, m.panel.y + m.panel.h + 20]);
-    const px = m.placaX ?? (m.secciones[0].x0 + m.secciones[0].x1)/2;
-    if(px >= hoja.x0 && px <= hoja.x1) o.push([px - 160, H - 185, px + 160, H - 70]);
+    if(pid.x >= hoja.x0 && pid.x <= hoja.x1) o.push([pid.x - pid.w/2 - 20, pid.y - pid.h/2 - 20, pid.x + pid.w/2 + 20, H]);
     const xm = hoja.bisagra==="izq" ? hoja.x1 - 45 : hoja.x0 + 25; o.push([xm - 25, manY - 25, xm + 45, manY + 185]);
     return o;
   };
-  const libre = (hoja, y) => { const x = (hoja.x0 + hoja.x1)/2, b = caja(x, y); if(b[1] < 120 || b[3] > H - 60 || b[0] < hoja.x0 + 20 || b[2] > hoja.x1 - 20) return false;
+  const libre = (hoja, y) => { const x = (hoja.x0 + hoja.x1)/2, b = caja(x, y); if(b[1] < (mural ? 40 : 60) || b[3] > H - 40 || b[0] < hoja.x0 + 15 || b[2] > hoja.x1 - 15) return false;
     return !obst(hoja).some(r=>b[0] < r[2] && b[2] > r[0] && b[1] < r[3] && b[3] > r[1]); };
-  const ys = [H - 330, H - 280, H - 400, H*0.8, H*0.7, 1250, H*0.55, H*0.4, H*0.32, 450, 300].filter(y=>y > 140 && y < H - 120).map(Math.round);
-  const comun = ys.find(y=>hojas.every(h=>libre(h, y)));
-  return hojas.map(h=>{ const y = comun ?? ys.find(yy=>libre(h, yy)) ?? ys[0]; return { x:(h.x0 + h.x1)/2, y, seccion:h.seccion }; });
+  const y0 = (mural ? 65 : 230) + h/2, ys = [];
+  for(let y = y0; y < H - h/2 - 40; y += 25) ys.push(Math.round(y));
+  const comun = ys.find(y=>hojas.every(hh=>libre(hh, y)));
+  return hojas.map(hh=>{ const y = comun ?? ys.find(yy=>libre(hh, yy)) ?? y0; return { x:(hh.x0 + hh.x1)/2, y, w, h, seccion:hh.seccion }; });
 }
 
 export const VENTILADORES = [

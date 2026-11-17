@@ -86,7 +86,7 @@ export async function unifilarControlKit({ p, valsDe, cliente, id }){
       k++;
     });
   }
-  doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: total };
+  doc.limpiarUniones(); doc.centrarEnSimbolos(); return { dxf: doc.toDXF(), hojas: total };
 }
 
 /* rótulo de una barra: a la izquierda de su alimentación si hay espacio, si no a la derecha */
@@ -156,7 +156,9 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
     const a = eq.acometidas[0];
     const b0 = Math.min(...xs, xA), b1 = Math.max(...xs, xA);
     doc.line(FX(b0), Y(Y0), FX(b1), Y(Y0), "E-CONTROL");
-    pieza(doc, kit, "acom120", FX(xA), Y(Y0), { s, lineas:{ acometida:44 }, vars:{ acometida:`VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""}`, q:a.q.tag, qv:amp(a.q.in), cable:`${a.cable} 0.6/1kV` } });
+    pieza(doc, kit, "acom120", FX(xA), Y(Y0), { s, vars:{ acometida:"", q:a.q.tag, qv:amp(a.q.in), cable:`${a.cable} 0.6/1kV` } });
+    // texto de la acometida centrado en su recuadro, como en el unifilar de fuerza
+    textoCentrado(doc, FX(xA) - 0.12*s, Y(Y0) + 161.77*s, 2.5*s, `VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""}`, 28);
     rotuloBarra(doc, FX(b0), FX(b1), FX(xA), Y(Y0), `L,N ${may(eq.vEst)}, 1F+N+T, ${eq.v.frecuencia}Hz, ${Math.min(10, +eq.v.icc||10)} KA`, s);
     if(xF!=null){ const fu = eq.fuente; pieza(doc, kit, "fuente", FX(xF), Y(Y0), { s, vars:{ circ:fu.circuito || "C1", q:fu.cb.tag, qv:amp(fu.cb.in), ps:fu.ps.tag, psa:`${fu.ps.a}A`, psv:"24VDC", q2:fu.cbOut.tag, q2v:amp(fu.cbOut.in) } }); }
     if(xC!=null){ pieza(doc, kit, "cb3", FX(xC), Y(Y0), { s, vars:{ circ: xF!=null ? "C2" : "C1", q:eq.cb120.tag, qv:amp(eq.cb120.in) } });
@@ -165,7 +167,8 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
   // acometida auxiliar de 220 Vac (servicios del tablero) con su supresor
   if(primera && g220 && g220.alim && g220.cols.length && eq.acometidas[1]){
     const a = eq.acometidas[1], sp = eq.spd;
-    pieza(doc, kit, "acom220", FX(g220.ejes[0]), YB("220"), { s, lineas:{ acometida:36 }, vars:{ acometida:`VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""} 2x220 VAC + T - ${eq.v.frecuencia}HZ`,
+    textoCentrado(doc, FX(g220.ejes[0]) - 0.13*s, YB("220") + 264.1*s, 2.5*s, `VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""} 2x220 Vac + T - ${eq.v.frecuencia} Hz`, 24);
+    pieza(doc, kit, "acom220", FX(g220.ejes[0]), YB("220"), { s, vars:{ acometida:"",
       q:a.q.tag, qv:amp(a.q.in), qs:sp.cb.tag, qsv:amp(sp.cb.in), spd:sp.tags.join(","), spdt:sp.tipo, spdm:sp.modelo, cable:`${a.cable} 0.6/1kV` } });
   }
 
@@ -192,4 +195,10 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
   const ult = Math.max(...segs.flatMap(sg=>sg.ejes), primera && g220 && g220.alim && g220.cols.length ? g220.ejes[0] + RET_SPD*s : -Infinity);
   pieza(doc, kit, "tierra", FX(X_TIERRA), Y(YT), { s });
   doc.line(FX(X_TIERRA), Y(YT), FX(ult), Y(YT), "E-TIERRA");
+}
+
+/* varias líneas centradas (horizontal y verticalmente) en (cx, cy) */
+function textoCentrado(doc, cx, cy, h, txt, n){
+  const filas = envolver(String(txt||""), n), paso = h*1.6667, y0 = cy + (filas.length - 1)*paso/2;
+  filas.forEach((f, i)=>doc.text(cx, y0 - i*paso, h, f, "G-TEX", { halign:1, valign:2 }));
 }

@@ -284,6 +284,7 @@ const ED = {
         { k:"application", t:"Aplicación", op: apps, w:200 },
         { k:"power", t:"Potencia", n:true, w:70 }, { k:"powerUnit", t:"Unidad", op:[["hp","HP"],["kw","kW"]], w:70 },
         { k:"starter", t:"Arranque", op:[["dol","Directo"],["vfd","Variador"],["ss","Arrancador suave"]], w:130 },
+        { k:"filtroVdf", t:"Filtros del variador", op:[["ambos","Línea y carga"],["linea","Solo de línea"],["carga","Solo de carga"],["ninguno","Sin filtro"]], w:130 },
         { k:"regimen", t:"Régimen", op: REGIMENES.map(r=>[r.v, r.label]), w:120 },
         { k:"fp", t:"FDP", n:true, w:58 }, { k:"effPct", t:"EFF (%)", n:true, w:60 }, { k:"fu", t:"FU", n:true, w:52 }, { k:"fs", t:"FS", n:true, w:52 },
         { k:"fases", t:"Fases", op:[["3","3F"],["1","1F"]], w:60 },

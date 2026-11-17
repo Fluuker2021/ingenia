@@ -103,7 +103,7 @@ export async function unifilarKit({ p, valsDe, cliente, id }){
       k++;
     });
   }
-  doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: total, calc: lista[0] };
+  doc.limpiarUniones(); doc.centrarEnSimbolos(); return { dxf: doc.toDXF(), hojas: total, calc: lista[0] };
 }
 
 /* descripción de la carga bajo el motor o la flecha: texto vertical que termina en yIni y baja hacia el pie de

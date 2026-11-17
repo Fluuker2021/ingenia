@@ -22,6 +22,7 @@ const X_COL = 652;                                 // las columnas bajan hasta e
 const ANCHO = { b_vfd:220, b_mcp:90, b_trafo:107, c_rama:78, c_rama_id:96 };
 const EJES = { b_vfd:[97,113,129], b_mcp:[39,55,71], b_trafo:[53,85] };
 const PE_X = { b_vfd:145, b_mcp:87, b_trafo:101 };
+const EJES_RAMA = { c_rama:[32, 64], c_rama_id:[46, 78] };   // fase y neutro de las derivaciones del secundario
 // zonas omitidas (coordenadas de la pieza) y tramos de conductor que las reemplazan
 const OMITIR = { contactor:[0,393,80,423], auxiliares:[0,512,34,563], motor:[34,190,92,236], filtro:[-20,342,138,494] };
 const PUENTE = { contactor:[420.9,404.9], filtro:[492.9,342.9] };
@@ -89,7 +90,8 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
     const nombre = `${(t.nombre||"").toUpperCase()} ${t.tag}`;
     // 1) acometida
     let ox = lam(`${nombre} - ACOMETIDA`);
-    pieza(doc, kit, "h_acometida", ox+DX, DY, { lineas:{ acometida:16, notas:48 }, texto: barraTxt, vars:{
+    // la leyenda de conexión se separa del marco izquierdo lo mismo que del cajetín (≈5 mm)
+    pieza(doc, kit, "h_acometida", ox+DX, DY, { lineas:{ acometida:16, notas:48 }, texto: barraTxt, mover:[{ r:[-0.6, 157, 117, 192], dx:5, dy:0 }], vars:{
       acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}`, alim:`Alimentación\n${g.voltage} V ${g.freq} Hz 3F\n+PE`,
       q:"Q1", qv:`${calc.mainBreaker}A`, qm:`Tmax XT ${calc.mainBreaker}A 3P (Ekip LS/I)`, t1:`${g.voltage}/120Vac+T`, vp:`${g.voltage}V`, vs:"120V",
       notas: notasU.length ? "NOTAS :\n" + notasU.map((n, i)=>`${i+1}.${n}`).join("\n") : `NOTAS :\n1.LA ACOMETIDA PARA EL ${nombre} DE ${g.voltage} Vac, 3F + T, ${g.freq} HZ ES SUMINISTRADA POR EL CLIENTE.\n2.BARRA A TIERRA FIJA DEL TABLERO DE FUERZA Y CONTROL.\n3.LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A ${v.altitud} m.s.n.m.` } });
@@ -101,8 +103,10 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
       ox = lam(`${nombre} - FUERZA${fuerza.length>1 ? ` (${i+1} DE ${fuerza.length})` : ""}`);
       const hoja = k+1, prev = hoja-1, sig = hoja+1;
       pieza(doc, kit, "b_entrada", ox+DX, DY, { texto: s=> s.trim()==="1.H:1" ? `${prev}.H:1` : barraTxt(s) });
-      pieza(doc, kit, "b_salida", ox+DX+737, DY, { texto: s=> s.trim()==="3.A:1" ? (i < fuerza.length-1 || sec.length ? `${sig}.A:1` : "") : barraTxt(s) });
-      dibujarBarras(doc, ox, kit, true);
+      // las barras siguen a la hoja siguiente solo si hay continuación; si no, terminan en la última derivación
+      const sigue = i < fuerza.length-1 || sec.length > 0;
+      if(sigue) pieza(doc, kit, "b_salida", ox+DX+737, DY, { texto: s=> s.trim()==="3.A:1" ? `${sig}.A:1` : barraTxt(s) });
+      let xFinF = 0, xFinPE = 0;
       // columnas repartidas en el ancho disponible (separación extra proporcional, sin pasar de 1,25)
       const W = cols.reduce((a,c)=>a+ANCHO[c.pieza], 0), f = Math.min((X_COL - X_INI)/W, 1.25);
       let x = X_INI + ((X_COL - X_INI) - W*f)/2;
@@ -115,8 +119,10 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
           texto: (s, e)=>{ if(c.awg && /^\s*\d+(\/0)?\s*AWG\s*$/i.test(s)) return (e[4] >= pe-1 && e[4] <= pe+9) ? c.egc : c.awg; return barraTxt(s); } });
         for(const z of (c.omitir||[])){ const pz = PUENTE[z]; if(pz) for(const ex of EJES[c.pieza]) doc.line(ox+DX+x0+ex, pz[0]+DY, ox+DX+x0+ex, pz[1]+DY, "E-FZA-BT-PRI"); }
         if(c.pieza==="b_trafo" && hojaSec.has(c)) doc.text(ox+DX+x0+69, 262+DY, 2.5, `A HOJA ${hojaSec.get(c)}`, "G-TEX", { halign:1 });
+        xFinF = Math.max(xFinF, x0 + Math.max(...(EJES[c.pieza]||[0]))); xFinPE = Math.max(xFinPE, x0 + (PE_X[c.pieza]||0));
         x += a*f;
       }
+      dibujarBarras(doc, ox, kit, true, sigue ? null : xFinF, sigue ? null : xFinPE);
       k++;
     });
     // 3) secundarios de los transformadores de control
@@ -124,24 +130,24 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
       const tr = s.trafo.vars;
       ox = lam(`${nombre} - SECUNDARIO ${tr.t}`);
       pieza(doc, kit, "c_entrada", ox+DX, DY, { quitar: /^\/?\s*\d+\.[A-H]:\d+\s*\/?$|^\/$/, texto: x=>({ "CB3.2":`${tr.q}.2`, "CB3.4":`${tr.q}.4` })[x.trim()] || x });
-      const x1 = X_FIN + 20;
-      doc.line(ox+DX+30, BARRAS[0]+DY, ox+DX+x1, BARRAS[0]+DY, "E-FZA-BT-SEC");
-      doc.line(ox+DX+30, BARRAS[1]+DY, ox+DX+x1, BARRAS[1]+DY, "E-FZA-BT-SEC");
-      doc.line(ox+DX+30, BARRAS[2]+DY, ox+DX+x1, BARRAS[2]+DY, "E-TIERRA");
       doc.text(ox+DX+34, BARRAS[0]+DY+3, 2.5, `${tr.t} ${tr.vs} - ${tr.tv}`, "G-TEX");
       // derivaciones repartidas y centradas entre la entrada de barras y el final de la lámina
       const Wr = s.ramas.reduce((a, r)=>a + ANCHO[r.pieza], 0), fr = Math.min((X_COL - 70)/Wr, 1.25);
-      let x = 70 + ((X_COL - 70) - Wr*fr)/2;
-      for(const r of s.ramas){ const a = ANCHO[r.pieza]; pieza(doc, kit, r.pieza, ox+DX+x + (a*fr - a)/2, DY, { vars:r.vars, quitar:REF, lineas:{ desc:22 } }); x += a*fr; }
+      let x = 70 + ((X_COL - 70) - Wr*fr)/2, xL = 60, xN = 60;
+      for(const r of s.ramas){ const a = ANCHO[r.pieza], x0 = x + (a*fr - a)/2; pieza(doc, kit, r.pieza, ox+DX+x0, DY, { vars:r.vars, quitar:REF, lineas:{ desc:22 } }); const ej = EJES_RAMA[r.pieza] || [32, 64]; xL = x0 + ej[0]; xN = x0 + ej[1]; x += a*fr; }
+      // barras del secundario: llegan solo hasta la última derivación
+      doc.line(ox+DX+30, BARRAS[0]+DY, ox+DX+xL, BARRAS[0]+DY, "E-FZA-BT-SEC");
+      doc.line(ox+DX+30, BARRAS[1]+DY, ox+DX+xN, BARRAS[1]+DY, "E-FZA-BT-SEC");
+      doc.line(ox+DX+30, BARRAS[2]+DY, ox+DX+xN, BARRAS[2]+DY, "E-TIERRA");
       k++;
     });
   }
-  doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: total };
+  doc.limpiarUniones(); doc.centrarEnSimbolos(); return { dxf: doc.toDXF(), hojas: total };
 }
 
 /* barras L1, L2, L3 (línea de centro) y PE de la hoja de fuerza */
-function dibujarBarras(doc, ox, kit, fuerza){
+function dibujarBarras(doc, ox, kit, fuerza, xFin, xFinPE){
   if(!fuerza) return;
-  for(const y of BARRAS) doc.line(ox+DX+24, y+DY, ox+DX+762, y+DY, "E-FZA-BT-PRI");
-  doc.line(ox+DX+24, PE_Y+DY, ox+DX+762, PE_Y+DY, "E-TIERRA");
+  for(const y of BARRAS) doc.line(ox+DX+24, y+DY, ox+DX+(xFin ?? 762), y+DY, "E-FZA-BT-PRI");
+  doc.line(ox+DX+24, PE_Y+DY, ox+DX+(xFinPE ?? 762), PE_Y+DY, "E-TIERRA");
 }

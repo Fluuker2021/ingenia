@@ -41,12 +41,14 @@ export function envolver(s, n){
 /* dibuja la pieza `nombre` con su ancla en (x, y), escala s.
    vars: valores de los marcadores; omitir: rectángulos (coordenadas de la pieza) cuyas primitivas no se dibujan;
    lineas: { clave: n } divide el valor en líneas de n caracteres (el valor también puede traer "\n") */
-export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas={}, quitar=null, texto=null }={}){
+export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas={}, quitar=null, texto=null, mover=[] }={}){
   const pz = kit.piezas[nombre]; if(!pz) return;
-  const X = v=>x+v*s, Y = v=>y+v*s;
   for(const e0 of pz.e){
     let e = e0;
     if(omitir.length){ const b = caja(e); if(omitir.some(r=>dentro(b, r))) continue; }
+    // mover: las entidades dentro de un rectángulo de la pieza se desplazan (dx, dy) — p. ej. la leyenda de conexión
+    const mv = mover.length ? mover.find(m=>dentro(caja(e), m.r)) : null;
+    const X = v=>x+v*s+(mv ? mv.dx : 0), Y = v=>y+v*s+(mv ? mv.dy : 0);
     if(e[0]==="T"){
       // quitar: textos que no aplican (p. ej. referencias a hojas que no se generan); texto: transforma un texto fijo
       if(quitar && quitar.test(String(e[8]).trim())) continue;

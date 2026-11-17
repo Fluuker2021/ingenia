@@ -405,7 +405,7 @@ export async function lazoKit({ p, valsDe, cliente, id }){
       nLazos += filas.length; k++;
     });
   }
-  return { dxf: doc.toDXF(), hojas: total, lazos: nLazos };
+  doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: total, lazos: nLazos };
 }
 
 /* ---------- una lámina ---------- */

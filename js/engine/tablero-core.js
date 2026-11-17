@@ -524,8 +524,10 @@ function computeCircuit(load, idx, g){
         loadFltItem = {comp:"Filtro de carga (dv/dt / senoidal)", devtag:"M"+tag, model:"Filtro clase "+loadFlt+"A (verificar con fabricante)", val: loadFlt+"A", src:DS.vfd};
       }
       // el usuario puede prescindir de la reactancia de línea o del filtro de carga (Copito: «Elimina LC1»)
-      if(load.sinFiltroLinea) lineFltItem = null;
-      if(load.sinFiltroCarga) loadFltItem = null;
+      // filtroVdf: "ambos" (por defecto) | "linea" | "carga" | "ninguno"
+      const fv = load.filtroVdf || "ambos";
+      if(load.sinFiltroLinea || fv==="carga" || fv==="ninguno") lineFltItem = null;
+      if(load.sinFiltroCarga || fv==="linea" || fv==="ninguno") loadFltItem = null;
       const memoEgc = withEGC(cmemo, brk);
       return { tag, kind:"motor", title:(load.desc||appMeta.label)+" · "+powerLbl, meta: "FLA "+fmtA(fla)+" · "+deratingTxt+" · I sel "+fmtA(isel)+(warn?" ⚠ fuera de catálogo":"")+" · "+demandTxt,
         mainContribution: brk, demandKVA, installedKVA, ...motorExtra, conductorMemo: memoEgc, items: [
@@ -763,23 +765,74 @@ class DXFDoc{
     const lineas = [];
     for(const e of this.entities) if(e.startsWith("0\nLINE\n")) lineas.push([num(e,10), num(e,20), num(e,11), num(e,21), capa(e)]);
     const quitar = new Set();
+    // puntos de unión: círculos, o pares de arcos con el mismo centro y radio (punto relleno de las piezas del kit)
+    const puntos = new Map();
     this.entities.forEach((e, i)=>{
-      if(!e.startsWith("0\nCIRCLE\n")) return;
+      const c = e.startsWith("0\nCIRCLE\n"), a = e.startsWith("0\nARC\n"); if(!c && !a) return;
       const cx = num(e,10), cy = num(e,20), r = num(e,40); if(!(r <= rMax)) return;
+      const k = `${Math.round(cx*20)}|${Math.round(cy*20)}|${Math.round(r*20)}`;
+      const q = puntos.get(k) || { cx, cy, r, idx:[], circulo:false, barrido:0 }; q.idx.push(i);
+      if(c){ q.circulo = true; q.barrido = 360; } else { const a1 = num(e,50), a2 = num(e,51); q.barrido += ((a2 - a1) % 360 + 360) % 360; }
+      puntos.set(k, q);
+    });
+    // puntos rellenos hechos con SOLID (octágono del kit): se agrupan los triángulos de un mismo punto pequeño
+    const sol = [];
+    this.entities.forEach((e, i)=>{ if(!e.startsWith("0\nSOLID\n")) return; const xs = [num(e,10), num(e,11), num(e,12), num(e,13)], ys = [num(e,20), num(e,21), num(e,22), num(e,23)];
+      const b = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]; if(b[2]-b[0] <= 3.2 && b[3]-b[1] <= 3.2) sol.push({ i, b }); });
+    const grupos = [];
+    for(const t of sol){ const g = grupos.find(g=>t.b[0] <= g.b[2] + 0.05 && t.b[2] >= g.b[0] - 0.05 && t.b[1] <= g.b[3] + 0.05 && t.b[3] >= g.b[1] - 0.05);
+      if(g){ g.idx.push(t.i); g.b = [Math.min(g.b[0], t.b[0]), Math.min(g.b[1], t.b[1]), Math.max(g.b[2], t.b[2]), Math.max(g.b[3], t.b[3])]; } else grupos.push({ idx:[t.i], b:t.b.slice() }); }
+    for(const g of grupos){ const w = g.b[2]-g.b[0], h = g.b[3]-g.b[1]; if(g.idx.length < 3 || w > 3.2 || h > 3.2 || Math.abs(w-h) > 0.6) continue;
+      puntos.set("S"+g.idx[0], { cx:(g.b[0]+g.b[2])/2, cy:(g.b[1]+g.b[3])/2, r:Math.max(w, h)/2, idx:g.idx, circulo:true, barrido:360 }); }
+    for(const q of puntos.values()){
+      if(!q.circulo && q.barrido < 300) continue;                 // arcos sueltos (saltos de cruce, símbolos): no son uniones
+      const { cx, cy, r } = q;
       const brazos = new Set();
       for(const [x1, y1, x2, y2] of lineas){
         const L = Math.hypot(x2-x1, y2-y1); if(L < 1e-6) continue;
         const t = ((cx-x1)*(x2-x1) + (cy-y1)*(y2-y1))/(L*L);
         if(t < -r/L - 0.02 || t > 1 + r/L + 0.02) continue;
         if(Math.hypot(x1 + t*(x2-x1) - cx, y1 + t*(y2-y1) - cy) > r*1.05 + 0.05) continue;
-        for(const [x, y] of [[x1, y1], [x2, y2]]) if(Math.hypot(x-cx, y-cy) > r*1.2) brazos.add(((Math.round(Math.atan2(y-cy, x-cx)*180/Math.PI/5)*5) + 360) % 360);
+        for(const [x, y] of [[x1, y1], [x2, y2]]) if(Math.hypot(x-cx, y-cy) > r*0.5) brazos.add(((Math.round(Math.atan2(y-cy, x-cx)*180/Math.PI/5)*5) + 360) % 360);
       }
-      if(brazos.size !== 2) return;
+      if(brazos.size !== 2) continue;
       const [a1, a2] = [...brazos], d = Math.abs(a1 - a2) % 360, dd = Math.min(d, 360 - d);
-      if(dd > 30 && dd < 150) quitar.add(i);                     // esquina: sin punto de unión
-    });
+      // esquina ortogonal de un conductor (barra que termina y baja): sin punto de unión; los contactos de los
+      // símbolos (brazos en diagonal) no se tocan
+      if(a1 % 90 === 0 && a2 % 90 === 0 && dd === 90) q.idx.forEach(i=>quitar.add(i));
+    }
     if(quitar.size) this.entities = this.entities.filter((e, i)=>!quitar.has(i));
     return quitar.size;
+  }
+  /* textos cortos dentro de un símbolo (VFD en su recuadro, RST en su círculo, AS, PS…): centrados en el símbolo */
+  centrarEnSimbolos(){
+    const num = (e, c) => { const m = e.match(new RegExp("\\n"+c+"\\n(-?[\\d.eE+-]+)")); return m ? +m[1] : NaN; };
+    const H = [], V = [], C = [];
+    for(const e of this.entities){
+      if(e.startsWith("0\nLINE\n")){ const x1 = num(e,10), y1 = num(e,20), x2 = num(e,11), y2 = num(e,21);
+        if(Math.abs(y1-y2) < 0.01) H.push([Math.min(x1,x2), Math.max(x1,x2), y1]); else if(Math.abs(x1-x2) < 0.01) V.push([Math.min(y1,y2), Math.max(y1,y2), x1]); }
+      else if(e.startsWith("0\nCIRCLE\n")) C.push([num(e,10), num(e,20), num(e,40)]);
+    }
+    this.entities = this.entities.map(e=>{
+      if(!e.startsWith("0\nTEXT\n")) return e;
+      const txt = (e.match(/\n1\n([^\n]*)/)||[])[1]||"", h = num(e,40), rot = num(e,50);
+      if(!/^[A-Z]{2,4}$/.test(txt) || (rot && Math.abs(rot) > 0.1)) return e;
+      const al = num(e,72), x = num(e,10), y = num(e,20), w = txt.length*h*DXF_CAR;
+      const px = al===1 ? (isNaN(num(e,11)) ? x : num(e,11)) : x + w/2, py = y + h/2;
+      let cx = null, cy = null;
+      const c = C.find(([a, b, r])=>r >= 2 && r <= 10 && Math.hypot(a-px, b-py) < r*0.8);
+      if(c){ cx = c[0]; cy = c[1]; }
+      else {
+        const izq = V.filter(([y0, y1, vx])=>vx < px && px - vx < 25 && y0 <= py && y1 >= py).reduce((m, l)=>Math.max(m, l[2]), -Infinity);
+        const der = V.filter(([y0, y1, vx])=>vx > px && vx - px < 25 && y0 <= py && y1 >= py).reduce((m, l)=>Math.min(m, l[2]), Infinity);
+        const aba = H.filter(([x0, x1, hy])=>hy < py && py - hy < 25 && x0 <= px && x1 >= px).reduce((m, l)=>Math.max(m, l[2]), -Infinity);
+        const arr = H.filter(([x0, x1, hy])=>hy > py && hy - py < 25 && x0 <= px && x1 >= px).reduce((m, l)=>Math.min(m, l[2]), Infinity);
+        if(![izq, der, aba, arr].every(isFinite) || der - izq < w + 1 || arr - aba < h + 1) return e;
+        cx = (izq + der)/2; cy = (aba + arr)/2;
+      }
+      const cab = e.slice(0, e.indexOf("\n10\n")), lt = (e.match(/\n41\n[^\n]*/)||[""])[0];
+      return cab+"\n10\n"+dxfNum(cx)+"\n20\n"+dxfNum(cy)+"\n30\n0.0\n40\n"+dxfNum(h)+"\n1\n"+txt+lt+"\n72\n1\n11\n"+dxfNum(cx)+"\n21\n"+dxfNum(cy)+"\n31\n0.0\n73\n2";
+    });
   }
   toDXF(){
     // tabla LAYER con SOLO los códigos de grupo válidos en DXF R12 puro (0,2,70,62,6). Un intento anterior

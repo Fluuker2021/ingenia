@@ -322,7 +322,11 @@ export function aplicarDoc(p, op, avisos){
     case "filosofia.cambiar": { aplicarFilosofia(p, op, avisos); return {}; }
     case "componente.eliminar": { const a = op.accion||{};
       if(a.k==="luz"){ const t = tableros(p).find(x=>x.id===a.tablero); if(t){ t.lucesOmitir = [...new Set([...(t.lucesOmitir||[]), a.clave])]; } return { regenerarIO: true }; }
-      if(a.k==="filtro"){ const l = d.cargas.find(x=>x.id===a.carga); if(l) l[a.campo] = true; else avisos.push("No encontré la carga."); return {}; }
+      if(a.k==="filtro"){ const l = d.cargas.find(x=>x.id===a.carga); if(!l){ avisos.push("No encontré la carga."); return {}; }
+        // se guarda en el mismo dato que la columna «Filtros del variador» del listado de cargas
+        const fv = l.filtroVdf || (l.sinFiltroLinea && l.sinFiltroCarga ? "ninguno" : l.sinFiltroLinea ? "carga" : l.sinFiltroCarga ? "linea" : "ambos");
+        const quedaL = a.campo==="sinFiltroLinea" ? false : fv==="ambos" || fv==="linea", quedaC = a.campo==="sinFiltroCarga" ? false : fv==="ambos" || fv==="carga";
+        l.filtroVdf = quedaL && quedaC ? "ambos" : quedaL ? "linea" : quedaC ? "carga" : "ninguno"; delete l.sinFiltroLinea; delete l.sinFiltroCarga; return {}; }
       if(a.k==="acc"){ const t = tableros(p).find(x=>x.id===a.tablero); if(t){ t.accesorios = Object.assign({}, t.accesorios||{}, { [a.clave]: false }); } return {}; }
       return {}; }
     case "equipo.eliminar": { const n = (d.proceso.equipos||[]).length; d.proceso.equipos = (d.proceso.equipos||[]).filter(e=>e.tag!==op.tag); if(n===d.proceso.equipos.length) avisos.push(`No encontré el equipo ${op.tag}.`); return {}; }

@@ -130,7 +130,7 @@ export function aplicarTipicos(l){
 
 /* ---------------- cargas ---------------- */
 export function nuevaCarga(kind="motor", tablero=""){
-  return aplicarTipicos({ id: uidc("L"), kind, tablero, tag:"", application:"otro", desc:"", power:10, powerUnit:"hp", starter:"dol", vfdBrand:"abb", regimen:"continuo", man:{},
+  return aplicarTipicos({ id: uidc("L"), kind, tablero, tag:"", application:"otro", desc:"", power:10, powerUnit:"hp", starter:"dol", vfdBrand:"abb", filtroVdf:"ambos", regimen:"continuo", man:{},
     fp:0.85, effPct:90, fu:1, fs:1, cableLength:30, feederAmps:30, cableTag:"", canalizacion:"",
     controlBranches:[{label:"Control (PLC / instrumentación)", breaker:10, va:150},{label:"Ventiladores internos", breaker:6, va:200},{label:"Calefacción interna", breaker:6, va:300},{label:"Luminaria interna", breaker:4, va:60}] });
 }

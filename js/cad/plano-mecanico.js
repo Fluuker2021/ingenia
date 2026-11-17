@@ -107,7 +107,7 @@ function tabla(doc, x, yTop, cols, filas, o){
   return hc + n*hf;
 }
 function parrafos(doc, x, yTop, ancho, titulo, items, fs){
-  fs = fs || 2; const paso = fs*1.45, nCar = Math.floor(ancho/(fs*0.72));
+  fs = fs || 2; const paso = fs*1.45, nCar = Math.min(200, Math.floor(ancho/(fs*0.72)));
   let y = yTop;
   if(titulo){ doc.text(x, y, 2.6, "%%U" + titulo, "M-TEXTO"); y -= 5; }
   items.forEach((it, i)=>{

@@ -14,6 +14,7 @@ import { esc } from "./ui.js";
 import { entregable } from "./catalog.js";
 import { datos, tableros, tablerosControl, tc as tcPrincipal, circuitosControl, instrumentos, expandirTag } from "./datos.js";
 import { equiposControl, indiceEquipos, familiaPlc } from "./control/equipos.js";
+import { arreglosProyecto } from "./mecanico/arreglo.js";
 import { FAMILIAS, modeloFamilia } from "./control/plc-modulos.js";
 import { filosofiaOps, filosofiaDe, TEXTOS_FIL, TABLAS_FIL } from "./modules/filosofia.js";
 
@@ -47,6 +48,7 @@ const DEP = {
   control: ["ins-io","ins-lazo","ins-unifilar-tc","ins-multifilar-tc","ins-mecanico-tc","ins-arquitectura","ins-filosofia","ele-hd","ele-cargas"],
   tablero: TODOS, sistema: TODOS, proyecto: TODOS, diseno: TODOS, documentos: TODOS,
   equipo: ["ins-pid","ins-filosofia","ins-instrumentos"],
+  componente: ["ele-cargas","ele-equipos","ele-hd","ele-unifilar","ele-multifilar","ele-mecanico","ins-io","ins-lazo","ins-unifilar-tc","ins-multifilar-tc","ins-mecanico-tc","ins-arquitectura","ins-filosofia"],
   filosofia: ["ins-filosofia","ins-pid"],
 };
 export function afectados(p, ops){
@@ -85,6 +87,60 @@ function circuitoRef(p, tb, t){
 }
 const CFG_EQUIPO = [["hmi", /\bhmi\b|pantalla/, "la pantalla HMI"], ["router", /router/, "el router IIoT"], ["switch", /switch/, "el switch Ethernet"], ["controladorLimpieza", /controlador de limpieza/, "el controlador de limpieza"], ["lucesPiloto", /luc(es|e)s? pilotos?|luz(es)? pilotos?/, "las luces piloto de la puerta"]];
 
+/* ---------- eliminar un componente nombrado por su TAG (o por su nombre) en cualquier documento ----------
+   Cada componente se quita en su origen, para que desaparezca de todos los entregables: un circuito se elimina,
+   un equipo de red / controlador de limpieza / luces piloto / calefacción se desactiva en el tablero, una
+   reactancia o filtro del variador se quita de su carga, los accesorios del tablero de fuerza (supresor, relé de
+   fase, luces) se desactivan y el arrancador / variador / interruptor de una carga quita el circuito completo.
+   Lo que se deriva de otros datos (módulos del PLC, relés de interfaz, borneras, fuente) se explica con un aviso. */
+const NOMBRES_COMP = [[/tomacorriente/, /tomacorriente/i], [/luminaria/, /luminaria/i], [/ventilador|ventilacion/, /ventilaci/i], [/termostato de (la )?calefaccion|resistencia calefactora|calefaccion/, /^(TH2|R1)$/],
+  [/luz piloto de alarma|luz de alarma/, /ALARMA/], [/luz piloto (de )?24/, /24 Vdc PRESENTE/], [/luz piloto (de )?220/, /220 Vac PRESENTE/], [/luz piloto (de )?120/, /120 Vac PRESENTE|Vac PRESENTE/],
+  [/supresor|spd/, /^SPD/], [/rele de (falla de )?fase|rele de monitoreo/, /^RF$/]];
+function eliminarComponente(q, p, t, doc){
+  const Q = String(q||"").toUpperCase();
+  const fuerza = () => eliminarFuerza(q, p, t, Q);
+  // en un documento de fuerza se buscan primero los componentes de los tableros de fuerza
+  if(/^ele-/.test(doc||"")){ const r = fuerza(); if(r) return r; }
+  // control: índice de equipos de cada tablero de control
+  for(const tb of tablerosControl(p)){
+    let eq; try{ eq = equiposControl(p, tb); }catch(e){ continue; }
+    const idx = indiceEquipos(eq);
+    let e = idx.find(x=>new RegExp(`(^|[^A-Z0-9.])${x.tag.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}($|[^A-Z0-9.])`).test(Q) && x.tag.length > 1);
+    // TH1 y los ventiladores son parte del circuito de ventilación
+    if(!e && (/\bTH1\b/.test(Q) || /ventilador/.test(t)) && !/calefac/.test(t)) e = idx.find(x=>x.cfg==="ventilacion");
+    if(!e) for(const [reQ, reE] of NOMBRES_COMP) if(reQ.test(t)){ e = idx.find(x=>reE.test(x.tag) || reE.test(x.leyenda||"") || reE.test(x.descripcion||"")); if(e) break; }
+    if(!e) continue;
+    const T = tb.tag;
+    if(e.tipo==="luz") return [{ op:"componente.eliminar", tag:e.tag, tablero:T, accion:{ k:"luz", tablero:tb.id, clave:e.clave }, texto:`quitar la luz piloto ${e.tag} (${e.leyenda}) de la puerta` }];
+    if(e.grupo==="calefaccion") return [{ op:"mecanico.editar", tag:T, campos:{ calefaccion:"no" } }];
+    if(e.grupo==="red") return [{ op:"control.editar", tag:T, campos:{ [e.tipo==="hmi" ? "hmi" : e.tipo==="router" ? "router" : "switch"]: false } }];
+    if(e.grupo==="limpieza") return [{ op:"control.editar", tag:T, campos:{ controladorLimpieza:false } }];
+    // circuitos (o el equipo que alimentan): se quita el circuito con el flujo de circuitos
+    if(["24 Vdc","120 Vac","220 Vac"].includes(e.grupo)) return new RegExp(`\\b${e.tag}\\b`).test(Q) ? null : interpretarDoc(`Elimina ${e.tag} de ${T}`, p);
+    if(e.grupo==="reles") return [{ op:"aviso", texto:`${e.tag} es el relé de interfaz de la salida digital ${esc((e.senal && (e.senal.tag||e.senal.senal)) || "")}: sale de esa señal. Quita la señal (su equipo o instrumento) y el relé desaparece de todos los planos.` }];
+    if(e.grupo==="plc") return [{ op:"aviso", texto:`${e.tag} sale de la cantidad de señales del listado I/O (${esc(e.modelo||"")}). Para quitar un módulo, quita sus señales o cambia los canales por módulo («Cambia los canales DI a 32 en ${T}»).` }];
+    if(e.grupo==="spd") return [{ op:"aviso", texto:`${e.tag} protege la acometida de 220 Vac del tablero. Si no hay acometida auxiliar se quita solo: «Quita la acometida auxiliar de ${T}».` }];
+    return [{ op:"aviso", texto:`${e.tag} es parte fija del tablero ${T} (${esc(e.desc||e.descripcion||e.tipo||"")}); no se puede quitar sin dejar el tablero incompleto.` }];
+  }
+  return fuerza();
+}
+function eliminarFuerza(q, p, t, Q){
+  // fuerza: componentes del arreglo de cada tablero
+  let arr = []; try{ arr = arreglosProyecto(p); }catch(e){}
+  for(const m of arr){
+    let c = m.comps.find(x=>x.tag && x.tag.length > 1 && new RegExp(`(^|[^A-Z0-9.])${x.tag.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}($|[^A-Z0-9.])`).test(Q));
+    if(!c) for(const [reQ, reE] of NOMBRES_COMP) if(reQ.test(t)){ c = m.comps.find(x=>x.tag && reE.test(x.tag)); if(c) break; }
+    if(!c) continue;
+    const T = m.tablero.tag, l = c.circ && c.circ.carga ? datos(p).cargas.find(x=>x.tag===c.circ.carga) : null;
+    if(c.tipo==="reactancia" && l) return [{ op:"componente.eliminar", tag:c.tag, tablero:T, accion:{ k:"filtro", carga:l.id, campo: /carga|dv\/dt/i.test(c.desc||"") ? "sinFiltroCarga" : "sinFiltroLinea" }, texto:`quitar ${c.tag} (${(c.desc||"").toLowerCase()}) de ${l.tag||"la carga"}` }];
+    if(l) return [{ op:"aviso", texto:`${c.tag} (${esc((c.desc||c.tipo).toLowerCase())}) es el ${c.tipo==="interruptor" ? "interruptor" : c.tipo==="variador" ? "variador" : "arrancador"} de <b>${esc(l.tag)}</b>. Para quitarlo se quita el circuito completo: «Elimina la carga ${esc(l.tag)}»${c.tipo==="variador" || c.tipo==="guardamotor" || c.tipo==="contactor" ? `, o cambia su arranque («Pon el arranque de ${esc(l.tag)} directo»)` : ""}.` }];
+    if(/^SPD/.test(c.tag)) return [{ op:"componente.eliminar", tag:c.tag, tablero:T, accion:{ k:"acc", tablero:m.tablero.id, clave:"spd" }, texto:`quitar el supresor de sobretensiones ${c.tag}` }];
+    if(c.tag==="RF") return [{ op:"componente.eliminar", tag:c.tag, tablero:T, accion:{ k:"acc", tablero:m.tablero.id, clave:"releFase" }, texto:`quitar el relé de monitoreo de fase RF` }];
+    return [{ op:"aviso", texto:`${c.tag} (${esc(c.desc||c.tipo)}) es parte fija del tablero ${T}: protege o alimenta a otros equipos y no se puede quitar sin dejar el tablero incompleto.` }];
+  }
+  return null;
+}
+
 /* ---------- interpretar una orden sobre documentos (motor propio) ---------- */
 export function interpretarDoc(q, p){
   const t0 = norm(q), abierto = docAbierto();
@@ -96,6 +152,7 @@ export function interpretarDoc(q, p){
   const agregar = /\b(agrega|agregar|anade|anadir|incluye|incluir|crea|crear|pon|ponle|coloca|con)\b/.test(t);
   const cambiar = /\b(cambia|cambiar|cambiale|modifica|pon|ajusta|actualiza|establece|define|usa)\b/.test(t);
   const tb = tableroCtl(p, t);
+  if(quitar && !/\b(nota|reserva|circuito|carga|instrumento|acometida auxiliar)\b/.test(t)){ const r = eliminarComponente(q, p, t, doc); if(r) return r; }
 
   // --- cajetín y revisiones del documento abierto (o nombrado)
   if(doc && p.documentos[doc]){
@@ -203,6 +260,7 @@ export function describirDoc(op, p){
     case "nota.eliminar": return `${nom(op.doc)}: quitar la nota ${op.n} «${esc((datos(p).notas[op.doc]||[])[op.n-1]||"")}»`;
     case "equipo.agregar": return `P&amp;ID: agregar el equipo <b>${esc(op.tag)}</b> «${esc(op.descripcion)}»`;
     case "equipo.eliminar": return `P&amp;ID: quitar el equipo <b>${esc(op.tag)}</b>`;
+    case "componente.eliminar": return `${esc(op.tablero||"")}: ${esc(op.texto||"quitar "+op.tag)} en todos los entregables`;
     case "filosofia.cambiar": return op.texto || `Filosofía de control: ${esc(op.fn)}`;
   }
   return null;
@@ -262,11 +320,16 @@ export function aplicarDoc(p, op, avisos){
     case "nota.eliminar": { const a = d.notas[op.doc]||[]; if(op.n >= 1 && op.n <= a.length) a.splice(op.n-1, 1); else avisos.push(`No existe la nota ${op.n}.`); return {}; }
     case "equipo.agregar": { const eqs = d.proceso.equipos = d.proceso.equipos || []; if(eqs.some(e=>e.tag===op.tag)){ avisos.push(`${op.tag} ya existe.`); return {}; } eqs.push({ tag: op.tag, tipo: op.tipo||"otro", descripcion: op.descripcion||"" }); return {}; }
     case "filosofia.cambiar": { aplicarFilosofia(p, op, avisos); return {}; }
+    case "componente.eliminar": { const a = op.accion||{};
+      if(a.k==="luz"){ const t = tableros(p).find(x=>x.id===a.tablero); if(t){ t.lucesOmitir = [...new Set([...(t.lucesOmitir||[]), a.clave])]; } return { regenerarIO: true }; }
+      if(a.k==="filtro"){ const l = d.cargas.find(x=>x.id===a.carga); if(l) l[a.campo] = true; else avisos.push("No encontré la carga."); return {}; }
+      if(a.k==="acc"){ const t = tableros(p).find(x=>x.id===a.tablero); if(t){ t.accesorios = Object.assign({}, t.accesorios||{}, { [a.clave]: false }); } return {}; }
+      return {}; }
     case "equipo.eliminar": { const n = (d.proceso.equipos||[]).length; d.proceso.equipos = (d.proceso.equipos||[]).filter(e=>e.tag!==op.tag); if(n===d.proceso.equipos.length) avisos.push(`No encontré el equipo ${op.tag}.`); return {}; }
   }
   return null;
 }
-export const OPS_DOC = ["filosofia.cambiar","circuito.agregar","circuito.eliminar","circuito.editar","control.editar","documento.editar","documento.emitir","nota.agregar","nota.eliminar","equipo.agregar","equipo.eliminar"];
+export const OPS_DOC = ["componente.eliminar","filosofia.cambiar","circuito.agregar","circuito.eliminar","circuito.editar","control.editar","documento.editar","documento.emitir","nota.agregar","nota.eliminar","equipo.agregar","equipo.eliminar"];
 
 /* ---------- sugerencias de Copito según el documento abierto (con los TAG reales del proyecto) ---------- */
 export function sugerenciasDoc(p, id){
@@ -298,11 +361,10 @@ export function sugerenciasDoc(p, id){
 /* barra «Cambios con Copito» al pie de la vista previa de cada documento */
 export function montarBarraCopito(body, p, id){
   if(!body || body.querySelector(".cp-docbar") || body.querySelector(".v3d-copito-bar")) return;
-  const sug = sugerenciasDoc(p, id);
   const div = document.createElement("div");
   div.className = "v3d-copito-bar mt-2 cp-docbar";
   div.innerHTML = `<div><strong>Cambios con Copito</strong><span class="muted"> · Pídele cualquier cambio de este documento: lo propone, lo aplicas al confirmar y se actualizan este documento y los demás entregables relacionados.</span></div>
-    <div class="v3d-chips">${sug.map(c=>`<button class="btn-sm" data-cp="${esc(c)}">${esc(c)}</button>`).join("")}<button class="btn-sm btn-accent" data-cp="">Escribir otro cambio…</button></div>`;
+    <div class="v3d-chips"><button class="btn-sm btn-accent" data-cp="">Pedir un cambio a Copito…</button><button class="btn-sm" data-cp="¿Qué puedo hacer en este documento?">¿Qué puedo pedirle?</button></div>`;
   body.appendChild(div);
   // doble clic sobre una fila de un listado (o tabla de la vista previa): Copito se abre con su TAG
   if(!body._cpDbl){ body._cpDbl = true; body.addEventListener("dblclick", ev=>{

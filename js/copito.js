@@ -288,7 +288,9 @@ export function iniciarCopito(rutaActual, alCambiar){
     const da = docAbierto(), pd = da && S.proyecto(da.id);
     const sug = pd ? sugerenciasDoc(pd, da.doc) : SUGERENCIAS;
     $("#cp-sug").innerHTML = sug.map(x=>`<button>${esc(x)}</button>`).join("");
-    $("#cp-sug").hidden = chat.length > 0 && !pd;
+    // los ejemplos solo aparecen en la bienvenida o cuando se pregunta qué se puede hacer
+    const ult = chat[chat.length-1];
+    $("#cp-sug").hidden = !(chat.length===0 || (ult && ult.ayuda));
   };
   const cfg = leerIA();
   const modo = ()=>{ const c = leerIA(); $("#cp-modo").textContent = c.activo && c.clave ? "Asistente de tus proyectos · IA activa" : "Asistente de tus proyectos"; };
@@ -337,6 +339,11 @@ export function iniciarCopito(rutaActual, alCambiar){
     q = q.trim(); if(!q) return;
     chat.push({ de:"yo", t:q }); pintar();
     const ruta = rutaActual();
+    if(/^(hola|buenas|hey|ayuda|help)\b|que (puedo|puedes|se puede|sabes) (hacer|pedir|cambiar)|que puedes hacer|que sabes|como funcionas|ejemplos|opciones/.test(norm(q))){
+      const da = docAbierto(), pd = da && S.proyecto(da.id);
+      chat.push({ de:"bot", ayuda:true, h: AYUDA + (pd ? `<div class="cp-nota">En el documento abierto puedes pedirme cambios como los de abajo: los propongo, los aplicas al confirmar y se actualizan todos los entregables relacionados.</div>` : "") });
+      guardar(); pintar(); return;
+    }
     const forzar = !esOrden(q) && pareceAjuste(q);
     if(esOrden(q) || forzar){
       const { p } = proyectoDe(q, ruta);

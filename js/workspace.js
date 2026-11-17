@@ -237,7 +237,7 @@ async function tabVista3D(body, p, id){
       ${sel.avisos.length ? `<div class="notice warn mb-2">${sel.avisos.map(esc).join("<br>")}</div>` : ""}
       <div id="v3-cont"></div>
       <div class="v3d-copito-bar mt-2"><div><strong>Cambios con Copito</strong><span class="muted"> · Copito propone el cambio, lo aplicas al confirmar y el 2D, el 3D y la lista de materiales se actualizan.</span></div>
-        <div class="v3d-chips">${chips.map(c=>`<button class="btn-sm" data-cp="${esc(c)}">${esc(c)}</button>`).join("")}<button class="btn-sm btn-accent" data-cp="">Escribir otro cambio…</button></div></div>
+        <div class="v3d-chips"><button class="btn-sm btn-accent" data-cp="">Pedir un cambio a Copito…</button><button class="btn-sm" data-cp="¿Qué puedo hacer en este documento?">¿Qué puedo pedirle?</button></div></div>
       <div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">El 3D usa las mismas dimensiones y posiciones del plano 2D. La descarga del CAD es la del plano 2D.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`;
     const ts = $("#v3-t"); if(ts) ts.onchange = ()=>{ body.dataset.t = ts.value; tabVista3D(body, p, id); };
     const pedir = (txt, enviar)=>{ if(window.copito) window.copito.abrir(txt, enviar); else toast("Copito no está disponible", true); };

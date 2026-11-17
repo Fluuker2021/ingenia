@@ -12,7 +12,13 @@ export const PASO_HOJAS = 1000; // separación entre láminas en el espacio mode
 function bloquesNeutros(){
   if(DXF_BLOCKS.ING_MAIN) return;
   const sinMarca = () => true;
-  DXF_BLOCKS.ING_MAIN = DXF_BLOCKS.TITLE_MAIN.filter(sinMarca).concat([["T",428.996,41.5,2.5,0,"PROCEDIMIENTO DE REVISION Y VALIDACION - CLIENTE"]]);
+  // franjas de zonas: la referencia trae solo algunos separadores (x 210 / 471 / 656, y 297) que no coinciden con las
+  // letras; se reemplazan por un separador entre cada letra (A…H, 8 × 100,75 mm) y entre cada número (1…5, 5 × 113,8 mm)
+  const malSep = e => e[0]==="L" && ((e[1]===e[3] && [210, 471, 656].includes(e[1]) && Math.min(e[2], e[4])>=579) || (e[2]===297 && e[4]===297 && Math.max(e[1], e[3])<=25));
+  const sep = [];
+  for(let k=1;k<8;k++){ const x = 25 + k*100.75; sep.push(["L", x, 579, x, 584]); }
+  for(let k=1;k<5;k++){ const y = 579 - k*113.8; sep.push(["L", 20, y, 25, y]); }
+  DXF_BLOCKS.ING_MAIN = DXF_BLOCKS.TITLE_MAIN.filter(e=>sinMarca(e) && !malSep(e)).concat(sep, [["T",428.996,41.5,2.5,0,"PROCEDIMIENTO DE REVISION Y VALIDACION - CLIENTE"]]);
   DXF_BLOCKS.ING_REV = DXF_BLOCKS.TITLE_REV.filter(sinMarca);
   DXF_BLOCKS.ING_REF = DXF_BLOCKS.TITLE_REF.slice();
   // bloque del contratista sin el ícono del logo (6 líneas en x<0) — el recuadro queda para el nombre de la empresa
@@ -49,14 +55,17 @@ export function dibujarLamina(doc, ox, oy, vals, cliente){
   doc.insertBlock("ING_CTR2", ox+741.25, oy+86.25, S);
   doc.insertBlock("ING_HOJA", ox+777, oy+98.535, S);
   const T = (x, y, h, txt, n, opt)=>{ if(txt) doc.text(ox+x, oy+y, h, dxfTrunc(String(txt), n||40), "G-TEXT", opt||{}); };
-  // rótulo principal
-  T(618, 40.6, 2.8, vals.UNIDAD, 52); T(618, 33.5, 2.8, vals.AREA, 52); T(618, 26.2, 2.8, vals.PROYECTO, 52);
-  T(618, 19.1, 2.8, vals.DISCIPLINA, 52);
-  const tit = String(vals.TITULO||""); const tit2 = vals.TITULO2 ? String(vals.TITULO2) : "";
-  if(tit.length>50 || tit2){ T(618, 13.2, 2.4, tit, 62); T(618, 10.6, 2.0, tit2, 70); } else T(618, 11.8, 2.8, tit, 52);
-  T(806.2, 28.9, 2.5, vals.NUM_PROYECTO, 14); T(812.6, 41.5, 2.5, vals.ESCALA, 10);
-  T(768, 14.5, String(vals.PLANO||"").length>22 ? 2.6 : 3.5, vals.PLANO, 30);
-  T(823.4, 11.6, 3, vals.REV, 2);
+  // rótulo principal (recuadro x 616…766, y 10…46): líneas centradas, repartidas en la altura y con la altura de texto
+  // proporcional a su importancia; si una línea no entra en el ancho se reduce su altura
+  const lin = [[vals.UNIDAD, 3.0], [vals.AREA, 2.6], [vals.PROYECTO, 3.0], [vals.DISCIPLINA, 3.2], [vals.TITULO, 3.0], [vals.TITULO2, 2.3]]
+    .filter(([t])=>t && String(t).trim()).map(([t, h])=>{ t = String(t); const hh = Math.max(1.8, Math.min(h, 144/(t.length*0.82))); return { t, h: hh }; });
+  const libre = 36 - lin.reduce((a, l)=>a + l.h, 0), gap = libre/(lin.length + 1);
+  let yl = 46 - gap;
+  for(const l of lin){ yl -= l.h; T(691, yl + l.h/2, l.h, l.t, 90, { halign:1, valign:2 }); yl -= gap; }
+  T(818, 30, 2.5, vals.NUM_PROYECTO, 14, { halign:1, valign:2 }); T(822.5, 42.9, 2.5, vals.ESCALA, 8, { halign:1, valign:2 });
+  T(798.5, 14.5, String(vals.PLANO||"").length>22 ? 2.6 : 3.5, vals.PLANO, 30, { halign:1, valign:2 });
+  // letra de revisión en el centro del triángulo (821,10)-(826,18,66)-(831,10)
+  T(826, 12.9, 3, vals.REV, 2, { halign:1, valign:2 });
   // firmas del procedimiento del cliente (quedan en blanco salvo que el usuario lo indique)
   T(446.5, 29.8, 2.2, vals.DIBUJO, 10); T(446.5, 23.8, 2.2, vals.DISENO, 10); T(446.5, 17.8, 2.2, vals.REVISO, 10); T(446.5, 11.8, 2.2, vals.APROBO, 10);
   [29.8, 23.8, 17.8, 11.8].forEach(y=>T(491.6, y, 2.0, vals.FECHA, 10));

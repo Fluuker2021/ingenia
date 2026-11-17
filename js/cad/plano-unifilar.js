@@ -44,7 +44,7 @@ function columnas(calc){
       const motor = { m:"M"+nMotor, hp: `${l.power}${l.powerUnit==="hp" ? "HP" : "kW"}`, amp: r2(c.installedCurrent,1)+"A", desc, tag, cable, circ:c.tag };
       if(l.starter==="vfd"){
         const q = item(c, /^ITM/), f = item(c, /^Portafusible/), rl = item(c, /^Filtro de l[ií]nea/), v = item(c, /^Variador/);
-        return { tipo:"col_vfd", vars: Object.assign(motor, { q:q.devtag, qv:q.val, f:f.devtag, fv: f.val ? "3x"+f.val : "", rl:rl.devtag, rlv:rl.val, vfd:v.devtag, vfdtxt:"VFD", vfdv:v.val }) };
+        return { tipo:"col_vfd", omitir: rl.devtag ? [] : ["filtro"], vars: Object.assign(motor, { q:q.devtag, qv:q.val, f:f.devtag, fv: f.val ? "3x"+f.val : "", rl:rl.devtag, rlv:rl.val, vfd:v.devtag, vfdtxt:"VFD", vfdv:v.val }) };
       }
       if(l.starter==="ss"){
         const q = item(c, /^ITM/), f = item(c, /^Portafusible/), a = item(c, /^Arrancador suave/);
@@ -103,7 +103,7 @@ export async function unifilarKit({ p, valsDe, cliente, id }){
       k++;
     });
   }
-  return { dxf: doc.toDXF(), hojas: total, calc: lista[0] };
+  doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: total, calc: lista[0] };
 }
 
 /* descripción de la carga bajo el motor o la flecha: texto vertical que termina en yIni y baja hacia el pie de

@@ -52,7 +52,7 @@ function columnas(calc, g){
     if(c.kind==="motor" && (l.starter==="vfd" || l.starter==="ss")){
       const q = item(c, /^ITM/), f = item(c, /^Portafusible/), rl = item(c, /^Filtro de l[ií]nea/), v = item(c, /^Variador|^Arrancador suave/);
       const vars = Object.assign(motor, { q:q.devtag, qv:amps(q.val), qm:sinMarca(q.model), f:f.devtag, fv:f.val, fm:sinMarca(f.model).replace(/\s*\+.*$/,""), rl:rl.devtag, rlm:sinMarca(rl.model), rlv:rl.val, vfd:v.devtag, vfdm:sinMarca(v.model), vfdv:v.val, vfdtxt:sinMarca(v.model) });
-      return { pieza:"b_vfd", ss: l.starter==="ss", omitir: l.starter==="ss" ? ["filtro"] : [], vars, awg, egc };
+      return { pieza:"b_vfd", ss: l.starter==="ss", omitir: l.starter==="ss" || !rl.devtag ? ["filtro"] : [], vars, awg, egc };
     }
     if(c.kind==="motor"){
       const q = item(c, /^Guardamotor|^ITM/), k = item(c, /^Contactor/);
@@ -136,7 +136,7 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
       k++;
     });
   }
-  return { dxf: doc.toDXF(), hojas: total };
+  doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: total };
 }
 
 /* barras L1, L2, L3 (línea de centro) y PE de la hoja de fuerza */

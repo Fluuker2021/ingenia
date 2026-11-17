@@ -169,11 +169,12 @@ export function equiposControl(p, t){
   const puerta = []; let nH = 0;
   const luz = (c, color, leyenda, extra) => { if(!c) return null; const o = Object.assign({ tag:"H"+(++nH), tipo:"luz", color, leyenda, circuito:c.tag, modelo:`Luz piloto LED 22 mm ${color}, ${c.barra}` }, extra||{}); puerta.push(o); (c.extra = c.extra || {}).luces = (c.extra.luces||[]).concat([o]); return o; };
   const c120l = circuitos.find(c=>c.cfg==="luz120"), c220l = circuitos.find(c=>c.cfg==="luz220"), c24l = circuitos.find(c=>c.cfg==="luz24");
-  luz(c120l, "blanca", `${vEst} PRESENTE`);
-  luz(c220l, "blanca", "220 Vac PRESENTE");
-  luz(c24l, "verde", "24 Vdc PRESENTE");
+  const omL = t.lucesOmitir || [];
+  if(!omL.includes("120")) luz(c120l, "blanca", `${vEst} PRESENTE`, { clave:"120" });
+  if(!omL.includes("220")) luz(c220l, "blanca", "220 Vac PRESENTE", { clave:"220" });
+  if(!omL.includes("24")) luz(c24l, "verde", "24 Vdc PRESENTE", { clave:"24" });
   const crAlm = reles.find(r=>r.senal && /_ALM$/.test(r.senal.senal||""));
-  if(c120l && crAlm) luz(c120l, "roja", "ALARMA GENERAL", { rele: crAlm.tag });
+  if(c120l && crAlm && !omL.includes("alarma")) luz(c120l, "roja", "ALARMA GENERAL", { rele: crAlm.tag, clave:"alarma" });
   const calC = circuitos.find(c=>c.cfg==="calefaccion");
   const calefaccion = calC ? { circuito:calC.tag, termostato:{ tag:"TH2", modelo:"Termostato NC 0…60 °C (ajuste 10 °C)", desc:"Termostato de la calefacción anticondensación" }, resistencias:[{ tag:"R1", modelo:`Resistencia calefactora PTC ${calC.extra.potencia} W`, w:calC.extra.potencia, desc:"Resistencia calefactora anticondensación" }] } : null;
   return { tablero:t, v, familia:fam, vEst, acometidas, fuente, cb120, circuitos, spd, plc, limpieza, red, reles, borneras, io:propias, puerta, calefaccion };

@@ -316,7 +316,7 @@ export function derivarIO(p){
       }
     }
     if(ct.repetidores) add({ tag:plc, senal:plc+"_FAULT", descripcion:"Falla de PLC", tipo:"DO", voltaje:"Relé", alimentacion:"Contacto seco hacia sala de control", origen:"tablero" });
-    if(ct.lucesPiloto!==false) add({ tag:plc, senal:plc+"_ALM", descripcion:"Luz piloto de alarma general (puerta del tablero "+plc+")", tipo:"DO", voltaje:"Relé", alimentacion:`${dv} desde el ${plc} - luz piloto roja en puerta`, origen:"tablero" });
+    if(ct.lucesPiloto!==false && !(ct.lucesOmitir||[]).includes("alarma")) add({ tag:plc, senal:plc+"_ALM", descripcion:"Luz piloto de alarma general (puerta del tablero "+plc+")", tipo:"DO", voltaje:"Relé", alimentacion:`${dv} desde el ${plc} - luz piloto roja en puerta`, origen:"tablero" });
     // instrumentos de este tablero
     for(const i of instrumentos(p)){
       if(tableroDeInstrumento(p, i).id!==ct.id) continue;
@@ -389,8 +389,9 @@ export function derivarCircuitosControl(p, t){
   if(t.switch) c24.push({ descripcion:"Alimentación al switch", proteccion:1, cfg:"switch" });
   // luces piloto en la puerta: 24 Vdc presente (verde); 120 Vac presente (blanca) y alarma general (roja, por relé del PLC);
   // 220 Vac presente (blanca) cuando hay acometida auxiliar
-  const luces = t.lucesPiloto!==false;
-  if(luces) c24.push({ descripcion:"Luz piloto de 24 Vdc", proteccion:1, potencia:1, cfg:"luz24" });
+  // luces piloto: se pueden quitar todas (lucesPiloto = false) o una por una (lucesOmitir: "120", "220", "24", "alarma")
+  const luces = t.lucesPiloto!==false, omL = t.lucesOmitir || [];
+  if(luces && !omL.includes("24")) c24.push({ descripcion:"Luz piloto de 24 Vdc", proteccion:1, potencia:1, cfg:"luz24" });
   for(const i of inst){
     if(enLimpieza(i)) continue;
     // los transmisores de lazo (2 hilos) se protegen con UN fusible por lazo: el fusible-borne XF2 del canal
@@ -403,7 +404,7 @@ export function derivarCircuitosControl(p, t){
   c120.push({ descripcion:"Fuente de 24 Vdc", proteccion:10, potencia:240, cfg:"fuente" });
   c120.push({ descripcion:"Alimentación a entradas digitales", proteccion:2, potencia:10, cfg:"di" });
   c120.push({ descripcion:"Alimentación a salidas digitales", proteccion:2, potencia:16, cfg:"do" });
-  if(luces) c120.push({ descripcion:"Luces piloto de presencia de tensión y alarma", proteccion:2, potencia:3, cfg:"luz120" });
+  if(luces && !(omL.includes("120") && omL.includes("alarma"))) c120.push({ descripcion:"Luces piloto de presencia de tensión y alarma", proteccion:2, potencia:3, cfg:"luz120" });
   for(const i of inst){
     if(enLimpieza(i) || esSalida(i)) continue;
     if(/120/.test(i.alimentacion||"")) for(const tg of expandirTag(i.tag)) c120.push({ descripcion:"Alimentación al "+(i.descripcion||"instrumento").toLowerCase()+" "+tg, proteccion:2, potencia:8, inst:tg });
@@ -414,7 +415,7 @@ export function derivarCircuitosControl(p, t){
   c220.push({ descripcion:"Luminaria interna", proteccion:6, potencia:60, cfg:"luminaria" });
   c220.push({ descripcion:"Alimentación al tomacorriente", proteccion:4, diferencial:true, cfg:"tomacorriente" });
   if(calefaccionTablero(p, t)) c220.push({ descripcion:"Calefacción anticondensación", proteccion:6, potencia:100, cfg:"calefaccion" });
-  if(luces) c220.push({ descripcion:"Luz piloto de presencia de tensión 220 Vac", proteccion:2, potencia:1, cfg:"luz220" });
+  if(luces && !omL.includes("220")) c220.push({ descripcion:"Luz piloto de presencia de tensión 220 Vac", proteccion:2, potencia:1, cfg:"luz220" });
   const add = (arr, barra, cable)=>arr.map((c,i)=>Object.assign({ barra, circuito:"C"+(i+1), cable }, c));
   return [
     ...add(c24, "24 Vdc", "2C#14AWG+14AWG(T)"),

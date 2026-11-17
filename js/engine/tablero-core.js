@@ -523,6 +523,9 @@ function computeCircuit(load, idx, g){
         lineFltItem = {comp:"Filtro de línea (reactancia entrada)", devtag:"L"+tag, model:"Reactancia clase "+lineFlt+"A (verificar con fabricante)", val: lineFlt+"A", src:DS.vfd};
         loadFltItem = {comp:"Filtro de carga (dv/dt / senoidal)", devtag:"M"+tag, model:"Filtro clase "+loadFlt+"A (verificar con fabricante)", val: loadFlt+"A", src:DS.vfd};
       }
+      // el usuario puede prescindir de la reactancia de línea o del filtro de carga (Copito: «Elimina LC1»)
+      if(load.sinFiltroLinea) lineFltItem = null;
+      if(load.sinFiltroCarga) loadFltItem = null;
       const memoEgc = withEGC(cmemo, brk);
       return { tag, kind:"motor", title:(load.desc||appMeta.label)+" · "+powerLbl, meta: "FLA "+fmtA(fla)+" · "+deratingTxt+" · I sel "+fmtA(isel)+(warn?" ⚠ fuera de catálogo":"")+" · "+demandTxt,
         mainContribution: brk, demandKVA, installedKVA, ...motorExtra, conductorMemo: memoEgc, items: [
@@ -533,7 +536,7 @@ function computeCircuit(load, idx, g){
           loadFltItem,
           {comp:"Cable de fuerza (motor)", devtag:"—", model: cableModelText(cable, memoEgc.miguelez), val:"—", src:null},
           {comp:"Conductor de puesta a tierra (EGC)", devtag:"—", model: egcModelText(memoEgc.egc, memoEgc.egcMiguelez), val:"NEC Tabla 250.122", src:null},
-        ]};
+        ].filter(Boolean)};
     } else {
       const ss = pick(SOFTSTARTER, isel, 0);
       const warn = exceeds(SOFTSTARTER, isel, 0);
@@ -609,6 +612,7 @@ function dxfEsc(s){
     .replace(/[^\x00-\xFF]/g, c=>DXF_ACCENTS[c]!=null ? DXF_ACCENTS[c] : "")
     .replace(/[\r\n\t]+/g," ");
 }
+function capaR12(n){ return String(n==null||n===""?"0":n).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9$_\-]/g, "_").slice(0, 31) || "0"; }
 function dxfTrunc(s,n){ s = dxfEsc(s); return s.length>n ? s.slice(0,n) : s; }
 function dxfNum(n){ return (Math.round(n*1000)/1000).toString(); }
 
@@ -686,7 +690,9 @@ const DXF_BLOCKS = {
 
 class DXFDoc{
   constructor(){ this.entities = []; this.layersUsed = new Set(["0"]); this.blocksUsed = new Set(); this.capas = {}; this.tiposLinea = {}; }
-  _layer(name){ this.layersUsed.add(name); return name; }
+  // nombres de capa válidos en R12 (letras, dígitos, $, - y _; máx. 31): «E-CTRL 0» → «E-CTRL_0». AutoCAD rechaza el
+  // archivo completo («Press ENTER to continue») si una tabla tiene un nombre inválido
+  _layer(name){ const n = capaR12(name); this.layersUsed.add(n); return n; }
   // color (62) y tipo de línea (6) propios de la entidad: ambos son códigos de grupo de R12
   _props(o){ o = o||{}; let s = ""; if(o.lt && this.tiposLinea[o.lt]) s += "\n6\n"+o.lt; if(o.c!=null) s += "\n62\n"+o.c; return s; }
   line(x1,y1,x2,y2,layer,o){
@@ -708,8 +714,12 @@ class DXFDoc{
   }
   text(x,y,h,str,layer,opt){
     opt = opt||{};
+    // R12: textos de una línea de hasta 255 caracteres; vacíos no se escriben
+    str = dxfEsc(str).replace(/[\r\n\t]+/g, " ");
+    if(!str.trim()) return;
+    if(str.length > 250) str = str.slice(0, 247) + "...";
     layer = this._layer(layer||"G-TEX");
-    let e = "0\nTEXT\n8\n"+layer+(opt.c!=null ? "\n62\n"+opt.c : "")+"\n10\n"+dxfNum(x)+"\n20\n"+dxfNum(y)+"\n30\n0.0\n40\n"+dxfNum(h)+"\n1\n"+dxfEsc(str);
+    let e = "0\nTEXT\n8\n"+layer+(opt.c!=null ? "\n62\n"+opt.c : "")+"\n10\n"+dxfNum(x)+"\n20\n"+dxfNum(y)+"\n30\n0.0\n40\n"+dxfNum(h)+"\n1\n"+str;
     if(opt.rot) e += "\n50\n"+dxfNum(opt.rot);
     if(opt.wf && opt.wf!==1) e += "\n41\n"+dxfNum(opt.wf);
     if(opt.halign || opt.valign){ e += (opt.halign ? "\n72\n"+opt.halign : "")+"\n11\n"+dxfNum(x)+"\n21\n"+dxfNum(y)+"\n31\n0.0"+(opt.valign ? "\n73\n"+opt.valign : ""); }
@@ -739,6 +749,33 @@ class DXFDoc{
     if(sy!=null && sy!==1) e += "\n42\n"+dxfNum(sy);
     this.entities.push(e);
   }
+  /* uniones: un punto de unión (círculo pequeño) solo va donde se juntan 3 o más tramos (derivación en T o cruce
+     conectado). En una esquina, donde la línea solo cambia de dirección, se quita (los bornes, que llevan el cable en
+     línea recta o en un solo sentido, no se tocan). */
+  limpiarUniones(rMax = 1.6){
+    const num = (e, c) => { const m = e.match(new RegExp("\\n"+c+"\\n(-?[\\d.eE+-]+)")); return m ? +m[1] : NaN; };
+    const capa = e => (e.match(/\n8\n([^\n]*)/)||[])[1];
+    const lineas = [];
+    for(const e of this.entities) if(e.startsWith("0\nLINE\n")) lineas.push([num(e,10), num(e,20), num(e,11), num(e,21), capa(e)]);
+    const quitar = new Set();
+    this.entities.forEach((e, i)=>{
+      if(!e.startsWith("0\nCIRCLE\n")) return;
+      const cx = num(e,10), cy = num(e,20), r = num(e,40); if(!(r <= rMax)) return;
+      const brazos = new Set();
+      for(const [x1, y1, x2, y2] of lineas){
+        const L = Math.hypot(x2-x1, y2-y1); if(L < 1e-6) continue;
+        const t = ((cx-x1)*(x2-x1) + (cy-y1)*(y2-y1))/(L*L);
+        if(t < -r/L - 0.02 || t > 1 + r/L + 0.02) continue;
+        if(Math.hypot(x1 + t*(x2-x1) - cx, y1 + t*(y2-y1) - cy) > r*1.05 + 0.05) continue;
+        for(const [x, y] of [[x1, y1], [x2, y2]]) if(Math.hypot(x-cx, y-cy) > r*1.2) brazos.add(((Math.round(Math.atan2(y-cy, x-cx)*180/Math.PI/5)*5) + 360) % 360);
+      }
+      if(brazos.size !== 2) return;
+      const [a1, a2] = [...brazos], d = Math.abs(a1 - a2) % 360, dd = Math.min(d, 360 - d);
+      if(dd > 30 && dd < 150) quitar.add(i);                     // esquina: sin punto de unión
+    });
+    if(quitar.size) this.entities = this.entities.filter((e, i)=>!quitar.has(i));
+    return quitar.size;
+  }
   toDXF(){
     // tabla LAYER con SOLO los códigos de grupo válidos en DXF R12 puro (0,2,70,62,6). Un intento anterior
     // agregó lineweight (370, código introducido recién en R2000/AC1015) y una tabla STYLE con referencia
@@ -749,7 +786,7 @@ class DXFDoc{
     // capas de los planos de referencia del usuario (color y tipo de línea) y tabla LTYPE R12 con sus patrones
     const ltUsados = new Set(Object.keys(this.tiposLinea));
     const layerDefs = [...this.layersUsed].map(name=>{
-      const k = this.capas[name];
+      const k = this.capas[name] || Object.entries(this.capas).find(([q])=>capaR12(q)===name)?.[1];
       const spec = k ? { c:k.c } : (DXF_LAYERS[name] || {c:7, lw:-3});
       const lt = k && k.lt && ltUsados.has(k.lt) ? k.lt : "CONTINUOUS";
       return "0\nLAYER\n2\n"+name+"\n70\n0\n62\n"+spec.c+"\n6\n"+lt;

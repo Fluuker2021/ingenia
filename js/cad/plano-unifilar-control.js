@@ -86,7 +86,7 @@ export async function unifilarControlKit({ p, valsDe, cliente, id }){
       k++;
     });
   }
-  return { dxf: doc.toDXF(), hojas: total };
+  doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: total };
 }
 
 /* rótulo de una barra: a la izquierda de su alimentación si hay espacio, si no a la derecha */

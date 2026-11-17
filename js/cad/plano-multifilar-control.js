@@ -84,7 +84,7 @@ export async function multifilarControlKit({ p, valsDe, cliente, id }){
     const doc = new DXFDoc(); usarKit(doc, kit);
     const P = new Plano(doc, kit, reg, valsDe, cliente, total); P.docId = id || "ins-multifilar-tc";
     for(const eq of eqs) tableroControl(P, p, eq);
-    if(pasada) return { dxf: doc.toDXF(), hojas: P.k+1 };
+    if(pasada){ doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: P.k+1 }; }
     reg = P.nuevo; total = P.k+1;
   }
 }

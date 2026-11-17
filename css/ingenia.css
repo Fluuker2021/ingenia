@@ -518,7 +518,7 @@ td.num.err{color:var(--err); font-weight:600;}
 /* ---------- plano mecánico: criterios y vista previa 3D ---------- */
 .mec-crit{margin:6px 0 0;padding-left:18px;font-size:13px;line-height:1.5;color:var(--text);}
 .mec-crit li{margin-bottom:3px;}
-.v3d{position:relative;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:#f3f4f6;}
+.v3d{position:relative;border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:#fff;}
 .v3d:fullscreen{border-radius:0;display:flex;flex-direction:column;}
 .v3d-barra{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:8px 10px;background:var(--grafito);color:#fff;}
 .v3d-grupo{display:flex;flex-wrap:wrap;gap:4px;align-items:center;}

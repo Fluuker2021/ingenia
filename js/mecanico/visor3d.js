@@ -51,7 +51,7 @@ export async function visor3D(cont, modelo, opciones){
   const alta = calidad==="alta";
   renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
   renderer.setSize(W0(), H0());
-  renderer.setClearColor(0xf3f4f6);
+  renderer.setClearColor(0xffffff, 1);   // fondo blanco liso
   renderer.toneMapping = THREE.NeutralToneMapping ?? THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
   // sombras: se recalculan solo cuando algo se mueve (puertas, explosión, capas)
   renderer.shadowMap.enabled = alta; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false; renderer.shadowMap.needsUpdate = true;
@@ -81,10 +81,7 @@ export async function visor3D(cont, modelo, opciones){
     escena.environment = pmrem.fromScene(env, 0.035).texture; escena.environmentIntensity = 0.55;
     gs.forEach(g=>{ g.geometry.dispose(); g.material.dispose(); }); pmrem.dispose(); }
   else { escena.add(new THREE.AmbientLight(0xffffff, 0.35)); }
-  // piso
-  const piso = new THREE.Mesh(new THREE.PlaneGeometry(20, 20), new THREE.MeshStandardMaterial({ color:0xe7e9ec, roughness:1 }));
-  piso.rotation.x = -Math.PI/2; piso.position.y = -m.zocalo*k - 0.001; piso.receiveShadow = true; escena.add(piso);
-  const grid = new THREE.GridHelper(10, 50, 0xc9cdd3, 0xdde0e4); grid.position.y = -m.zocalo*k; escena.add(grid);
+  // sin piso ni cuadrícula: el modelo se presenta sobre fondo blanco liso
 
   const raiz = new THREE.Group(); raiz.position.set(-m.W/2*k, 0, -m.D/2*k); escena.add(raiz);
   const capas = { envolvente:new THREE.Group(), interior:new THREE.Group(), canaletas:new THREE.Group(), cables:new THREE.Group(), etiquetas:new THREE.Group(), puerta:new THREE.Group() };

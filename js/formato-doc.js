@@ -230,6 +230,25 @@ export function columnasEncabezado(ws, c1, c2){
   const nLD = mejor(n-1-nVD, -1, 0.065*W, Math.max(1, n-nL-nVD-1), 8);
   return { lab:[c1, c1+nL-1], val:[c1+nL, c2-nVD-nLD], labD:[c2-nVD-nLD+1, c2-nVD], valD:[c2-nVD+1, c2] };
 }
+/* Cierre de libro para todos los Excel de Ingenia:
+   · bordes de las celdas combinadas: al combinar, ExcelJS copia a todas las celdas el estilo de la primera, que solo
+     tiene borde izquierdo, y el rango quedaba abierto a la derecha (y abajo). Se completa el contorno de cada rango con
+     el borde de su primera celda, con un estilo propio por celda (ExcelJS comparte el objeto de estilo).
+   · sin filtros automáticos: las plantillas traían autofiltro en la fila de títulos. */
+export function cerrarLibroExcel(wb){
+  wb.eachSheet(ws=>{
+    ws.autoFilter = null;
+    if(ws.model && ws.model.autoFilter) ws.model.autoFilter = null;
+    for(const m of Object.values(ws._merges || {})){
+      const g = m.model || m; const { top, left, bottom, right } = g; if(!top || !left) continue;
+      const b = ws.getCell(top, left).border || {};
+      const lado = b.left || b.right || b.top || b.bottom; if(!lado) continue;
+      const poner = (r, c, k, v) => { const cell = ws.getCell(r, c), bo = Object.assign({}, cell.border || {}); if(bo[k] && bo[k].style) return; bo[k] = v; cell.style = Object.assign({}, cell.style, { border: bo }); };
+      if(b.left || b.right) for(let r=top; r<=bottom; r++){ poner(r, right, "right", b.right || b.left); poner(r, left, "left", b.left || b.right); }
+      if(b.top || b.bottom) for(let c=left; c<=right; c++){ poner(bottom, c, "bottom", b.bottom || b.top); poner(top, c, "top", b.top || b.bottom); }
+    }
+  });
+}
 /* escribe el bloque en filas vacías desde r0; devuelve las combinaciones [r1,c1,r2,c2] y las cajas de logo {tl,br} */
 export function bloqueEncabezadoExcel(ws, r0, c1, c2, titulo, valores={}){
   const k = columnasEncabezado(ws, c1, c2);
@@ -238,10 +257,11 @@ export function bloqueEncabezadoExcel(ws, r0, c1, c2, titulo, valores={}){
   const celda = (r, [a, b], valor, o={})=>{
     for(let c=a; c<=b; c++){
       const cell = ws.getCell(r, c);
-      cell.font = { name:FUENTE, size:o.size||10, bold:!!o.bold, color:{ argb:"FF"+(o.color||C.grafito) } };
-      cell.alignment = o.izq ? { horizontal:"left", vertical:"middle", wrapText:true, indent:1 } : { horizontal:"center", vertical:"middle", wrapText:true };
-      cell.border = { top:borde, bottom:o.bajo || borde, left:c===a ? borde : undefined, right:c===b ? borde : undefined };
-      if(o.fill) cell.fill = { type:"pattern", pattern:"solid", fgColor:{ argb:"FF"+o.fill } };
+      cell.style = Object.assign({}, cell.style, {
+        font: { name:FUENTE, size:o.size||10, bold:!!o.bold, color:{ argb:"FF"+(o.color||C.grafito) } },
+        alignment: o.izq ? { horizontal:"left", vertical:"middle", wrapText:true, indent:1 } : { horizontal:"center", vertical:"middle", wrapText:true },
+        border: { top:borde, bottom:o.bajo || borde, left:c===a ? borde : undefined, right:c===b ? borde : undefined } },
+        o.fill ? { fill:{ type:"pattern", pattern:"solid", fgColor:{ argb:"FF"+o.fill } } } : {});
     }
     ws.getCell(r, a).value = valor;
     if(b > a) merges.push([r, a, r, b]);

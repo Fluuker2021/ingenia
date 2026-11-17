@@ -166,9 +166,18 @@ export const ordenTrabajo = id => { const i = ORDEN_TRABAJO.indexOf(id); return 
 export const etapaDe = id => ETAPAS_TRABAJO.find(e=>e.docs.includes(id)) || null;
 /* documento terminado: emitido o enviado a revisión / aprobado */
 export const docListo = d => !!d && (["Para revisión","Aprobado","Emitido"].includes(d.estado) || !!d.emitida);
-/* requisitos (entre los documentos seleccionados del proyecto) y documentos que habilita */
-export function requisitos(p, id){ const sel = new Set(p.entregables||[]); return (REQUIERE[id]||[]).filter(x=>sel.has(x)); }
-export function habilita(p, id){ const sel = new Set(p.entregables||[]); return Object.keys(REQUIERE).filter(x=>sel.has(x) && REQUIERE[x].includes(id)).sort((a, b)=>ordenTrabajo(a) - ordenTrabajo(b)); }
+/* requisitos entre los documentos seleccionados del proyecto: si un requisito no se elabora en el proyecto, se toman los
+   suyos (p. ej. el listado de cables sin memoria de conductores depende del listado de cargas) */
+export function requisitos(p, id, _vistos){
+  const sel = new Set(p.entregables||[]), vistos = _vistos || new Set([id]), out = [];
+  for(const x of REQUIERE[id]||[]){
+    if(vistos.has(x)) continue; vistos.add(x);
+    for(const y of sel.has(x) ? [x] : requisitos(p, x, vistos)) if(!out.includes(y)) out.push(y);
+  }
+  return out.sort((a, b)=>ordenTrabajo(a) - ordenTrabajo(b));
+}
+/* documentos seleccionados que toman datos de este */
+export function habilita(p, id){ return (p.entregables||[]).filter(x=>REQUIERE[x] && requisitos(p, x).includes(id)).sort((a, b)=>ordenTrabajo(a) - ordenTrabajo(b)); }
 /* siguiente paso recomendado: el primer documento (en el orden de la ruta) sin terminar cuyos requisitos están listos */
 export function siguienteDoc(p){
   const sel = (p.entregables||[]).filter(id=>REQUIERE[id]).sort((a, b)=>ordenTrabajo(a) - ordenTrabajo(b));

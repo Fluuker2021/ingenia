@@ -11,7 +11,7 @@
    fila insertada), alturas de fila y área de impresión. Las imágenes del formato se conservan y los logos
    (organización / cliente) se colocan en las posiciones indicadas por el manifiesto de la plantilla. */
 
-import { encabezadoPieExcel, reemplazarCaratulaExcel, bloqueEncabezadoExcel, FILAS_ENCABEZADO, logoEnCaja, logosEncabezado } from "./formato-doc.js";
+import { encabezadoPieExcel, reemplazarCaratulaExcel, bloqueEncabezadoExcel, FILAS_ENCABEZADO, logoEnCaja, logosEncabezado, cerrarLibroExcel } from "./formato-doc.js";
 
 const TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
 const REF = /(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_])/g;
@@ -375,6 +375,7 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
   if(estandar) reemplazarCaratulaExcel(wb, datos.scal||{}, datos.logos);
   calcularFormulas(wb);
   aplicarPaletaIngenia(wb);
+  cerrarLibroExcel(wb);
   wb.calcProperties = Object.assign({}, wb.calcProperties, { fullCalcOnLoad: true });
   return await wb.xlsx.writeBuffer();
 }

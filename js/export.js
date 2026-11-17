@@ -7,7 +7,7 @@
      doc:{codigo,titulo,rev,fecha,disciplina,emitidoPara}, revisiones:[{rev,fecha,descripcion,elaboro,reviso,aprobo}],
      tablas:{ NOMBRE:{columnas:[{key,titulo,ancho,num}], filas:[{...}]} }, campos:{...} } */
 
-import { reemplazarCaratulaExcel, encabezadoPieExcel, bloqueEncabezadoExcel, logoEnCaja, logosEncabezado, FILAS_ENCABEZADO } from "./formato-doc.js";
+import { reemplazarCaratulaExcel, encabezadoPieExcel, bloqueEncabezadoExcel, logoEnCaja, logosEncabezado, FILAS_ENCABEZADO, cerrarLibroExcel } from "./formato-doc.js";
 const fmtF = f => { const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (f||""); };
 
 // paleta INGENIA: grafito (encabezados), amarillo suave (resaltados), gris claro
@@ -31,6 +31,7 @@ export async function excelEstandar(ctx){
     if(tabla.alias) continue; // alias para plantillas del cliente ({{tabla:nombre}}), no genera hoja propia
     encabezadoPieExcel(hojaTabla(wb, ctx, nombre, tabla), scal);
   }
+  cerrarLibroExcel(wb);
   return await wb.xlsx.writeBuffer();
 }
 

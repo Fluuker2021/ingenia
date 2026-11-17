@@ -13,7 +13,7 @@
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
 import { tablerosControl, tc as tcPrincipal, datos } from "../datos.js";
-import { cargarKit, usarKit, pieza, envolver } from "./kit.js";
+import { cargarKit, usarKit, pieza, envolver, cajaAcometida } from "./kit.js";
 import { equiposControl } from "../control/equipos.js";
 import { repartirEquilibrado } from "./plano-unifilar.js";
 
@@ -28,6 +28,8 @@ const YC = 441;                   // centro vertical del dibujo: la escala se ap
 
 const may = s => String(s||"").toUpperCase();
 const amp = (a, polos=2) => `${polos}X${a}A`;
+// «120 Vac» → «1x120 Vac» (n conductores activos), como «2x220 Vac» en la acometida auxiliar
+const tensionAcom = (v, n) => `${n}x${String(v||"").trim().replace(/^\d+\s*x\s*/i, "")}`;
 
 /* columnas de cada barra a partir de los equipos del tablero */
 function columnas(eq){
@@ -156,9 +158,10 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
     const a = eq.acometidas[0];
     const b0 = Math.min(...xs, xA), b1 = Math.max(...xs, xA);
     doc.line(FX(b0), Y(Y0), FX(b1), Y(Y0), "E-CONTROL");
-    pieza(doc, kit, "acom120", FX(xA), Y(Y0), { s, vars:{ acometida:"", q:a.q.tag, qv:amp(a.q.in), cable:`${a.cable} 0.6/1kV` } });
-    // texto de la acometida centrado en su recuadro, como en el unifilar de fuerza
-    textoCentrado(doc, FX(xA) - 0.12*s, Y(Y0) + 161.77*s, 2.5*s, `VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""}`, 28);
+    // el recuadro de procedencia de la referencia (más ancho y con el embudo hacia adentro) se reemplaza por la forma
+    // común de todas las acometidas: embudo desde las esquinas del recuadro y la tensión de llegada en el texto
+    pieza(doc, kit, "acom120", FX(xA), Y(Y0), { s, omitir:[[-45, 144, 45, 172]], vars:{ acometida:"", q:a.q.tag, qv:amp(a.q.in), cable:`${a.cable} 0.6/1kV` } });
+    cajaAcometida(doc, FX(xA), Y(Y0) + 144.7*s, s, `VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""}\n${tensionAcom(eq.vEst, 1)} + N + T - ${eq.v.frecuencia} Hz`);
     rotuloBarra(doc, FX(b0), FX(b1), FX(xA), Y(Y0), `L,N ${may(eq.vEst)}, 1F+N+T, ${eq.v.frecuencia}Hz, ${Math.min(10, +eq.v.icc||10)} KA`, s);
     if(xF!=null){ const fu = eq.fuente; pieza(doc, kit, "fuente", FX(xF), Y(Y0), { s, vars:{ circ:fu.circuito || "C1", q:fu.cb.tag, qv:amp(fu.cb.in), ps:fu.ps.tag, psa:`${fu.ps.a}A`, psv:"24VDC", q2:fu.cbOut.tag, q2v:amp(fu.cbOut.in) } }); }
     if(xC!=null){ pieza(doc, kit, "cb3", FX(xC), Y(Y0), { s, vars:{ circ: xF!=null ? "C2" : "C1", q:eq.cb120.tag, qv:amp(eq.cb120.in) } });
@@ -167,8 +170,8 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
   // acometida auxiliar de 220 Vac (servicios del tablero) con su supresor
   if(primera && g220 && g220.alim && g220.cols.length && eq.acometidas[1]){
     const a = eq.acometidas[1], sp = eq.spd;
-    textoCentrado(doc, FX(g220.ejes[0]) - 0.13*s, YB("220") + 264.1*s, 2.5*s, `VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""} 2x220 Vac + T - ${eq.v.frecuencia} Hz`, 24);
-    pieza(doc, kit, "acom220", FX(g220.ejes[0]), YB("220"), { s, vars:{ acometida:"",
+    cajaAcometida(doc, FX(g220.ejes[0]), YB("220") + 247.03*s, s, `VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""}\n2x220 Vac + T - ${eq.v.frecuencia} Hz`);
+    pieza(doc, kit, "acom220", FX(g220.ejes[0]), YB("220"), { s, omitir:[[-35, 246, 35, 274]], vars:{ acometida:"",
       q:a.q.tag, qv:amp(a.q.in), qs:sp.cb.tag, qsv:amp(sp.cb.in), spd:sp.tags.join(","), spdt:sp.tipo, spdm:sp.modelo, cable:`${a.cable} 0.6/1kV` } });
   }
 
@@ -197,8 +200,3 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
   doc.line(FX(X_TIERRA), Y(YT), FX(ult), Y(YT), "E-TIERRA");
 }
 
-/* varias líneas centradas (horizontal y verticalmente) en (cx, cy) */
-function textoCentrado(doc, cx, cy, h, txt, n){
-  const filas = envolver(String(txt||""), n), paso = h*1.6667, y0 = cy + (filas.length - 1)*paso/2;
-  filas.forEach((f, i)=>doc.text(cx, y0 - i*paso, h, f, "G-TEX", { halign:1, valign:2 }));
-}

@@ -167,6 +167,8 @@ async function vistaPlano(body, state, p, id){
   body.innerHTML = `<div class="row between mb-2"><div class="row">${hojas>1?`<label class="muted">Hoja</label><select id="pl-h">${Array.from({length:hojas},(_,i)=>`<option value="${i}">${i+1} de ${hojas}</option>`).join("")}</select>`:""}
       <button class="btn-sm" id="pl-fit">Ajustar</button><span class="muted" style="font-size:12px">Rueda del ratón: zoom · arrastrar: desplazar</span></div>
       <span class="muted">${hojas} lámina(s) A1 · ${d.entities.length} entidades · capas: ${Object.keys(d.layers).length}</span></div>
+    ${Array.isArray(r.avisos) ? (r.avisos.length ? `<div class="notice warn mb-2"><strong>Revisión de continuidad y referencias cruzadas:</strong><br>${r.avisos.map(esc).join("<br>")}</div>`
+      : `<p class="muted mb-2" style="font-size:12px">✓ Revisión de continuidad: todos los conductores llegan a un borne o a otro conductor, cada flecha tiene su referencia cruzada a la hoja y zona donde continúa, y los equipos del unifilar están en el plano.</p>`) : ""}
     <div class="plano-view"><canvas id="pl-cv"></canvas></div>
     <div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">DXF R12 · capas ${defDoc(id).vista3d ? "M- (gabinete, placas, canaletas, equipos, cobre, tierra, cableado, cotas)" : "G-, I-, E-"} con sus colores${r.lazos!=null?` · ${r.lazos} lazo(s)`:""}.</p>${defDoc(id).vista3d ? `<a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista3d">Siguiente: vista previa 3D →</a>` : `<a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a>`}</div>`;
   const cv = $("#pl-cv");

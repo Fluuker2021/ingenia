@@ -576,7 +576,9 @@ export function arregloTablero(p, t, calc){
     && !obst.some(([ox, oy, ow, oh])=>Math.abs(ox - cx) < (ow + panelW)/2 && Math.abs(oy - (panelY0 + panelH/2)) < (oh + panelH)/2);
   const cands = (dobleP ? [0.25, 0.75, 0.2, 0.8] : [0.5, 0.3, 0.7, 0.25, 0.75]).map(f=>sPanel.x0 + sPanel.W*f);
   const pcx2 = cands.find(libre) ?? cands[0];
-  ops.forEach((o, i)=>{ const r = Math.floor(i/colsP), k = i%colsP; puerta.push(Object.assign({ x:pcx2 - (colsP-1)*pasoX/2 + k*pasoX, y:panelY0 + panelH - 50 - r*pasoY, seccion:sPanel.id, diam:o.tipo==="potenciometro" ? 30 : 30, desc:descOp(o) }, o)); });
+  // cada fila centrada en el eje del panel (la última, incompleta, también): disposición simétrica
+  ops.forEach((o, i)=>{ const r = Math.floor(i/colsP), k = i%colsP, nr = Math.min(colsP, ops.length - r*colsP);
+    puerta.push(Object.assign({ x:pcx2 + (k - (nr-1)/2)*pasoX, y:panelY0 + panelH - 50 - r*pasoY, seccion:sPanel.id, diam:30, desc:descOp(o) }, o)); });
   puerta.push({ tag:"EPB1", tipo:"seta", desc:"Parada de emergencia (actúa sobre la bobina de mínima tensión de Q1)", modelo:C.PUERTA.seta.modelo, leyenda:"PARADA DE EMERGENCIA", x:pcx2, y:panelY0 + 45, diam:40, anillo:60, seccion:sPanel.id });
   const panel = { x:pcx2 - panelW/2, y:panelY0, w:panelW, h:panelH, seccion:sPanel.id };
   // teclados de los variadores en la puerta de su sección, alineados con el variador
@@ -616,10 +618,29 @@ export function arregloTablero(p, t, calc){
   if(cfg.ventilacion==="natural" && vent && vent.tipo==="ventilador"){ vent = null; term.modo = "natural (indicado por el usuario)"; avisos.push("Ventilación natural por indicación del usuario aunque el balance térmico pide ventilación forzada."); }
   if(vent){
     const sV = comps.filter(c=>c.tipo==="variador").length ? secs.find(s=>s.id===comps.find(c=>c.tipo==="variador").seccion) : sCtrl;
-    if(vent.tipo==="ventilador") for(let i=0;i<vent.n;i++){
-      const off = (i - (vent.n-1)/2)*(vent.marco + 40);
-      puerta.push({ tag:"FV"+(i+1), tipo:"ventilador", desc:"Ventilador con filtro (entrada de aire)", modelo:vent.modelo, x:sV.x0 + sV.W/2 + off, y:250, w:vent.marco, h:vent.marco, seccion:sV.id });
-      puerta.push({ tag:"FS"+(i+1)+"S", tipo:"rejilla", desc:"Filtro de salida de aire", modelo:`Filtro de salida ${vent.marco}x${vent.marco} mm`, x:sV.x0 + sV.W/2 + off, y:H - 230, w:vent.marco, h:vent.marco, seccion:sV.id });
+    if(vent.tipo==="ventilador"){
+      // criterio: cada ventilador CENTRADO en su hoja de puerta (en una sección de dos hojas, nunca sobre la junta); si una
+      // hoja lleva más de uno, el grupo queda centrado en ella, simétrico
+      const hojasV = sV.puertas===2 ? [[sV.x0, sV.x0 + sV.W/2], [sV.x0 + sV.W/2, sV.x1]] : [[sV.x0, sV.x1]];
+      const porHoja = hojasV.map((_, j)=>Math.floor(vent.n/hojasV.length) + (j >= hojasV.length - vent.n % hojasV.length ? 1 : 0));
+      const xsV = hojasV.map(([a, b], j)=>Array.from({ length:porHoja[j] }, (_, q)=>(a + b)/2 + (q - (porHoja[j]-1)/2)*(vent.marco + 40)));
+      // el eje queda fijo (centro de la hoja); solo la altura se ajusta para no tocar la manija de Q1, los teclados de los
+      // variadores ni el panel de operación: la entrada lo más abajo posible y la salida lo más arriba, la misma en todas
+      const ocupado = [...puerta.map(d=>{ const w = d.anillo || d.w || d.diam || 40, h = d.anillo || d.h || d.diam || 40; return [d.x - w/2, d.y - h/2, d.x + w/2, d.y + h/2]; }),
+        ...(panel ? [[panel.x, panel.y, panel.x + panel.w, panel.y + panel.h]] : [])];
+      const libreV = (x, y) => { const r = vent.marco/2 + 25; return !ocupado.some(o=>x + r > o[0] && x - r < o[2] && y + r > o[1] && y - r < o[3]); };
+      const alturas = (desde, hasta, paso) => { const out = []; for(let y = desde; paso > 0 ? y <= hasta : y >= hasta; y += paso) out.push(y); return out; };
+      const yEnt = alturas(250, H*0.45, 50), ySal = alturas(H - 230, H*0.55, -50);
+      // misma altura en todas las hojas si entra en la franja útil (entrada ≤ 450 mm, salida ≥ H - 450 mm); si no, cada una
+      // lo más abajo / arriba que se pueda (la ventilación manda sobre la simetría en altura)
+      const elegir = (cands, franja) => { const todos = cands.filter(franja).find(y=>xsV.flat().every(x=>libreV(x, y))); return xsV.map(xs=>xs.map(x=>todos ?? cands.find(y=>libreV(x, y)) ?? cands[0])); };
+      const yE = elegir(yEnt, y=>y <= 450), yS = elegir(ySal, y=>y >= H - 450);
+      if(ySal.length && xsV.flat().some(x=>!ySal.some(y=>libreV(x, y)))) avisos.push("No hay lugar libre en el centro de la puerta para un filtro de salida de aire: revisa su ubicación.");
+      let i = 0;
+      hojasV.forEach((_, j)=>xsV[j].forEach((x, q)=>{ i++;
+        puerta.push({ tag:"FV"+i, tipo:"ventilador", desc:"Ventilador con filtro (entrada de aire)", modelo:vent.modelo, x, y:yE[j][q], w:vent.marco, h:vent.marco, recorte:vent.recorte, seccion:sV.id });
+        puerta.push({ tag:"FS"+i+"S", tipo:"rejilla", desc:"Filtro de salida de aire", modelo:`Filtro de salida ${vent.marco}x${vent.marco} mm`, x, y:yS[j][q], w:vent.marco, h:vent.marco, recorte:vent.recorte, seccion:sV.id });
+      }));
     }
     else puerta.push({ tag:"AA1", tipo:"aa", desc:"Aire acondicionado de puerta", modelo:vent.modelo, x:sV.x0 + sV.W/2, y:H/2, w:vent.w, h:vent.h, seccion:sV.id });
   }
@@ -674,7 +695,7 @@ export function arregloTablero(p, t, calc){
   if(cfg.ladoControl==="der" && secs.length > 1) criterios.push("Placa de control a la derecha de la placa de fuerza (pedido del usuario).");
   for(const a of ajustes.filter(a=>!a.ok)) avisos.push(`No se aplicó «${a.texto}»: ${a.nota}.`);
 
-  const bom = listaMateriales(comps, bloquesB, barras, canaletas, rieles, puerta, fase, pe, aisladores.length*3, cabs);
+  const bom = listaMateriales(comps, bloquesB, barras, canaletas, rieles, puerta, fase, pe, aisladores.length*3, cabs, secciones.reduce((a, s)=>a + (s.puertas||1), 0));
   return { tablero:t, calc, cfg, montaje, W, H, D, zocalo, techo: /intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom, ajustes,
     secciones, placas, comps, canaletas, rieles, barras, aisladores, conexiones, bornes:bloquesB, puerta, panel, base, ventilacion:vent, termico:term,
     fase, pe, filas:filaInfo, criterios, avisos, bom, tension:g.voltage, frecuencia:g.freq, reserva };
@@ -769,7 +790,7 @@ function descOp(o){
 }
 
 /* ---------- lista de materiales con dimensiones y fuente ---------- */
-function listaMateriales(comps, bornes, barras, canaletas, rieles, puerta, fase, pe, nAisl, cabs){
+function listaMateriales(comps, bornes, barras, canaletas, rieles, puerta, fase, pe, nAisl, cabs, nHojas = 1){
   const filas = [];
   for(const c of comps){ if(c.tipo==="peine" && !c.modelo) continue;
     filas.push({ tag:c.tag, desc:c.desc, modelo:c.modelo, cant:c.cant||1, dim:c.w ? `${Math.round(c.w*10)/10} x ${Math.round(c.h)} x ${Math.round(c.d||0)}` : "", montaje:{ din:"Riel DIN", placa:"Placa", base:"Base", contactor:"Bajo contactor" }[c.montaje] || "Placa", fuente:c.fuente||"" }); }
@@ -787,8 +808,9 @@ function listaMateriales(comps, bornes, barras, canaletas, rieles, puerta, fase,
   if(bp.length) filas.push({ tag:"PE", desc:"Barra de tierra de protección, perforada", modelo:`Barra Cu ${pe.nombre} mm`, cant:`${(bp.reduce((a, b)=>a + b.w, 0)/1000).toFixed(2)} m`, dim:`${pe.nombre} mm`, montaje:"Placa", fuente:C.FUENTES.barra });
   for(const d of puerta){
     const m = d.modelo || (C.PUERTA[d.tipo]||{}).modelo || d.desc;
-    filas.push({ tag:d.tag||"", desc:d.desc || d.leyenda || "", modelo:m, cant:1, dim:d.w ? `${d.w} x ${d.h}` : d.diam ? `Ø${d.anillo||d.diam}` : "", montaje:"Puerta", fuente:C.FUENTES.puerta });
+    filas.push({ tag:d.tag||"", desc:d.desc || d.leyenda || "", modelo:m, cant:1, dim:calado(d), montaje:"Puerta", fuente:C.FUENTES.puerta });
   }
+  filas.push({ tag:"", desc:"Señal de riesgo eléctrico «PELIGRO» (una en cada puerta)", modelo:"Señal autoadhesiva ISO 7010 W012, 110 mm", cant:nHojas, dim:"110 mm", montaje:"Puerta", fuente:"ISO 7010 / NTP 399.010" });
   const gl = {}; for(const c of cabs){ if(!c.rosca) continue; gl[c.rosca] = (gl[c.rosca]||0) + 1; }
   for(const [r, n] of Object.entries(gl)) filas.push({ tag:"", desc:"Prensaestopa de poliamida / latón niquelado con contratuerca", modelo:`Prensaestopa ${r}`, cant:n, dim:r, montaje:"Base", fuente:"EN 62444" });
   return filas;
@@ -796,3 +818,12 @@ function listaMateriales(comps, bornes, barras, canaletas, rieles, puerta, fase,
 
 /* todos los tableros de fuerza con su arreglo */
 export function arreglosProyecto(p){ return tablerosPotencia(p).map(t=>{ const c = calcularTablero(p, t); return c.circuits.length ? arregloTablero(p, t, c) : null; }).filter(Boolean); }
+
+/* medida y calado (recorte en la puerta) de un dispositivo de puerta, para la lista de materiales */
+function calado(d){
+  if(d.tipo==="hmi") return `Recorte ${d.recorteW} x ${d.recorteH}`;
+  if(d.tipo==="ventilador" || d.tipo==="rejilla") return `${d.w} x ${d.h}${d.recorte ? `, calado ${d.recorte} x ${d.recorte}` : ""}`;
+  if(d.w) return `${d.w} x ${d.h}`;
+  if(d.diam) return `Ø${d.anillo||d.diam}, calado Ø22,5`;
+  return "";
+}

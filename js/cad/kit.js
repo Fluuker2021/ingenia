@@ -79,6 +79,20 @@ export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas=
   }
 }
 
+/* recuadro de procedencia de una acometida («VIENE DEL TABLERO…»): rectángulo de 64,17 × 18,13 mm con el embudo que
+   baja desde sus dos esquinas inferiores hasta la punta (yPunta), donde empieza el conductor. Es la forma de la
+   acometida de 220 Vac del unifilar de control de referencia y se usa igual en todas las acometidas de los unifilares.
+   El texto va centrado en el recuadro, en líneas de hasta n caracteres («\n» separa la procedencia de la tensión). */
+export const ACOMETIDA = { x0:-32.22, x1:31.95, embudo:8, alto:18.13 };
+export function cajaAcometida(doc, x, yPunta, s, texto, { n=26, h=2.5, capa="G-VARIOS" }={}){
+  const { x0, x1, embudo, alto } = ACOMETIDA;
+  const X = v=>x + v*s, yb = yPunta + embudo*s, yt = yb + alto*s;
+  doc.polyline([[X(x0), yt], [X(x1), yt], [X(x1), yb], [X(x0), yb], [X(x0), yt]], capa);
+  doc.polyline([[X(x0), yb], [x, yPunta], [X(x1), yb]], capa);
+  const filas = String(texto||"").split("\n").flatMap(f=>envolver(f, n)), ht = h*s, paso = ht*1.6667, cx = X((x0 + x1)/2), cy = (yb + yt)/2, y0 = cy + (filas.length - 1)*paso/2;
+  filas.forEach((f, i)=>doc.text(cx, y0 - i*paso, ht, f, "G-TEX", { halign:1, valign:2 }));
+}
+
 /* caja de una pieza en coordenadas relativas a su ancla: [x0, y0, x1, y1] (para ubicar imágenes de equipos) */
 const _cajas = new WeakMap();
 export function cajaPieza(kit, nombre){

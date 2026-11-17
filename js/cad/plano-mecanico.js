@@ -378,14 +378,7 @@ function dibujarInterior(v, m){
 
 /* =============================== lámina 1: vistas exteriores =============================== */
 const PUERTA_GAP = 3;
-function hojasPuerta(m){
-  const out = [];
-  for(const s of m.secciones){
-    if(s.puertas===2){ const mid = (s.x0 + s.x1)/2; out.push({ x0:s.x0 + PUERTA_GAP, x1:mid - 1.5, bisagra:"izq" }, { x0:mid + 1.5, x1:s.x1 - PUERTA_GAP, bisagra:"der" }); }
-    else out.push({ x0:s.x0 + PUERTA_GAP, x1:s.x1 - PUERTA_GAP, bisagra:s.bisagra });
-  }
-  return out;
-}
+const hojasPuerta = m => C.hojasPuerta(m, PUERTA_GAP);
 function colorTxt(c){ return ({ verde:"V", rojo:"R", ambar:"A", azul:"AZ", negro:"", amarillo:"AM" })[c] || ""; }
 function dibujarDispositivo(v, d, conLeyenda){
   const E = "M-EQUIPO", D = "M-DETALLE";
@@ -449,14 +442,13 @@ function dibujarFrente(v, m, llam){
   v.T(cx, H - 125, 1.9, m.tablero.tag, "M-ETIQUETA", { halign:1, valign:2 });
   v.T(cx, H - 145, 1.5, m.placaTxt || `${m.tension} Vac, 3F+T, ${m.frecuencia} Hz`, "M-TEXTO", { halign:1, valign:2 });
   llam.push({ x:cx - 150, y:H - 125, texto:"PLACA DE IDENTIFICACIÓN (ACERO INOXIDABLE GRABADO)" });
-  for(const s of m.secciones){
-    const xs = m.senalX ?? (s.x0 + s.x1)/2;
-    let ys = s===s1 ? H - 330 : 1250;
-    const choca = y => m.puerta.some(d=>d.seccion===s.id && Math.abs(d.x - xs) < (d.w||60)/2 + 60 && Math.abs(d.y - y) < (d.h||60)/2 + 60) || (m.panel && m.panel.seccion===s.id && Math.abs(m.panel.x + m.panel.w/2 - xs) < m.panel.w/2 + 60 && y > m.panel.y - 60 && y < m.panel.y + m.panel.h + 60);
-    for(const yy of (m.tipo==="control" ? [H - 330, H*0.8, H*0.32, H*0.22, 260].filter(y=>y > 120 && y < H - 300) : [ys, H - 330, 1250, 700, 1500])) if(!choca(yy)){ ys = yy; break; }
+  // señal de riesgo eléctrico en cada hoja de puerta, centrada en su hoja (misma altura en todas si se puede)
+  const sen = C.senalesRiesgo(m);
+  for(const { x:xs, y:ys } of sen){
     v.P([[xs - 55, ys - 45], [xs + 55, ys - 45], [xs, ys + 50]], "M-SENAL", null, true); v.L(xs + 8, ys + 18, xs - 8, ys - 5, "M-SENAL"); v.L(xs - 8, ys - 5, xs + 8, ys - 5, "M-SENAL"); v.L(xs + 8, ys - 5, xs - 8, ys - 30, "M-SENAL");
-    v.T(xs, ys - 62, 1.3, m.peligroTxt || `PELIGRO ${m.tension} V`, "M-SENAL", { halign:1 }); if(s===s1) s1.ySen = ys; }
-  llam.push({ x:(m.senalX ?? s1.x0 + s1.W/2) - 55, y:m.tipo==="control" ? s1.ySen - 30 : H - 360, texto:"SEÑALÉTICA DE RIESGO ELÉCTRICO (NOTA 5)" });
+    v.T(xs, ys - 62, 1.3, m.peligroTxt || `PELIGRO ${m.tension} V`, "M-SENAL", { halign:1 });
+  }
+  if(sen.length) llam.push({ x:sen[0].x - 55, y:sen[0].y - 30, texto:`SEÑALÉTICA DE RIESGO ELÉCTRICO EN ${sen.length > 1 ? "CADA PUERTA" : "LA PUERTA"} (NOTA 5)` });
 }
 function dibujarLateral(v, m){
   const { D, H, zocalo } = m;
@@ -499,9 +491,10 @@ function isometrica(doc, ox, oy, s, m){
     if(d.w){ poly([P(d.x - d.w/2, d.y - d.h/2, 0), P(d.x + d.w/2, d.y - d.h/2, 0), P(d.x + d.w/2, d.y + d.h/2, 0), P(d.x - d.w/2, d.y + d.h/2, 0)], "M-EQUIPO"); if(d.tipo==="manija") elipse(d.x, d.y, 30, "M-DETALLE"); }
     else { elipse(d.x, d.y, (d.anillo||d.diam||30)/2, d.tipo==="seta" ? "M-SENAL" : "M-EQUIPO"); }
   }
-  // placa de identificación
+  // placa de identificación y señal de riesgo eléctrico de cada puerta
   const s1 = m.secciones[0], cx = m.placaX ?? (s1.x0 + s1.x1)/2;
   poly([P(cx - 150, H - 170, 0), P(cx + 150, H - 170, 0), P(cx + 150, H - 80, 0), P(cx - 150, H - 80, 0)], "M-EQUIPO");
+  for(const { x, y } of C.senalesRiesgo(m)) poly([P(x - 55, y - 45, 0), P(x + 55, y - 45, 0), P(x, y + 50, 0)], "M-SENAL");
   // techo y cáncamos
   if(m.techo){ poly([P(-40, H + 30, -40), P(W + 40, H + 30, -40), P(W + 40, H + 30, D + 40), P(-40, H + 30, D + 40)]); L(P(-40, H, -40), P(-40, H + 30, -40)); L(P(W + 40, H, -40), P(W + 40, H + 30, -40)); L(P(W + 40, H, D + 40), P(W + 40, H + 30, D + 40)); L(P(-40, H, -40), P(W + 40, H, -40)); L(P(W + 40, H, -40), P(W + 40, H, D + 40)); }
   const yE = H + (m.techo ? 30 : 0);

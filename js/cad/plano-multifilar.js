@@ -14,9 +14,12 @@ import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza } from "./kit.js";
 import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/componentes.js";
 import { repartirEquilibrado } from "./plano-unifilar.js";
+import { extremosSueltos } from "./revision.js";
 
 const DX = 25, DY = -108;                        // hoja del plano de referencia → área útil de la lámina A1
-const BARRAS = [664.51, 648.51, 632.51], PE_Y = 616.51;
+// barras a la altura de las derivaciones y de las flechas de las piezas (y = …,85): con …,51 quedaban 0,34 mm abiertas
+const BARRAS = [664.85, 648.85, 632.85], PE_Y = 616.85;
+const X_FLECHA = 44;                               // punta de las flechas de entrada de barras (b_entrada / c_entrada)
 const X_INI = 100, X_FIN = 737;                   // zona de columnas entre la entrada y la salida de barras
 const X_COL = 652;                                 // las columnas bajan hasta el pie de la lámina: no pasan del bloque reservado del cajetín (x 684 de la lámina)
 const ANCHO = { b_vfd:220, b_mcp:90, b_trafo:107, c_rama:78, c_rama_id:96 };
@@ -106,7 +109,7 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
       // las barras siguen a la hoja siguiente solo si hay continuación; si no, terminan en la última derivación
       const sigue = i < fuerza.length-1 || sec.length > 0;
       if(sigue) pieza(doc, kit, "b_salida", ox+DX+737, DY, { texto: s=> s.trim()==="3.A:1" ? `${sig}.A:1` : barraTxt(s) });
-      let xFinF = 0, xFinPE = 0;
+      const xFinF = [0, 0, 0]; let xFinPE = 0;
       // columnas repartidas en el ancho disponible (separación extra proporcional, sin pasar de 1,25)
       const W = cols.reduce((a,c)=>a+ANCHO[c.pieza], 0), f = Math.min((X_COL - X_INI)/W, 1.25);
       let x = X_INI + ((X_COL - X_INI) - W*f)/2;
@@ -114,12 +117,15 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
         const a = ANCHO[c.pieza], x0 = x + (a*f - a)/2;
         const om = (c.omitir||[]).map(z=>OMITIR[z]);
         const pe = PE_X[c.pieza];
-        pieza(doc, kit, c.pieza, ox+DX+x0, DY, { vars:c.vars, omitir:om, lineas:{ desc:20 },
+        pieza(doc, kit, c.pieza, ox+DX+x0, DY, { vars:c.vars, omitir:om, lineas:{ desc:20 }, mover: c.pieza==="b_vfd" ? [{ r:[15.5, 446.5, 21, 450.5], dx:0, dy:2.6 }, { r:[15.5, 418.5, 21, 422.5], dx:0, dy:2.6 }] : [],
           quitar: c.ss ? new RegExp(REF.source+"|"+SOLO_VFD.source) : REF,
           texto: (s, e)=>{ if(c.awg && /^\s*\d+(\/0)?\s*AWG\s*$/i.test(s)) return (e[4] >= pe-1 && e[4] <= pe+9) ? c.egc : c.awg; return barraTxt(s); } });
         for(const z of (c.omitir||[])){ const pz = PUENTE[z]; if(pz) for(const ex of EJES[c.pieza]) doc.line(ox+DX+x0+ex, pz[0]+DY, ox+DX+x0+ex, pz[1]+DY, "E-FZA-BT-PRI"); }
         if(c.pieza==="b_trafo" && hojaSec.has(c)) doc.text(ox+DX+x0+69, 262+DY, 2.5, `A HOJA ${hojaSec.get(c)}`, "G-TEX", { halign:1 });
-        xFinF = Math.max(xFinF, x0 + Math.max(...(EJES[c.pieza]||[0]))); xFinPE = Math.max(xFinPE, x0 + (PE_X[c.pieza]||0));
+        // cada barra termina en su última derivación (el eje k de la pieza cuelga de la fase k: L1, L2, L3)
+        (EJES[c.pieza]||[]).forEach((ex, k)=>{ xFinF[k] = Math.max(xFinF[k], x0 + ex); }); xFinPE = Math.max(xFinPE, x0 + (PE_X[c.pieza]||0));
+        // termistor del variador (T1 / T2): conductor del borne al contacto (en la pieza lo cortaba el rótulo, que sube)
+        if(c.pieza==="b_vfd" && !om.some(r=>r[0] <= 13 && r[2] >= 23 && r[1] <= 420 && r[3] >= 449)) for(const y of [448.85, 420.85]) doc.line(ox+DX+x0+15, y+DY, ox+DX+x0+23, y+DY, "EPLAN311");
         x += a*f;
       }
       dibujarBarras(doc, ox, kit, true, sigue ? null : xFinF, sigue ? null : xFinPE);
@@ -136,18 +142,24 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
       let x = 70 + ((X_COL - 70) - Wr*fr)/2, xL = 60, xN = 60;
       for(const r of s.ramas){ const a = ANCHO[r.pieza], x0 = x + (a*fr - a)/2; pieza(doc, kit, r.pieza, ox+DX+x0, DY, { vars:r.vars, quitar:REF, lineas:{ desc:22 } }); const ej = EJES_RAMA[r.pieza] || [32, 64]; xL = x0 + ej[0]; xN = x0 + ej[1]; x += a*fr; }
       // barras del secundario: llegan solo hasta la última derivación
-      doc.line(ox+DX+30, BARRAS[0]+DY, ox+DX+xL, BARRAS[0]+DY, "E-FZA-BT-SEC");
-      doc.line(ox+DX+30, BARRAS[1]+DY, ox+DX+xN, BARRAS[1]+DY, "E-FZA-BT-SEC");
-      doc.line(ox+DX+30, BARRAS[2]+DY, ox+DX+xN, BARRAS[2]+DY, "E-TIERRA");
+      doc.line(ox+DX+X_FLECHA, BARRAS[0]+DY, ox+DX+xL, BARRAS[0]+DY, "E-FZA-BT-SEC");
+      doc.line(ox+DX+X_FLECHA, BARRAS[1]+DY, ox+DX+xN, BARRAS[1]+DY, "E-FZA-BT-SEC");
+      doc.line(ox+DX+X_FLECHA, BARRAS[2]+DY, ox+DX+xN, BARRAS[2]+DY, "E-TIERRA");
       k++;
     });
   }
-  doc.limpiarUniones(); doc.centrarEnSimbolos(); return { dxf: doc.toDXF(), hojas: total };
+  doc.limpiarUniones(); doc.centrarEnSimbolos();
+  // revisión de continuidad: conductores de fuerza, control y tierra que no llegan a ningún borne ni conductor
+  const dxf = doc.toDXF();
+  const avisos = extremosSueltos(dxf, { capas:/^(E-FZA-BT-PRI|E-FZA-BT-SEC|E-TIERRA|E-CONTROL|EPLAN54\d|EPLAN311)$/ })
+    .map(e=>`Hoja ${e.hoja} (${e.zona}): conductor abierto, su extremo no llega a ningún borne ni conductor.`);
+  return { dxf, hojas: total, avisos };
 }
 
 /* barras L1, L2, L3 (línea de centro) y PE de la hoja de fuerza */
 function dibujarBarras(doc, ox, kit, fuerza, xFin, xFinPE){
   if(!fuerza) return;
-  for(const y of BARRAS) doc.line(ox+DX+24, y+DY, ox+DX+(xFin ?? 762), y+DY, "E-FZA-BT-PRI");
-  doc.line(ox+DX+24, PE_Y+DY, ox+DX+(xFinPE ?? 762), PE_Y+DY, "E-TIERRA");
+  // desde la punta de la flecha de entrada (antes pasaban por debajo de la flecha y tachaban su rótulo)
+  BARRAS.forEach((y, k)=>doc.line(ox+DX+X_FLECHA, y+DY, ox+DX+(xFin ? (xFin[k] || Math.max(...xFin)) : 762), y+DY, "E-FZA-BT-PRI"));
+  doc.line(ox+DX+X_FLECHA, PE_Y+DY, ox+DX+(xFinPE ?? 762), PE_Y+DY, "E-TIERRA");
 }

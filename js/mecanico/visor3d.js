@@ -190,6 +190,52 @@ export async function visor3D(cont, modelo, opciones){
     const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.magFilter = THREE.LinearFilter; texturas.push(t); return t;
   };
   const RAN = { py:texRanura(false, true), ny:texRanura(false, false), px:texRanura(true, true), nx:texRanura(true, false) };
+  /* señal de riesgo eléctrico: triángulo amarillo con borde y rayo negros y la leyenda debajo (124 × 128 mm) */
+  const texSenal = (() => {
+    const cv = document.createElement("canvas"); cv.width = 248; cv.height = 256; const g = cv.getContext("2d");
+    const tri = (m0) => { g.beginPath(); g.moveTo(124, 8 + m0); g.lineTo(234 - m0*1.15, 196 - m0*0.6); g.lineTo(14 + m0*1.15, 196 - m0*0.6); g.closePath(); };
+    g.lineJoin = "round"; tri(0); g.fillStyle = "#17181b"; g.fill(); tri(14); g.fillStyle = "#f5c518"; g.fill();
+    g.fillStyle = "#17181b"; g.beginPath(); [[136, 62], [104, 128], [124, 128], [110, 176], [146, 108], [126, 108], [140, 62]].forEach(([x, y], i)=>i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill();
+    g.fillStyle = "#f4f5f6"; g.fillRect(14, 206, 220, 44); g.strokeStyle = "#17181b"; g.lineWidth = 3; g.strokeRect(14, 206, 220, 44);
+    g.fillStyle = "#c62828"; g.font = "bold 30px Arial, sans-serif"; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("PELIGRO", 124, 229);
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; texturas.push(t); return t;
+  })();
+  const matSenal = new THREE.MeshStandardMaterial({ map:texSenal, transparent:true, alphaTest:0.5, roughness:0.5, side:THREE.FrontSide }); mats.__senal = matSenal;
+  const geoSenal = new THREE.PlaneGeometry(124, 128); compartidas.add(geoSenal);
+  /* parte trasera de un dispositivo de puerta (se ve al abrir la puerta): cuerpo, bloques de contacto o carcasa hacia el
+     interior y el contorno del calado en la cara interior, con sus medidas al hacer clic */
+  const matCalado = mat(0x111214, { roughness:0.9 });
+  const traseraPuerta = (L, d) => {
+    const zi = D, info = t => ({ tag:d.tag || "", desc:`Parte posterior de ${d.tag || "el dispositivo"} (interior de la puerta) — ${t}`, modelo:d.modelo || (C.PUERTA[d.tipo]||{}).modelo || "" });
+    const contorno = (cx, cy, w, h, t = 2.5) => { const z0 = zi - 0.8; L.box(cx - w/2, cy + h/2 - t, z0, w, t, 0.8, matCalado); L.box(cx - w/2, cy - h/2, z0, w, t, 0.8, matCalado); L.box(cx - w/2, cy - h/2, z0, t, h, 0.8, matCalado); L.box(cx + w/2 - t, cy - h/2, z0, t, h, 0.8, matCalado); };
+    const bloque = (cx, cy, z, na) => { L.boxC(cx, cy, z, 9.5, 30, 28, plas(0xeceeed)); L.boxC(cx, cy + 15.6, z + 20, 9.5, 1.2, 6, plas(na ? 0x2e9e4f : 0xd2312b)); };
+    if(["luz", "pulsador", "selector", "potenciometro", "seta"].includes(d.tipo)){
+      // calado Ø22,5 mm: tuerca de fijación, adaptador y bloques (LED o contactos) hacia el interior
+      L.cil(d.x, d.y, zi - 3, 15.5, 3, plas(0x26282c), { info:info("calado Ø22,5 mm") });
+      L.boxC(d.x, d.y, zi - 15, 31, 42, 12, plas(0x1d1e21), { info:info("calado Ø22,5 mm") });
+      if(d.tipo==="luz") L.boxC(d.x, d.y, zi - 45, 12, 30, 30, plas(0xeceeed), { info:info("bloque LED, calado Ø22,5 mm") });
+      else if(d.tipo==="potenciometro") L.cil(d.x, d.y, zi - 42, 12, 27, plas(0x2b2e33), { info:info("calado Ø22,5 mm") });
+      else { bloque(d.x - 5.2, d.y, zi - 43, true); bloque(d.x + 5.2, d.y, zi - 43, d.tipo!=="seta"); }
+    } else if(d.tipo==="hmi"){
+      contorno(d.x, d.y, d.recorteW, d.recorteH);
+      for(const [dx, dy] of [[-0.5, 0], [0.5, 0], [0, -0.5], [0, 0.5]]) L.boxC(d.x + dx*(d.recorteW + 6), d.y + dy*(d.recorteH + 6), zi - 12, dy ? 30 : 10, dx ? 30 : 10, 12, plas(0x1d1e21), { info:info(`recorte ${d.recorteW} × ${d.recorteH} mm, grapas de fijación`) });
+    } else if(d.tipo==="ventilador" || d.tipo==="rejilla"){
+      const rc = d.recorte || Math.round(d.w*0.87);
+      contorno(d.x, d.y, rc, rc);
+      if(d.tipo==="ventilador"){
+        L.box(d.x - rc/2 + 5, d.y - rc/2 + 5, zi - 62, rc - 10, rc - 10, 62, plas(0x3b3f46), { info:info(`calado ${rc} × ${rc} mm, carcasa del ventilador`) });
+        L.cil(d.x, d.y, zi - 63, rc*0.4, 1.2, plas(0x2b2e33)); L.cil(d.x, d.y, zi - 64, rc*0.12, 2, plas(0x5a5f66));
+      } else L.box(d.x - rc/2 + 4, d.y - rc/2 + 4, zi - 14, rc - 8, rc - 8, 14, plas(0xcfd1ce), { info:info(`calado ${rc} × ${rc} mm, marco del filtro de salida`) });
+    } else if(d.tipo==="panelvfd"){
+      contorno(d.x, d.y, d.w - 12, d.h - 12);
+      L.box(d.x - d.w/2 + 12, d.y - d.h/2 + 12, zi - 20, d.w - 24, d.h - 24, 20, plas(0x2b2e33), { info:info("kit de montaje en puerta del panel del variador") });
+    } else if(d.tipo==="manija"){
+      L.boxC(d.x, d.y, zi - 8, 48, 48, 8, plas(0x3b3f46), { info:info("calado del mando rotativo según el fabricante (eje prolongado hasta el interruptor)") });
+    } else if(d.tipo==="aa"){
+      contorno(d.x, d.y, d.w - 30, d.h - 60);
+      L.box(d.x - d.w/2 + 20, d.y - d.h/2 + 35, zi - 140, d.w - 40, d.h - 70, 140, plas(0xdfe1e4), { info:info("parte interior del aire acondicionado") });
+    }
+  };
 
   const chicas = [];
   const etiqueta = (txt, x, y, z, clase) => { const d = document.createElement("div"); d.className = "v3d-tag" + (clase ? " "+clase : ""); d.textContent = txt; const o2 = new CSS2DObject(d); o2.position.set(x*k, y*k, z*k); capas.etiquetas.add(o2); if(clase==="v3d-tag-chico") chicas.push(o2); return o2; };
@@ -330,8 +376,16 @@ export async function visor3D(cont, modelo, opciones){
         obj.userData.info = { tag:d.tag, desc:d.desc, modelo:(C.PUERTA[d.tipo]||{}).modelo || "" };
       }
     }
+    traseraPuerta(L, d);
     L.fin(g);
     if(obj) obj.userData.info = { tag:d.tag, desc:d.desc || d.leyenda, modelo:d.modelo || (C.PUERTA[d.tipo]||{}).modelo || "", dim: d.w ? `${d.w} × ${d.h} mm` : "", fuente: ap.fuente };
+  }
+  // señal de riesgo eléctrico en cada hoja de puerta (la misma posición que en el plano 2D)
+  for(const sr of C.senalesRiesgo(m)){
+    const h = hojaDe(sr.x), pl = new THREE.Mesh(geoSenal, matSenal);
+    pl.position.set(sr.x*k, (sr.y - 8)*k, (D + 20.6)*k); pl.scale.set(k, k, 1);
+    pl.userData.info = { tag:"Señal", desc:"Señal de riesgo eléctrico (ISO 7010 W012) con la leyenda «PELIGRO» — una en cada puerta", modelo:"Señal autoadhesiva de vinilo, 110 mm de lado" };
+    h.grupo.add(pl);
   }
   // placa de identificación
   { const s1 = m.secciones[0], cx = m.placaX ?? (s1.x0 + s1.x1)/2, h = hojaDe(cx); caja(cx - 150, H - 170, D + 20, 300, 90, 2, metal(0xc9ced4), h.grupo); }

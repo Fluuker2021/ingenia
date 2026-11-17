@@ -8,7 +8,7 @@ import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
 import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
-import { cargarKit, usarKit, pieza, envolver } from "./kit.js";
+import { cargarKit, usarKit, pieza, envolver, cajaAcometida } from "./kit.js";
 
 // geometría del plano de referencia (mm, espacio modelo)
 const BUS = 517.4, EJE0 = 71.8, ANCHO_COL = 58.2, PASO_RAMA = 45, SUB = 415.3 - BUS;
@@ -166,7 +166,9 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
   // acometida y accesorios (primera lámina del tablero)
   if(primera){
     const ax = FX(xAcom), ay = SY(0);
-    pieza(doc, kit, "acometida", ax, ay, { s, lineas:{ acometida:26 }, vars:{ q:"Q1", qv:`3x${calc.mainBreaker}A`, barra: barraCu(calc.mainBreaker), acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}` } });
+    pieza(doc, kit, "acometida", ax, ay, { s, omitir:[[-35, 143, 33, 172]], vars:{ q:"Q1", qv:`3x${calc.mainBreaker}A`, barra: barraCu(calc.mainBreaker), acometida:"" } });
+    // recuadro de procedencia con la forma común de las acometidas (embudo desde sus esquinas) y la tensión de llegada
+    cajaAcometida(doc, ax - 0.7*s, ay + 144.4*s, s, `VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}\n3x${g.voltage} Vac + T - ${g.freq} Hz`);
     let nf = 0; const fus = n=>{ const a = Array.from({length:n},(_,i)=>"F"+(++nf)); return a.join(","); };
     if(acc.luces) pieza(doc, kit, "acc_lt", ax, ay, { s, vars:{ f:fus(3), fv:"1X4A", fm:"E91/32", cable:"3C#14AWG+14AWG(N) 0.6/1kV", dev:"LT1,LT2,LT3", rango:"40-600Vac" } });
     if(acc.spd) pieza(doc, kit, "acc_spd", ax, ay, { s, vars:{ f:"-FS1", fv:"3x125A", cable:"3C#10AWG+10AWG(T) 0.6/1kV", dev:"SPD1,SPD2,SPD3", tipo:"TIPO 1 y 2", mod:`OVR T1 T2 3L 12.5-${g.voltage>440 ? 600 : 440} P QS` } });

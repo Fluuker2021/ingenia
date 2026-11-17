@@ -19,6 +19,7 @@ import { dibujarLamina, PASO_HOJAS } from "./formato.js";
 import { cargarKit, usarKit, pieza, envolver } from "./kit.js";
 import { datos, tablerosControl, tc, tableros, tableroPorId, instrumentos, expandirTag } from "../datos.js";
 import { equiposControl } from "../control/equipos.js";
+import { extremosSueltos, quitarDiagonalesSueltas, centradoHoja, moverX } from "./revision.js";
 
 const DX = 25, DY = -112;                         // hoja del plano de referencia → área útil de la lámina A1
 const BUS = { l:["EPLAN540",5], pe:["EPLAN547",150], l1:["EPLAN540",1], l2:["EPLAN541",1], v24:["EPLAN540",180], v0:["EPLAN541",180],
@@ -48,14 +49,40 @@ const trozos = (arr, n) => { const out = []; for(let i=0;i<arr.length;i+=n) out.
 
 /* lámina actual, colocación de piezas y registro de flechas para las referencias cruzadas */
 class Plano {
-  constructor(doc, kit, reg, valsDe, cliente, total){ Object.assign(this, { doc, kit, reg, valsDe, cliente, total, k:-1, nuevo:new Map(), dy:0, ox:0 }); }
-  hoja(titulo2, dy=0){ this.k++; this.dy = dy; this.ox = this.k*PASO_HOJAS; dibujarLamina(this.doc, this.ox, 0, this.valsDe(this.k, this.total, { TITULO2: titulo2 }), this.cliente); }
-  pz(nombre, x, o={}){ const s = o.s||1, yc = o.yc||0; pieza(this.doc, this.kit, nombre, this.ox+DX+x, DY+this.dy+(o.dy||0)+yc*(1-s), Object.assign({ quitar:QUITAR }, o)); }
+  constructor(doc, kit, reg, valsDe, cliente, total, dxs){ Object.assign(this, { doc, kit, reg, valsDe, cliente, total, k:-1, nuevo:new Map(), dy:0, ox:0, revisar:false, sinDestino:[], dxs, dxNuevo:[], ini:null, aux:new Set(), fijo:new Set() }); }
+  hoja(titulo2, dy=0){ this.cerrar(); this.k++; this.dy = dy; this.ox = this.k*PASO_HOJAS; dibujarLamina(this.doc, this.ox, 0, this.valsDe(this.k, this.total, { TITULO2: titulo2 }), this.cliente); this.ini = this.doc.entities.length; }
+  /* cierra la hoja: su dibujo se centra en el marco. En la primera pasada se calcula el desplazamiento y se corrigen las
+     flechas registradas (las referencias cruzadas apuntan a la posición final); en la segunda se aplica el mismo. */
+  cerrar(){
+    if(this.k < 0 || this.ini==null) return;
+    const ents = this.doc.entities.slice(this.ini);
+    const mov = ents.filter((_, i)=>!this.fijo.has(i)), aux = new Set(); let j = 0;
+    ents.forEach((_, i)=>{ if(this.fijo.has(i)) return; if(this.aux.has(i)) aux.add(j); j++; });
+    const dx = this.dxs ? (this.dxs[this.k] || 0) : centradoHoja(mov, this.ox, { excluir:aux });
+    this.dxNuevo[this.k] = dx;
+    if(dx){
+      const movidos = moverX(mov, dx); let m = 0;
+      this.doc.entities.splice(this.ini, ents.length, ...ents.map((e, i)=>this.fijo.has(i) ? e : movidos[m++]));
+      for(const v of this.nuevo.values()) if(v.hoja===this.k+1 && !v.movido){ v.X += dx; v.movido = true; }
+      for(const f of this.sinDestino) if(f.hoja===this.k+1 && !f.movido){ f.zona = zona(f.X + dx, f.Y); f.movido = true; }
+    }
+    this.ini = null; this.aux = new Set(); this.fijo = new Set();
+  }
+  pz(nombre, x, o={}){
+    const s = o.s||1, yc = o.yc||0, i0 = this.doc.entities.length;
+    pieza(this.doc, this.kit, nombre, this.ox+DX+x, DY+this.dy+(o.dy||0)+yc*(1-s), Object.assign({ quitar:QUITAR }, o));
+    // la leyenda acompaña al dibujo pero no cuenta para ubicar su centro; las divisorias campo / tablero (de lado a lado
+    // de la lámina) quedan fijas
+    if(this.ini!=null && /^leyenda$/.test(nombre)) for(let k = i0; k < this.doc.entities.length; k++) this.aux.add(k - this.ini);
+    if(this.ini!=null && /_div$/.test(nombre)) for(let k = i0; k < this.doc.entities.length; k++) this.fijo.add(k - this.ini);
+  }
   /* referencia cruzada (hoja.columna:fila) junto a la etiqueta de una flecha, separada según el largo de la etiqueta:
      dir "abajo" (etiqueta vertical que termina en y), "arriba" (vertical que empieza en y), "izq" (horizontal que termina
      en x) o "der" (horizontal que empieza en x; si no cabe en la lámina va debajo de la etiqueta) */
   refEt(x, y, etq, clave, dir){
-    const r = this.ref(clave); if(!r) return;
+    const r = this.ref(clave);
+    // flecha sin la otra punta: el conductor no llega a ninguna hoja (se informa en la revisión del plano)
+    if(!r){ if(this.revisar && etq) this.sinDestino.push({ hoja:this.k+1, X:DX+x, Y:DY+this.dy+y, zona:zona(DX+x, DY+this.dy+y), etq }); return; }
     const L = String(etq||"").length*4.52*0.72 + 1.5, o = { capa:"EPLAN442", c:73, va:2 };
     // largo de la referencia y límites del marco en coordenadas de la hoja de referencia (nunca fuera del marco)
     const W = (r.length + 2)*3.25*0.64, X0 = 27 - DX, Y0 = 48 - DY - this.dy, Y1 = 577 - DY - this.dy;
@@ -79,14 +106,37 @@ export async function multifilarControlKit({ p, valsDe, cliente, id }){
   const lista = tablerosControl(p).length ? tablerosControl(p) : [tc(p)];
   const eqs = lista.map(t=>equiposControl(p, t));
   // dos pasadas: la primera ubica cada flecha (hoja y zona); la segunda dibuja con las referencias cruzadas resueltas
-  let reg = new Map(), total = 0;
+  let reg = new Map(), total = 0, dxs = null;
   for(let pasada=0; pasada<2; pasada++){
     const doc = new DXFDoc(); usarKit(doc, kit);
-    const P = new Plano(doc, kit, reg, valsDe, cliente, total); P.docId = id || "ins-multifilar-tc";
+    const P = new Plano(doc, kit, reg, valsDe, cliente, total, dxs); P.docId = id || "ins-multifilar-tc"; P.revisar = pasada===1;
     for(const eq of eqs) tableroControl(P, p, eq);
-    if(pasada){ doc.limpiarUniones(); return { dxf: doc.toDXF(), hojas: P.k+1 }; }
-    reg = P.nuevo; total = P.k+1;
+    P.cerrar();
+    if(pasada){
+      doc.limpiarUniones(); quitarDiagonalesSueltas(doc);
+      const dxf = doc.toDXF();
+      return { dxf, hojas: P.k+1, avisos: revisionPlano(dxf, P.sinDestino, eqs), centrado: P.dxNuevo };
+    }
+    reg = P.nuevo; total = P.k+1; dxs = P.dxNuevo;
   }
+}
+
+/* revisión del plano terminado: conductores abiertos y flechas sin destino, con la hoja y la zona del marco */
+function revisionPlano(dxf, sinDestino, eqs){
+  const av = [], vis = new Set();
+  // lo que muestra el unifilar de control (mismos equipos: equiposControl) tiene que estar en el multifilar
+  const textos = new Set(); for(const m of dxf.matchAll(/\n1\n([^\n]*)/g)) for(const w of m[1].split(/[\s,/]+/)) textos.add(w.replace(/^-/, "").trim());
+  for(const eq of eqs){
+    const tags = [...eq.acometidas.map(a=>a.q.tag), ...(eq.fuente ? [eq.fuente.cb.tag, eq.fuente.ps.tag, eq.fuente.cbOut.tag] : []), eq.cb120 && eq.cb120.tag,
+      eq.spd.cb.tag, ...eq.spd.tags, ...eq.circuitos.map(c=>c.barra==="24 Vdc" ? c.borne : c.tag), ...(eq.puerta||[]).filter(d=>d.tipo==="luz").map(d=>d.tag), ...eq.reles.map(r=>r.tag)].filter(Boolean);
+    // fusibles-borne XF1.n: en el multifilar se rotulan «XF1» y cada borne «nA» / «nB»
+    const esta = tg => { const m = /^(XF\d+)\.(\d+)$/.exec(tg); return m ? textos.has(m[1]) && (textos.has(m[2]+"A") || textos.has(tg+"A")) : textos.has(tg) || [...textos].some(x=>x.startsWith(tg+".")); };
+    const falta = [...new Set(tags)].filter(tg=>!esta(tg));
+    if(falta.length) av.push(`${eq.tablero.tag}: ${falta.join(", ")} ${falta.length>1 ? "están" : "está"} en el unifilar pero no en el multifilar.`);
+  }
+  for(const f of sinDestino){ const k = f.hoja+"|"+f.etq; if(vis.has(k)) continue; vis.add(k); av.push(`Hoja ${f.hoja} (${f.zona}): la flecha «${f.etq}» no tiene referencia cruzada (no llega a ninguna hoja).`); }
+  for(const e of extremosSueltos(dxf)) av.push(`Hoja ${e.hoja} (${e.zona}): conductor abierto, su extremo no llega a ningún borne ni conductor.`);
+  return av;
 }
 
 /* ======================= hojas de un tablero de control ======================= */
@@ -125,17 +175,19 @@ function tableroControl(P, p, eq){
 
 /* luz piloto (círculo con aspa, IEC 60617) en un peldaño entre L (xL) y N (xN) a la altura y; con contacto NA en serie
    (relé del PLC) cuando la luz la manda una salida digital */
-function lampara(P, xL, xN, y, l, capa){
+function lampara(P, xL, xN, y, l, capa, { abajo=false }={}){
   const xc = (xL + xN)/2 + (l.rele ? 4 : 0), r = 4.2, k = r*0.7;
   if(l.rele){
     const x1 = xL + 3, x2 = xL + 9;
-    P.linea(xL, y, x1, y, capa); P.linea(x1, y, x2 - 0.5, y + 2.6, capa); P.linea(x2, y, xc - r, y, capa);
+    P.linea(xL, y, x1, y, capa); P.linea(x1, y, x2 - 0.5, y + 2.6, SIMB); P.linea(x2, y, x2, y + 1.6, SIMB); P.linea(x2, y, xc - r, y, capa);
     P.texto((x1 + x2)/2, y + 4.2, 2.2, l.rele, { ha:1, c:7 }); P.texto(x1, y - 2.6, 1.8, "11", { ha:1, c:7 }); P.texto(x2, y - 2.6, 1.8, "14", { ha:1, c:7 });
   } else P.linea(xL, y, xc - r, y, capa);
   P.linea(xc + r, y, xN, y, capa);
   P.arco(xc, y, r, 0, 360, capa); P.linea(xc - k, y - k, xc + k, y + k, capa); P.linea(xc - k, y + k, xc + k, y - k, capa);
   P.texto(xc, y + r + 1.6, 2.5, l.tag, { ha:1, c:7 });
-  P.texto(xN + 3, y + 1.4, 2.2, up(l.color), { va:2, c:7 }); P.texto(xN + 3, y - 2.0, 2.0, up(l.leyenda), { va:2, c:7 });
+  // color y leyenda a la derecha del peldaño o, entre columnas angostas, centrados debajo de la luz
+  if(abajo){ P.texto(xc, y - r - 3, 2.2, up(l.color), { ha:1, va:2, c:7 }); P.texto(xc, y - r - 6.4, 2.0, up(l.leyenda), { ha:1, va:2, c:7 }); }
+  else { P.texto(xN + 3, y + 1.4, 2.2, up(l.color), { va:2, c:7 }); P.texto(xN + 3, y - 2.0, 2.0, up(l.leyenda), { va:2, c:7 }); }
 }
 // zona de la luminaria de la pieza s_lum (se reemplaza por otra carga): símbolo, cierre inferior y bajada del neutro
 const OMIT_CARGA = [[-50, 200, 30, 280], [-1, 210, 36, 222], [31, 210, 33, 330]];
@@ -169,6 +221,8 @@ function hAcometidas(c){
     P.pz("a_cb1", dx, { vars:{ q:f.cb.tag, qv:amp(f.cb.in), qm:f.cb.modelo } });
     P.pz("a_ps", dx, { vars:{ ps:f.ps.tag, psv:amp(f.ps.a), psm:f.ps.modelo } });
     P.pz("a_cb2", dx, { vars:{ q:f.cbOut.tag, qv:amp(f.cbOut.in), qm:f.cbOut.modelo, a1:`${ps}.-`, a2:`${ps}.+`, desc:"FUENTE DE 24 VDC" } });
+    // salidas de la fuente hasta los bornes 1 / 3 de CB2 (en la pieza de referencia este tramo queda cortado)
+    P.linea(dx+236, 432.85, dx+236, 390.85, BUS.v0); P.linea(dx+268, 432.85, dx+268, 390.85, BUS.v24);
     flecha(P, K, `${ps}.-`, "s", dx+236, 297, dx+236.45, 296.85, "abajo"); flecha(P, K, `${ps}.+`, "s", dx+268, 297, dx+268.45, 296.85, "abajo");
   }
   if(eq.cb120){
@@ -232,8 +286,8 @@ function hDistribucion(c){
     if(!sigue) xFin = Math.min(756, Math.max(x + 14, (ultL||0) + 70));
     // barras L, N y PE (continuas entre las flechas de entrada y salida)
     const lastL = ultL!=null ? ultL : 66;
-    P.linea(40, 664.85, sigue ? 756 : lastL, 664.85, BUS.l);
-    P.linea(40, 648.85, sigue ? 756 : lastL+32, 648.85, BUS.l);
+    P.linea(40, 664.85, sigue ? 756 : lastL+2, 664.85, BUS.l);
+    P.linea(40, 648.85, sigue ? 756 : lastL+34, 648.85, BUS.l);
     P.linea(58, 632.85, sigue ? 728 : xFin-4, 632.85, BUS.pe);
     // flechas de entrada (desde la acometida o la hoja anterior) y de salida a la hoja siguiente
     const eL = i ? `d120:${i}:L` : `${cb3}.2`, eN = i ? `d120:${i}:N` : `${cb3}.4`, ePE = i ? `d120:${i}:PE` : "PE.1";
@@ -261,7 +315,7 @@ function hDistribucion(c){
         // luces piloto de la puerta: presencia de tensión (directa) y alarma general (por contacto del relé del PLC)
         P.pz("d_res", it.x, { lineas:{ desc:24 }, vars:base });
         const xL = it.x + 2, xN = it.x + 34, ls = (q.extra||{}).luces || [];
-        P.linea(xL, 457.2, xL, 412 - (ls.length-1)*34, BUS.l); P.linea(xN, 457.2, xN, 412 - (ls.length-1)*34, BUS.l);
+        P.linea(xL, 458.85, xL, 412 - (ls.length-1)*34, BUS.l); P.linea(xN, 458.85, xN, 412 - (ls.length-1)*34, BUS.l);
         ls.forEach((l, k)=>lampara(P, xL, xN, 412 - k*34, l, BUS.l));
       }
       else {
@@ -305,13 +359,14 @@ function hServicios(c){
         // calefacción anticondensación: termostato TH2 (abre al calentar) en serie con la resistencia R1
         const r = ((eq.calefaccion||{}).resistencias||[])[0] || { tag:"R1", w:100 };
         P.pz("s_lum", it.x, { vars:Object.assign(base, { sq:ex.termostato||"TH2", sqm:"0-60 °C", lm:"", lmv:"", lmm:"" }), texto: nums([2.8, 34.8]), omitir: OMIT_CARGA });
-        P.linea(it.x, 266.9, it.x, 244, BUS.l1); P.linea(it.x + 32, 326.9, it.x + 32, 244, BUS.l1);
+        P.linea(it.x, 266.9, it.x, 244, BUS.l1); P.linea(it.x + 32, 328.85, it.x + 32, 244, BUS.l1);
         resistencia(P, it.x, it.x + 32, 244, r.tag, r.w, BUS.l1);
         P.linea(it.x + 16, 268.7, it.x + 16, 246.6, BUS.pe);   // tierra de la carcasa de la resistencia
         P.texto(it.x + 16, 228, 3.25, "CALEFACCIÓN ANTICONDENSACIÓN", { ha:1, c:7 });
       } else if(it.tipo==="luz"){
         P.pz("s_lum", it.x, { vars:base, texto: nums([2.8, 34.8]), omitir:[[-30, 498, 8, 532], ...OMIT_CARGA, [12, 260, 62, 636]] });
-        P.linea(it.x, 497, it.x, 533, BUS.l1); P.linea(it.x, 266.9, it.x, 244, BUS.l1); P.linea(it.x + 32, 326.9, it.x + 32, 244, BUS.l1);
+        P.linea(it.x, 497, it.x, 533, BUS.l1); P.linea(it.x, 266.9, it.x, 244, BUS.l1);
+        P.arco(it.x + 32, 632.85, 2, 270, 90, BUS.l2); P.linea(it.x + 32, 630.85, it.x + 32, 244, BUS.l2);
         for(const l of ((q.extra||{}).luces||[])) lampara(P, it.x, it.x + 32, 244, l, BUS.l1);
       } else if(it.tipo==="lum") P.pz("s_lum", it.x, { vars:Object.assign(base, { sq:ex.interruptorPuerta||"", sqm:"", lm:ex.luminaria||"", lmv:"", lmm:"" }), texto: nums([2.8, 34.8]) });
       else {
@@ -344,22 +399,47 @@ function hPLC(c){
   for(const it of items){ P.pz(it.pz, x, { s, yc:450, vars:it.vars }); x += W[it.pz]*s; }
 }
 
-/* ---------- 5) distribución de 24 Vdc: fusibles-borne y equipos alimentados ---------- */
+/* ---------- 5) distribución de 24 Vdc: fusibles-borne y equipos alimentados ----------
+   Composición simétrica: arriba, en una fila centrada, los equipos alimentados (PLC, HMI, switch y router) con sus flechas;
+   abajo, centrados en todo el ancho, los pares de fusibles-borne XF1 (A +24 V con fusible, B 0 V) con la llegada de la
+   fuente por la izquierda de sus barras. */
+// extensión horizontal de cada equipo respecto de su ancla (incluye sus flechas, etiquetas y referencias) y su ajuste en y
+const EQ24 = { v_plc:{ l:2, r:186, dy:0 }, v_hmi:{ l:1, r:105, dy:0 }, v_sw:{ l:2, r:168, dy:0 }, v_rut:{ l:-10, r:156, dy:281.7 } };
 function hVdc(c){
   const { P, K, c24, ps, nombre, eq, hmi, sw, rut, peDe, c24De, fA, fB } = c;
   const cPLC = c24De(/plc|cpu|controlador/i), cHMI = c24De(/hmi|pantalla/i), cSW = c24De(/switch/i), cRUT = c24De(/router/i);
-  const max1 = rut ? 12 : 16, hojas = [];
-  if(c24.length <= max1) hojas.push(c24); else { hojas.push(c24.slice(0, max1)); hojas.push(...grupos(c24.slice(max1), 16)); }
+  // equipos de la fila superior (primera hoja)
+  const arriba = [{ pz:"v_plc", c:cPLC, pe:peDe("plc"), d:eq.plc.cpu, et:[[18.45, 522.85], [50.45, 522.85], [154.45, 522.85]], dir:"abajo" }];
+  if(hmi) arriba.push({ pz:"v_hmi", c:cHMI, pe:peDe("hmi"), d:hmi, et:[[17.45, 522.85], [33.45, 522.85], [49.45, 522.85]], dir:"abajo" });
+  if(sw) arriba.push({ pz:"v_sw", c:cSW, pe:peDe("sw"), d:sw, et:[[38, 626.4], [38, 614.4], [38, 602.4]], dir:"izq" });
+  if(rut) arriba.push({ pz:"v_rut", c:cRUT, pe:peDe("rut"), d:rut, et:[[26, 332.4], [26, 320.4], [26, 308.4]], dir:"izq" });
+  const XI = 14, XD = 792, CX = (XI + XD)/2;                    // ancho útil de la hoja (coordenadas de la referencia)
+  const Wa = arriba.reduce((a, e)=>a + EQ24[e.pz].r - EQ24[e.pz].l, 0);
+  const ga = arriba.length > 1 ? Math.max(10, Math.min(90, (XD - XI - Wa)/(arriba.length + 1))) : 0;
+  let xa = CX - (Wa + ga*(arriba.length-1))/2;
+  for(const e of arriba){ const g = EQ24[e.pz]; e.x = xa - g.l; e.dy = g.dy; xa += g.r - g.l + ga; }
+  const hojas = [];
+  if(c24.length <= 16) hojas.push(c24); else hojas.push(...grupos(c24, 16));
   hojas.forEach((pares, i)=>{
     P.hoja(`${nombre} - DISTRIBUCIÓN 24 VDC${hojas.length>1 ? ` (${i+1} DE ${hojas.length})` : ""}`);
-    // pares de fusibles-borne (A +24 V, B 0 V) a paso parejo, centrados entre las flechas de la fuente y el router
-    const x1 = !i && rut ? 615 : 800, n = pares.length;
-    const p = n>1 ? Math.max(42, Math.min(56, (x1-8-108)/(n-1))) : 48, Wb = (n-1)*p + 108;
-    const A0 = 8 + (x1-8-Wb)/2 + 78;
-    P.pz("v_ps", A0, { vars:{ a1:`${ps}.+`, a2:`${ps}.-` } });
-    flecha(P, K, `${ps}.+`, "e", A0-44, 664, A0-44, 664.4, "izq"); flecha(P, K, `${ps}.-`, "e", A0-44, 624, A0-44, 624.4, "izq");
-    P.pz("v_xf", A0, { vars:{ tb:"XF1", tbs:"4mm2", tbm1:"UT 4-L/", tbm2:"HESI (5X20)" } });
+    // pares a paso parejo; el bloque (llegada de la fuente + pares) centrado en el ancho útil
+    const n = pares.length, p = n>1 ? Math.max(42, Math.min(56, (XD - XI - 120)/(n-1))) : 48;
+    const A0 = CX - ((n-1)*p + 36 - 82)/2;
     const xs = pares.map((_, k)=>A0 + k*p);
+    // llegada de la fuente: +24 Vdc a la barra de los bornes A y 0 V a la de los bornes B, por la izquierda
+    const xt = A0 - 48;
+    for(const [et, y, xFin, est, v, color] of [[`${ps}.+`, 384.85, A0, BUS.v24, "24 VDC", "Rojo"], [`${ps}.-`, 398.85, A0+16, BUS.v0, "0 VDC", "Negro"]]){
+      const X = P.ox+DX, Y = DY+P.dy;
+      P.linea(xt, y, xt+2.5, y, ["EPLAN311"]); P.linea(xt+2.5, y-2, xt+2.5, y+2, ["EPLAN311"]);
+      P.doc.solid([[X+xt+2.5, Y+y-2], [X+xt+2.5, Y+y+2], [X+xt+8, Y+y]], "EPLAN311", {});
+      P.linea(xt+8, y, xFin, y, est);
+      P.texto(xt-1, y-0.45, 4.52, et, { capa:"EPLAN403", c:5, ha:2, va:2 }); flecha(P, K, et, "e", xt, y, xt, y-0.45, "izq");
+      P.texto(xt+10, y+1.2, 2.6, v, { c:7 });
+      // marca del cable sobre el conductor
+      const xm = xt + 30; P.linea(xm-2, y-2, xm+2, y+2, ["EPLAN301"]);
+      [["16 AWG", 0], [color, 1], ["THW-90", 2]].forEach(([t, k])=>P.texto(xm+3.5, y+9.8-k*3.9, 2.35, t, { capa:"EPLAN405", c:6 }));
+    }
+    P.pz("v_xf", A0, { vars:{ tb:"XF1", tbs:"4mm2", tbm1:"UT 4-L/", tbm2:"HESI (5X20)" } });
     P.linea(xs[0], 384.85, xs[n-1], 384.85, BUS.v24); P.linea(xs[0]+16, 398.85, xs[n-1]+16, 398.85, BUS.v0);
     pares.forEach((q, k)=>{
       const A = xs[k], nf = String(q.borne||"").replace(/^.*\./,""), a1 = fA(q), a2 = fB(q);
@@ -369,27 +449,26 @@ function hVdc(c){
       // descripción bajo la referencia de la flecha más larga del par (las etiquetas XF1.nA crecen con el número)
       const yd = q.reserva ? 227.78 : Math.min(227.78, 260.85 - Math.max(a1.length, a2.length)*4.52*0.72 - 1.5 - 7*3.25*0.72 - 2);
       P.textoN(A+8, yd, 2.35, d, 18, { ha:1, c:7 });
-      if(q.reserva){
+      const luces = q.cfg==="luz24" ? ((q.extra||{}).luces || []) : [];
+      if(luces.length){
+        // luz piloto de presencia de 24 Vdc en la puerta: entre el borne A (+24 V, con fusible) y el B (0 V)
+        P.pz("v_par", A, { vars, omitir:[[-6, 229, 30, 300]] });
+        const yl = k2 => 266.85 - k2*24;
+        if(luces.length > 1){ P.linea(A, 266.85, A, yl(luces.length-1), BUS.v24); P.linea(A+16, 266.85, A+16, yl(luces.length-1), BUS.v0); }
+        luces.forEach((l, k2)=>lampara(P, A, A+16, yl(k2), l, BUS.v24, { abajo:true }));
+      } else if(q.reserva){
         P.pz("v_par", A, { vars, omitir:[[-6, 229, 30, 345.6], [15.5, 205, 16.5, 358]] });
-        P.linea(A, 344.85, A, 336, BUS.v24); P.linea(A+16, 356.85, A+16, 336, BUS.v0);
       } else {
         P.pz("v_par", A, { vars });
         flecha(P, K, a1, "s", A, 261, A+0.45, 260.85, "abajo"); flecha(P, K, a2, "s", A+16, 261, A+16.45, 260.85, "abajo");
       }
     });
     if(i) return;
-    // equipos alimentados: PLC y HMI repartidos arriba; switch y router a la derecha
-    const arriba = [{ pz:"v_plc", w:190, c:cPLC, pe:peDe("plc"), d:eq.plc.cpu, et:[[18.45, 522.85], [50.45, 522.85], [154.45, 522.85]], dir:"abajo" }];
-    if(hmi) arriba.push({ pz:"v_hmi", w:109, c:cHMI, pe:peDe("hmi"), d:hmi, et:[[17.45, 522.85], [33.45, 522.85], [49.45, 522.85]], dir:"abajo" });
-    const xa0 = Math.max(100, A0+36), Wa = arriba.reduce((a, x)=>a+x.w, 0), ga = Math.max(10, (620-xa0-Wa)/(arriba.length+1));
-    let xa = xa0 + ga;                                           // a la derecha de la bajada de la fuente
-    for(const e of arriba){ e.x = xa; xa += e.w + ga; }
-    if(sw) arriba.push({ pz:"v_sw", x:630, c:cSW, pe:peDe("sw"), d:sw, et:[[38, 626.4], [38, 614.4], [38, 602.4]], dir:"izq" });
-    if(rut) arriba.push({ pz:"v_rut", x:630, c:cRUT, pe:peDe("rut"), d:rut, et:[[26, 332.4], [26, 320.4], [26, 308.4]], dir:"izq" });
     for(const e of arriba){
       const a1 = fA(e.c), a2 = fB(e.c), plc = e.pz==="v_plc", mod = String(e.d.modelo||"");
-      P.pz(e.pz, e.x, { lineas:{ desc:28 }, vars:{ tag:e.d.tag, desc: plc ? (eq.plc.cpu.familia||e.d.desc) : mod.replace(/\s+\S+$/, ""), modelo: plc ? mod : mod.split(" ").pop(), a1, a2, pe:e.pe } });
-      [a1, a2, e.pe].forEach((et, k)=>flecha(P, K, et, "e", e.x+e.et[k][0], e.et[k][1], e.x+e.et[k][0], e.et[k][1], e.dir));
+      P.pz(e.pz, e.x, { dy:e.dy, lineas:{ desc:28 }, vars:{ tag:e.d.tag, desc: plc ? (eq.plc.cpu.familia||e.d.desc) : mod.replace(/\s+\S+$/, ""), modelo: plc ? mod : mod.split(" ").pop(), a1, a2, pe:e.pe },
+        texto: e.pz==="v_hmi" ? textos([[35, 561, "Negro"]]) : null });
+      [a1, a2, e.pe].forEach((et, k)=>flecha(P, K, et, "e", e.x+e.et[k][0], e.et[k][1]+e.dy, e.x+e.et[k][0], e.et[k][1]+e.dy, e.dir));
     }
   });
 }
@@ -438,7 +517,12 @@ function hAI(c, m){
         P.pz("ai_tx", x, { lineas:{ desc:30, tx:32 }, vars:Object.assign(base, { tx }), omitir:SIN_24 });
         P.linea(x, 492.85, x, 446, BUS.v24); flechaV(P, x, 446);
         P.texto(x+0.45, 439.5, 4.52, fA(cT), { capa:"EPLAN403", c:5, rot:90, ha:2, va:2 }); flecha(P, K, fA(cT), "e", x, 440, x+0.45, 439.5, "abajo");
-        P.texto(x-3, 452, 2.35, `0 V: ${fB(cT)}`, { c:7, ha:2, va:2 }); P.marca(K(fB(cT)+"<"), x+24, 660);
+        // 0 V del transmisor (4 hilos): borne propio en el instrumento y conductor hasta XF1.nB, en el mismo cable
+        const x0v = x + 12;
+        P.linea(x0v, 664.35, x0v, 658.85, SIMB); P.doc.solid([[P.ox+DX+x0v-3, DY+P.dy+664.85], [P.ox+DX+x0v+3, DY+P.dy+664.85], [P.ox+DX+x0v-3, DY+P.dy+664.35], [P.ox+DX+x0v+3, DY+P.dy+664.35]], "EPLAN300", {});
+        P.texto(x0v+1.2, 659, 3.25, "0V", { capa:"EPLAN420", c:7, va:3 });
+        P.linea(x0v, 658.85, x0v, 498.85, ["EPLAN544", 250, "EPL_DASH"]); P.linea(x0v, 498.85, x0v, 446, BUS.v0); flechaV(P, x0v, 446, BUS.v0);
+        P.texto(x0v+0.45, 439.5, 4.52, fB(cT), { capa:"EPLAN403", c:5, rot:90, ha:2, va:2 }); flecha(P, K, fB(cT), "e", x0v, 440, x0v+0.45, 439.5, "abajo");
         return;
       }
       ult24 = x;
@@ -468,7 +552,19 @@ function hAO(c, m){
     P.pz("ao_div", 0);
     if(gen) cabModulo(P, X0-25, 658.85, m); else P.pz("ao_mod", X0, { vars:{ tag:m.tag, modelo:m.modelo, slot:`slot ${m.slot}` } });
     P.pz("ao_tb", X0, { vars:{ tb:m.tb, tbs:"4mm2", tbm:c.modBorne(m.tb, 0) } });
-    if(cAO && !i){ P.marca(K(fA(cAO)+"<"), X0-36, 658); P.marca(K(fB(cAO)+"<"), X0-36, 658); }
+    // alimentación de 24 Vdc del módulo (S7-1500 41 L+ / 44 M, S7-1200 L+ / M): bornes a la derecha de los canales y
+    // flechas desde su par de fusibles-borne de XF1; los módulos alimentados por el bastidor no la llevan
+    const alimAO = ((m.info||{}).bornes||{}).alim || [];
+    if(cAO && !i && alimAO.length >= 2){
+      const xa = X0 + sen.length*80 + 36;
+      [[alimAO[0], fA(cAO), BUS.v24], [alimAO[1], fB(cAO), BUS.v0]].forEach(([b, et, est], k)=>{
+        const xb = xa + 24*k;
+        P.arco(xb, 624.85, 2, 0, 360, ["EPLAN303"]); P.texto(xb+3, 623.2, 3.25, b[0], { capa:"EPLAN432", c:7, va:2 }); P.texto(xb+3, 615.38, 2.35, b[1], { capa:"EPLAN421", c:5, va:2 });
+        P.linea(xb, 622.85, xb, 546, est); flechaV(P, xb, 546, est);
+        P.texto(xb+0.45, 539.5, 4.52, et, { capa:"EPLAN403", c:5, rot:90, ha:2, va:2 }); flecha(P, K, et, "e", xb, 540, xb+0.45, 539.5, "abajo");
+      });
+      P.textoN(xa - 6, 640, 2.35, "ALIMENTACIÓN DEL MÓDULO", 30, { c:7 });
+    }
     let libre = true, primero = true;
     sen.forEach((s, k)=>{
       const x = xs[k], [bA, bB] = bornes(s), ch = s.ch;
@@ -597,7 +693,7 @@ function hDI(c){
       const dest = s.origen==="reserva" ? "RESERVA" : s.origen==="instrumento" ? `(INSTALACIÓN EN CAMPO)\n${up(ins ? ins.descripcion : s.descripcion)}\n${s.tag}` : `DESDE ${destino(s)}\n${up(s.descripcion)}\n${s.tag}`;
       P.pz("di_ch", x, { lineas:{ desc:30, dest:28 }, vars:Object.assign(base, { dest }) });
     });
-    P.linea(xIni, 664.85, sigue ? xl+26 : xl, 664.85, BUS.di);
+    P.linea(conFPD ? xIni : xIni + 0.5, 664.85, sigue ? xl+26.5 : xl, 664.85, BUS.di);
     if(gen){
       // común de las entradas según el fabricante (neutro o 0 V) a la derecha del módulo, con su flecha
       const cms = [...new Map(sen.map(s=>{ const p = pinTxt(s.bornes || {}, "com", ""); return [p.n + "|" + p.nom, p]; })).values()].filter(p=>p.n || p.nom);
@@ -665,6 +761,7 @@ function hLimpieza(c){
 /* ======================= controladores con símbolo genérico (S7-1500, S7-1200, M580 / M340, CompactLogix 5370) =======================
    Bornes, alimentación, comunes y conector de cada módulo desde js/control/plc-modulos.js; «*» = numeración por confirmar. */
 const MODB = ["EPLAN102", 140];
+const SIMB = ["EPLAN300", 7];                     // símbolos (contactos, bobinas) del plano de referencia
 /* número y nombre de un borne de canal (k = pos | neg | com); sin número se escribe el nombre */
 function pinTxt(b, k, def=""){
   const n = (b.pin||{})[k] || "", nom = b[k] || "";
@@ -674,7 +771,7 @@ function pinTxt(b, k, def=""){
 }
 function rect(P, x1, y1, x2, y2, est=MODB){ P.linea(x1, y1, x2, y1, est); P.linea(x2, y1, x2, y2, est); P.linea(x2, y2, x1, y2, est); P.linea(x1, y2, x1, y1, est); }
 /* punta de flecha de entrada (hacia arriba) al final de una línea vertical */
-function flechaV(P, x, y){ const X = P.ox+DX+x, Y = DY+P.dy+y; P.doc.solid([[X-2, Y-5.5], [X+2, Y-5.5], [X, Y]], "EPLAN311", {}); P.linea(x, y, x, y-5.5, BUS.v24); }
+function flechaV(P, x, y, est=BUS.v24){ const X = P.ox+DX+x, Y = DY+P.dy+y; P.doc.solid([[X-2, Y-5.5], [X+2, Y-5.5], [X, Y]], "EPLAN311", {}); P.linea(x, y, x, y-5.5, est); }
 /* TAG, modelo, nombre y slot del módulo alineados a la derecha (terminan en x) */
 function cabModulo(P, x, y, m){
   const i = m.info || {};

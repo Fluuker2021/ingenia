@@ -175,6 +175,39 @@ export const PUERTA = {
   potenciometro:{ modelo:"Potenciómetro 22 mm, 10 kΩ", diam:30, d:50 },
   placa:{ w:50, h:18 },
 };
+/* hojas de puerta de un arreglo: cada sección lleva una hoja (bisagra según la sección) o dos (≥ 1000 mm, bisagras afuera) */
+export function hojasPuerta(m, gap = 3){
+  const out = [];
+  for(const s of m.secciones){
+    if(s.puertas===2){ const mid = (s.x0 + s.x1)/2; out.push({ x0:s.x0 + gap, x1:mid - 1.5, bisagra:"izq", seccion:s.id }, { x0:mid + 1.5, x1:s.x1 - gap, bisagra:"der", seccion:s.id }); }
+    else out.push({ x0:s.x0 + gap, x1:s.x1 - gap, bisagra:s.bisagra, seccion:s.id });
+  }
+  return out;
+}
+/* señal de riesgo eléctrico (triángulo con rayo, ISO 7010 W012, 110 mm de lado + leyenda «PELIGRO») en CADA hoja de puerta,
+   centrada en su hoja y, si se puede, a la misma altura en todas (simetría). Evita los dispositivos de puerta, el panel de
+   operación, la placa de identificación y la manija. */
+export const SENAL_RIESGO = { lado:110, alto:95 };
+export function senalesRiesgo(m){
+  const { H } = m, hojas = hojasPuerta(m), manY = m.manijaY ?? 900;
+  const caja = (x, y) => [x - 62, y - 72, x + 62, y + 56];               // triángulo + leyenda debajo
+  const obst = hoja => {
+    const o = [];
+    for(const d of m.puerta||[]){ if(d.x < hoja.x0 - 1 || d.x > hoja.x1 + 1) continue; const w = d.anillo || d.w || d.diam || 60, h = d.anillo || d.h || d.diam || 60;
+      o.push([d.x - w/2 - 25, d.y - h/2 - 25, d.x + w/2 + 25, d.y + h/2 + (d.leyenda ? 50 : 25)]); }
+    if(m.panel && m.panel.x + m.panel.w > hoja.x0 && m.panel.x < hoja.x1) o.push([m.panel.x - 20, m.panel.y - 20, m.panel.x + m.panel.w + 20, m.panel.y + m.panel.h + 20]);
+    const px = m.placaX ?? (m.secciones[0].x0 + m.secciones[0].x1)/2;
+    if(px >= hoja.x0 && px <= hoja.x1) o.push([px - 160, H - 185, px + 160, H - 70]);
+    const xm = hoja.bisagra==="izq" ? hoja.x1 - 45 : hoja.x0 + 25; o.push([xm - 25, manY - 25, xm + 45, manY + 185]);
+    return o;
+  };
+  const libre = (hoja, y) => { const x = (hoja.x0 + hoja.x1)/2, b = caja(x, y); if(b[1] < 120 || b[3] > H - 60 || b[0] < hoja.x0 + 20 || b[2] > hoja.x1 - 20) return false;
+    return !obst(hoja).some(r=>b[0] < r[2] && b[2] > r[0] && b[1] < r[3] && b[3] > r[1]); };
+  const ys = [H - 330, H - 280, H - 400, H*0.8, H*0.7, 1250, H*0.55, H*0.4, H*0.32, 450, 300].filter(y=>y > 140 && y < H - 120).map(Math.round);
+  const comun = ys.find(y=>hojas.every(h=>libre(h, y)));
+  return hojas.map(h=>{ const y = comun ?? ys.find(yy=>libre(h, yy)) ?? ys[0]; return { x:(h.x0 + h.x1)/2, y, seccion:h.seccion }; });
+}
+
 export const VENTILADORES = [
   // caudal libre (m³/h), caudal con filtro de salida, marco (mm), recorte (mm)
   [26, 20, 116.5, 92], [66, 55, 148.5, 124.5], [140, 105, 204, 177], [240, 180, 204, 177], [300, 230, 255, 224], [700, 550, 323, 292], [900, 700, 323, 292],

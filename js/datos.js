@@ -6,6 +6,7 @@
 import { computeCircuit, pickStep, BREAKER_STEPS, tempCorrFactor, buildMainConductorSpec, APPLICATIONS, egcFor, miguelezCableFor, configurarMotor, CABLE_TABLE } from "./engine/tablero-core.js";
 import { valoresDiseno, tempDiseno, tensionControlTxt, controlEnDC } from "./modules/criterios.js";
 import { save } from "./store.js";
+import { FAMILIAS, MODULOS, familiaPorTexto } from "./control/plc-modulos.js";
 
 export const uidc = (p="x") => p+"_"+Math.random().toString(36).slice(2,8);
 
@@ -369,6 +370,12 @@ export function calefaccionTablero(p, t){
   const v = valoresDiseno(p), tMin = parseFloat(v.tempMin);
   return (isFinite(tMin) && tMin <= 5) || /exterior|intemperie/i.test(v.ambiente||"") || (parseFloat(v.altitud)||0) >= 3000;
 }
+/* ¿el módulo de salidas analógicas de la familia del PLC del tablero necesita 24 Vdc externos? */
+export function aoConAlimentacion(t){
+  t = t || {};
+  const fam = FAMILIAS[t.familiaPlc] || FAMILIAS[familiaPorTexto(`${t.marcaPlc||""} ${t.plc||""} ${t.modeloPlc||""}`)];
+  return Object.values(((fam||{}).mod||{}).AO || {}).some(m=>(((MODULOS[m]||{}).bornes||{}).alim||[]).length > 0);
+}
 /* ---------------- circuitos de un tablero de control ---------------- */
 export function derivarCircuitosControl(p, t){
   // Criterio usual de unifilar de control: 24 Vdc con portafusibles de 1 A por
@@ -383,7 +390,9 @@ export function derivarCircuitosControl(p, t){
   c24.push({ descripcion:"Alimentación al PLC", proteccion:1, cfg:"plc" });
   const ana = inst.filter(i=>esAnalogico(i) && !enLimpieza(i));
   if(ana.length) c24.push({ descripcion:"Alimentación a las entradas analógicas", proteccion:1, cfg:"ai" });
-  if(hayAO) c24.push({ descripcion:"Alimentación a las salidas analógicas", proteccion:1, cfg:"ao" });
+  // las salidas analógicas llevan su circuito de 24 Vdc solo si el módulo de la familia del PLC tiene bornes de alimentación
+  // (S7-1500: 41 L+ / 44 M; S7-1200: L+ / M); los 5069, 1769 y X80 se alimentan desde el bastidor y el circuito no tendría destino
+  if(hayAO && aoConAlimentacion(t)) c24.push({ descripcion:"Alimentación a las salidas analógicas", proteccion:1, cfg:"ao" });
   if(t.hmi) c24.push({ descripcion:"Alimentación al HMI", proteccion:1, cfg:"hmi" });
   if(t.router) c24.push({ descripcion:"Alimentación al router", proteccion:1, cfg:"router" });
   if(t.switch) c24.push({ descripcion:"Alimentación al switch", proteccion:1, cfg:"switch" });

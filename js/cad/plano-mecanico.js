@@ -14,6 +14,7 @@ import { datos } from "../datos.js";
 import { arreglosProyecto } from "../mecanico/arreglo.js";
 import { arreglosControl } from "../mecanico/arreglo-control.js";
 import * as C from "../mecanico/componentes.js";
+import { apariencia, cuenta, polosDe, regiones, rasgosDe } from "../mecanico/modelos.js";
 
 const CAPAS = {
   "M-GABINETE":{ c:7 }, "M-PUERTA":{ c:7 }, "M-PLACA":{ c:8 }, "M-CANALETA":{ c:9 }, "M-RIEL":{ c:8 }, "M-EQUIPO":{ c:7 },
@@ -126,8 +127,78 @@ function etiqueta(v, c, txt, arriba){
   if(arriba===false) v.T(c.x + c.w/2, c.y + c.h/2, h, txt, "M-ETIQUETA", { halign:1, valign:2 });
   else v.T(c.x + c.w/2, c.y + c.h + 0.7*v.s, h, txt, "M-ETIQUETA", { halign:1 });
 }
-function dibujarEquipo(v, c){
+/* frente del equipo con los rasgos de su familia (js/mecanico/modelos.js, la misma base que la vista 3D): contorno con
+   chaflán, escalón del frente saliente, palancas, perillas, diales, LED, display, teclado, ventanas, conector frontal,
+   rejillas, puertos y bornes. Todo queda dentro del contorno del equipo (no invade cotas, tablas ni el cajetín); los
+   detalles menores de 0,12 mm en la lámina se omiten. */
+const SIN_BASE_2D = new Set(["reactancia", "trafo", "luminaria", "finpuerta", "peine", "tapa"]);
+function frenteEquipo(v, c, ap){
+  const E = "M-EQUIPO", D = "M-DETALLE", { y, h } = c, reg = regiones(c, ap), x = reg.x, w = reg.w;
+  const ve = mm => mm/v.s >= 0.12;                                   // ¿se distingue en la lámina?
+  const pf = ap.perfil && ap.perfil.tipo==="modular" ? ap.perfil : null;
+  const np = polosDe(c), pw = w/np, modular = ["mcb","diferencial","fusible","spd"].includes(c.tipo);
+  // contorno: aparamenta modular por módulo de 17,5 mm; el resto con su chaflán
+  if(modular) for(let k=0;k<np;k++) v.R(x + k*pw, y, pw, h, E);
+  else { const b = Math.min(ap.bisel || 0, w*0.12, h*0.12);
+    if(b >= 2 && ve(b)) v.P([[x + b, y], [x + w - b, y], [x + w, y + b], [x + w, y + h - b], [x + w - b, y + h], [x + b, y + h], [x, y + h - b], [x, y + b]], E, null, true);
+    else v.R(x, y, w, h, E); }
+  if(pf){ for(const yy of [pf.ny - pf.nariz/2, pf.ny + pf.nariz/2]) v.L(x, y + h*yy, x + w, y + h*yy, D); }
+  if(reg.lateral){ const l = reg.lateral; v.R(l.x, y + h*0.12, l.w, h*0.76, D); }
+  const reps = r => r.por==="polo" ? Array.from({ length:np }, (_, i)=>i) : [null];
+  const X = (r, i) => i==null ? x + (r.x ?? 0.5)*w : x + (i + (r.x ?? 0.5))*pw;
+  const WW = (r, i, def) => (r.w ?? def ?? 0.8)*(i==null ? w : pw);
+  for(const r of rasgosDe(c, ap)){
+    const cy = y + (r.y ?? 0.5)*h, hh = (r.h ?? 0.1)*h;
+    switch(r.t){
+      case "palanca": for(const i of reps(r)){ const cx = X(r, i), ww = WW(r, i); v.R(cx - ww*0.67, cy - hh*0.75, ww*1.35, hh*1.5, D); v.R(cx - ww/2, cy - hh*0.38, ww, hh, E); }
+        if(r.unida && r.por==="polo" && np > 1) v.L(X(r, 0), cy + hh*0.42, X(r, np - 1), cy + hh*0.42, E);
+        break;
+      case "perilla": { const rr = (r.r ?? 0.25)*w, cx = X(r); v.C(cx, cy, rr*1.12, D); v.C(cx, cy, rr, E); v.R(cx - rr*0.275, cy - rr*0.95, rr*0.55, rr*1.9, D); if(r.flecha) v.L(cx, cy + rr*0.3, cx, cy + rr*0.85, D); break; }
+      case "dial": { const rr = (r.r ?? 0.1)*w, cx = X(r); if(!ve(rr)) break; v.C(cx, cy, rr, D); v.L(cx, cy, cx + rr*0.7, cy + rr*0.7, D); break; }
+      case "boton": { const rr = (r.r ?? 0.06)*w, cx = X(r); if(!ve(rr)) break; v.C(cx, cy, rr*1.3, D); v.C(cx, cy, rr, D); break; }
+      case "led": { const n = r.n || 1, rr = r.r || 1.2; if(!ve(rr)) break; for(let i=0;i<n;i++) v.C(x + (r.x + i*(r.dx||0))*w, y + ((r.y ?? 0.5) + i*(r.dy||0))*h, rr, D); break; }
+      case "display": { const ww = WW(r, null, 0.5), cx = X(r); v.R(cx - ww/2 - 1, cy - hh/2 - 1, ww + 2, hh + 2, D); if(ve(3)) v.R(cx - ww/2, cy - hh/2, ww, hh, D); break; }
+      case "teclado": { const ww = WW(r, null, 0.5), cx = X(r), f = r.filas || 1, q = r.cols || 3; if(!ve(ww/q*0.6)) break;
+        for(let a=0;a<f;a++) for(let b=0;b<q;b++){ const kx = cx - ww/2 + (b + 0.5)*ww/q, ky = cy + hh/2 - (a + 0.5)*hh/f; v.R(kx - ww/q*0.34, ky - hh/f*0.31, ww/q*0.68, hh/f*0.62, D); }
+        break; }
+      case "ventana": case "etiqueta": case "placa": case "rebaje": case "tapa": case "bloque":
+        for(const i of reps(r)){ const ww = WW(r, i, r.t==="bloque" ? 0.8 : 0.86), cx = X(r, i); if(ve(Math.min(ww, hh))) v.R(cx - ww/2, cy - hh/2, ww, hh, D); }
+        break;
+      case "franja": for(const i of reps(r)){ const ww = WW(r, i, 0.86), cx = X(r, i); if(ve(hh)) v.R(cx - ww/2, cy - hh/2, ww, hh, D); else v.L(cx - ww/2, cy, cx + ww/2, cy, D); } break;
+      case "conector": { const ww = WW(r, null, 0.86), cx = X(r), n = r.n || 8, q = r.cols || 1, f = Math.ceil(n/q); v.R(cx - ww/2, cy - hh/2, ww, hh, D);
+        const rr = Math.min(ww/q*0.24, hh/f*0.24, 1.8); if(ve(rr*2)) for(let a=0;a<f;a++) for(let b=0;b<q;b++) v.C(cx - ww/2 + (b + 0.5)*ww/q, cy + hh/2 - (a + 0.5)*hh/f, rr, D);
+        break; }
+      case "rejilla": { const ww = WW(r, null, 0.7), cx = X(r), n = r.n || 6, paso = hh/n; if(!ve(paso*0.5)) break; for(let i=0;i<n;i++){ const yy = cy - hh/2 + (i + 0.5)*paso; v.L(cx - ww/2, yy, cx + ww/2, yy, D); } break; }
+      case "puertos": { const ww = WW(r, null, 0.7), cx = X(r), n = r.n || 1, f = r.filas || 1, pwp = Math.min(ww/n*0.85, 14), php = Math.min(hh/f*0.8, 12); if(!ve(pwp*0.5)) break;
+        for(let a=0;a<f;a++) for(let q=0;q<n;q++) v.R(cx - ww/2 + (q + 0.5)*ww/n - pwp/2, cy + hh/2 - (a + 0.5)*hh/f - php/2, pwp, php, D);
+        break; }
+      case "aletas": if(r.lado==="frente"){ const n = r.n || 7; for(let i=0;i<n;i++){ const xx = x + w*(i + 0.5)/n; v.L(xx, y + h*0.14, xx, y + h*0.9, D); } } break;
+      case "antenas": { const n = r.n || 2, rr = Math.min(3.2, w/(4*n)); for(let i=0;i<n;i++) v.C(x + w*(i + 0.5)/n, y + h - rr - 1, rr, D); break; }
+      case "bornes": {
+        const n = cuenta(r.n, c), lados = r.lado==="ambos" ? ["arriba", "abajo"] : [r.lado || "ambos"], paso = w/n;
+        for(const lado of lados){ const sup = lado==="arriba";
+          let yf = r.y ?? (pf ? (sup ? (1 + pf.ny + pf.nariz/2)/2 : (pf.ny - pf.nariz/2)/2) : (sup ? 0.92 : 0.08)); if(r.y!=null && r.lado==="ambos") yf = sup ? r.y : 1 - r.y;
+          const by = y + yf*h;
+          for(let i=0;i<n;i++){ const bx = x + (i + 0.5)*paso;
+            if(r.forma==="lug"){ const lw = Math.min(paso*0.5, 40), lh = Math.min(h*0.09, 26); v.R(bx - lw/2, by - lh/2, lw, lh, D); v.C(bx, by, Math.min(lw, lh)*0.22, D); }
+            else { const rs = Math.min(paso*0.3, h*0.04, 2.8); if(!ve(rs)) continue; v.C(bx, by, rs, D); v.L(bx - rs*0.7, by - rs*0.7, bx + rs*0.7, by + rs*0.7, D); }
+          } }
+        break; }
+    }
+  }
+}
+export function dibujarEquipo(v, c){   // exportada también para pruebas (galería de la base de apariencia)
   const { x, y, w, h } = c, E = "M-EQUIPO", D = "M-DETALLE";
+  const ap = SIN_BASE_2D.has(c.tipo) ? null : apariencia(c);
+  if(ap && ap.rasgos && ap.rasgos.length){
+    frenteEquipo(v, c, ap);
+    if(c.tipo==="variador"){ const fam = String(c.familia||""); v.T(x + w/2, y + h*0.45, ajustar(c.tag, w/v.s*0.8, 2.6, 1.2), c.tag, "M-ETIQUETA", { halign:1, valign:2 }); v.T(x + w/2, y + h*0.45 - 4*v.s, ajustar(fam, w/v.s*0.9, 1.6, 0.8), fam, D, { halign:1, valign:2 }); }
+    else if(c.tipo==="rele" && w < 12) v.T(x + w/2, y + h + 0.6*v.s, Math.min(1.25, w/v.s*0.85), c.tag, "M-ETIQUETA", { rot:90, valign:2 });
+    else if(c.tipo==="sobrecarga") etiqueta(v, c, c.tag, false);
+    else if(c.tipo==="interruptor"){ const fam = String(c.familia||"").replace("Tmax ", ""); if(/^XT/.test(fam)) v.T(x + w/2, y + h*0.73, ajustar(fam, w/v.s*0.6, 1.4, 0.6), fam, D, { halign:1, valign:2 }); if(c.rol==="general") v.T(x + w*0.8, y + h*0.27, ajustar("U<", w*0.18/v.s, 1.2, 0.6), "U<", D, { halign:1, valign:2 }); etiqueta(v, c); }
+    else etiqueta(v, c);
+    return;
+  }
   switch(c.tipo){
     case "interruptor": {
       v.R(x, y, w, h, E);
@@ -331,7 +402,7 @@ function dibujarDispositivo(v, d, conLeyenda){
   // dispositivos de 22 mm y parada de emergencia
   const r = (d.diam||30)/2;
   if(d.tipo==="seta"){ v.C(d.x, d.y, (d.anillo||60)/2, "M-SENAL"); v.C(d.x, d.y, 20, E); v.C(d.x, d.y, 14, D); }
-  else { v.C(d.x, d.y, r, E); v.C(d.x, d.y, 11, D);
+  else { v.C(d.x, d.y, r, E); v.C(d.x, d.y, 14, D); v.C(d.x, d.y, 11, D);
     if(d.tipo==="selector"){ v.R(d.x - 3, d.y - 10, 6, 20, E); }
     if(d.tipo==="potenciometro"){ for(let k=0;k<12;k++){ const a = k*Math.PI/6; v.L(d.x + 11*Math.cos(a), d.y + 11*Math.sin(a), d.x + r*Math.cos(a), d.y + r*Math.sin(a), D); } }
     if(d.tipo==="luz"){ v.C(d.x, d.y, 6, D); }

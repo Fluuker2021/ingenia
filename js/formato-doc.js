@@ -235,8 +235,38 @@ export function columnasEncabezado(ws, c1, c2){
      tiene borde izquierdo, y el rango quedaba abierto a la derecha (y abajo). Se completa el contorno de cada rango con
      el borde de su primera celda, con un estilo propio por celda (ExcelJS comparte el objeto de estilo).
    · sin filtros automáticos: las plantillas traían autofiltro en la fila de títulos. */
+/* títulos de columna sin palabras partidas: cada columna con texto ajustado en una sola celda queda al menos
+   tan ancha como la palabra más larga del título (ancho en caracteres de Excel, según el tamaño y la negrita) */
+function anchoTitulos(ws){
+  if(/^CAR[ÁA]TULA$/i.test(String(ws.name||"").trim())) return;
+  const unidas = new Set();
+  for(const m of Object.values(ws._merges || {})){ const g = m.model || m; if(g.left!==g.right) for(let r=g.top; r<=g.bottom; r++) for(let c=g.left; c<=g.right; c++) unidas.add(r+":"+c); }
+  const oscuro = cell => { const f = cell.fill; const a = f && f.fgColor && f.fgColor.argb; if(!a || a.length < 8) return false;
+    const n = parseInt(a.slice(2), 16); return 0.299*((n>>16)&255) + 0.587*((n>>8)&255) + 0.114*(n&255) < 90; };
+  const minimo = {};
+  ws.eachRow({ includeEmpty:false }, (row, r)=>row.eachCell({ includeEmpty:false }, (cell, c)=>{
+    // títulos: texto en negrita (o sobre relleno oscuro) con ajuste de línea, en una sola celda (sin ajuste el texto no se
+    // parte: se desborda a la celda vecina, como los títulos de sección)
+    // (también los valores con ajuste de línea, p. ej. «120+21.2(T)»; las palabras de más de 18 caracteres no cuentan).
+    // Sin reducción por letra angosta: si el visor no tiene Arial Narrow la reemplaza por una letra normal.
+    const v = cell.value, f = cell.font || {}; if(typeof v!=="string" || unidas.has(r+":"+c) || !(cell.alignment && cell.alignment.wrapText)) return;
+    const k = ((f.size || 11)/11) * (f.bold || oscuro(cell) ? 1.18 : 1.06);
+    const palabras = v.split(/\s+/).filter(w=>w.length <= 18); if(!palabras.length) return;
+    const largo = Math.max(...palabras.map(w=>w.length * (w===w.toUpperCase() && /[A-ZÁÉÍÓÚÑ]/.test(w) ? 1.1 : 1)));
+    minimo[c] = Math.max(minimo[c] || 0, largo*k + 2);
+  }));
+  if(!Object.keys(minimo).length) return;
+  // anchos explícitos en todas las columnas (las plantillas agrupan columnas con el mismo ancho y, al cambiar una, ExcelJS
+  // podía perder el ancho de las vecinas)
+  const n = Math.max(ws.columnCount || 0, ...Object.keys(minimo).map(Number)), antes = [];
+  for(let c=1; c<=n; c++) antes[c] = ws.getColumn(c).width;
+  // las columnas auxiliares muy angostas (< 3) u ocultas de las plantillas no se tocan
+  for(let c=1; c<=n; c++){ const col = ws.getColumn(c), w0 = antes[c], w = minimo[c];
+    col.width = w && !col.hidden && !(w0 && w0 < 3) && (w0 || 8.43) < w ? Math.ceil(w*10)/10 : w0; }
+}
 export function cerrarLibroExcel(wb){
   wb.eachSheet(ws=>{
+    anchoTitulos(ws);
     ws.autoFilter = null;
     if(ws.model && ws.model.autoFilter) ws.model.autoFilter = null;
     for(const m of Object.values(ws._merges || {})){
@@ -244,8 +274,10 @@ export function cerrarLibroExcel(wb){
       const b = ws.getCell(top, left).border || {};
       const lado = b.left || b.right || b.top || b.bottom; if(!lado) continue;
       const poner = (r, c, k, v) => { const cell = ws.getCell(r, c), bo = Object.assign({}, cell.border || {}); if(bo[k] && bo[k].style) return; bo[k] = v; cell.style = Object.assign({}, cell.style, { border: bo }); };
-      if(b.left || b.right) for(let r=top; r<=bottom; r++){ poner(r, right, "right", b.right || b.left); poner(r, left, "left", b.left || b.right); }
-      if(b.top || b.bottom) for(let c=left; c<=right; c++){ poner(bottom, c, "bottom", b.bottom || b.top); poner(top, c, "top", b.top || b.bottom); }
+      // cada lado solo si la primera celda lo tiene; el derecho, solo en recuadros (izquierda + arriba o abajo): así un
+      // subrayado no gana línea arriba y un marco lateral no gana línea a la derecha
+      for(let r=top; r<=bottom; r++){ if(b.left) poner(r, left, "left", b.left); if(b.right || (b.left && (b.top || b.bottom))) poner(r, right, "right", b.right || b.left); }
+      for(let c=left; c<=right; c++){ if(b.top) poner(top, c, "top", b.top); if(b.bottom) poner(bottom, c, "bottom", b.bottom); }
     }
   });
 }

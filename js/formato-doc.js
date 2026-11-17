@@ -260,6 +260,25 @@ export function bloqueEncabezadoExcel(ws, r0, c1, c2, titulo, valores={}){
   return { merges, logos };
 }
 
+/* logos del encabezado de los listados: el de la empresa a la izquierda y el del cliente a la derecha, con la MISMA altura
+   (la mayor con la que ambos entran en su caja) y aire debajo para separarlos del primer cuadro.
+   logos: { org:{ dataURL, aspect }, cliente:{…} }; cajas: { org:{ tl, br }, cliente:{ tl, br } } (celdas, base 0) */
+export function logosEncabezado(wb, ws, logos, cajas){
+  if(!logos || !cajas) return;
+  const medida = c => { const [c0, r0] = c.tl, [c1, r1] = c.br; let x0 = 0, y0 = 0, W = 0, H = 0;
+    for(let k=1; k<=c0; k++) x0 += pxColumna(ws, k); for(let k=1; k<=r0; k++) y0 += pxFila(ws, k);
+    for(let k=c0+1; k<=c1; k++) W += pxColumna(ws, k); for(let k=r0+1; k<=r1; k++) H += pxFila(ws, k); return { x0, y0, W, H }; };
+  const items = ["org", "cliente"].filter(k=>logos[k] && logos[k].dataURL && cajas[k]).map(k=>({ k, l:logos[k], m:medida(cajas[k]) }));
+  if(!items.length) return;
+  const h = Math.min(...items.map(x=>Math.min(x.m.H*0.7, x.m.W*0.9/(x.l.aspect||3))));
+  for(const x of items){
+    try{
+      const w = h*(x.l.aspect||3);
+      const izq = x.k==="org" ? x.m.x0 + x.m.W*0.03 : x.m.x0 + x.m.W*0.97 - w;
+      imagenExcel(wb, ws, x.l.dataURL, izq, x.m.y0 + (x.m.H*0.8 - h)/2, w, h);
+    }catch(e){ console.warn("logo", e); }
+  }
+}
 /* logo centrado (y escalado sin deformar) dentro de una caja de celdas { tl:[col0,fila0], br:[col1,fila1] } (base 0) */
 export function logoEnCaja(wb, ws, dataURL, caja){
   if(!dataURL || !caja) return;

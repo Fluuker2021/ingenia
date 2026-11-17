@@ -140,7 +140,8 @@
     ],
     "titulo": "LISTADO DE CARGAS",
     "espacio": false
-   }
+   },
+   "encerrar": true
   }
  },
  "hoja_datos_instrumentos": {

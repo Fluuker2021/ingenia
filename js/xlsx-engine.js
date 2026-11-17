@@ -11,7 +11,7 @@
    fila insertada), alturas de fila y área de impresión. Las imágenes del formato se conservan y los logos
    (organización / cliente) se colocan en las posiciones indicadas por el manifiesto de la plantilla. */
 
-import { encabezadoPieExcel, reemplazarCaratulaExcel, bloqueEncabezadoExcel, FILAS_ENCABEZADO, logoEnCaja } from "./formato-doc.js";
+import { encabezadoPieExcel, reemplazarCaratulaExcel, bloqueEncabezadoExcel, FILAS_ENCABEZADO, logoEnCaja, logosEncabezado } from "./formato-doc.js";
 
 const TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
 const REF = /(\$?)([A-Z]{1,3})(\$?)(\d+)(?![\d(A-Za-z_])/g;
@@ -284,6 +284,38 @@ function clonarHoja(wb, origen, nombre){
    datos = { scal:{}, tablas:{ NOMBRE:[filas] }, hojas:{ "NOMBRE_HOJA": { nombre, scal, tablas } },
              clonar:{ hoja:"HD", instancias:[{ nombre, scal, tablas }] }, logos:{ org:{dataURL,aspect}, cliente:{...} },
              manifiesto:{ "HOJA":{ org:{tl,br}, cliente:{tl,br} } } } */
+/* encierra cada cuadro de la hoja: un cuadro empieza en una fila de títulos (celdas con relleno oscuro y borde) y sigue
+   hacia abajo mientras alguna celda de su ancho tenga borde (filas de datos y bloque de totales). Se completa el contorno
+   del rectángulo (p. ej. bajo los datos, a la izquierda del bloque de totales). Primero se ubican todos los cuadros y
+   después se dibujan; cada celda recibe un estilo propio (ExcelJS comparte el objeto de estilo entre celdas). */
+function encerrarTablas(ws, r0){
+  const R = ws.rowCount, Cn = ws.columnCount;
+  const oculta = c => !!ws.getColumn(c).hidden;
+  const borde = (r, c) => { const b = ws.getCell(r, c).border || {}; return b.left || b.right || b.top || b.bottom || null; };
+  const oscuro = (r, c) => { const f = ws.getCell(r, c).fill; const a = f && f.fgColor && f.fgColor.argb; if(!a || a.length < 8) return false;
+    const n = parseInt(a.slice(2), 16), lum = 0.299*((n>>16)&255) + 0.587*((n>>8)&255) + 0.114*(n&255); return lum < 90; };
+  const cuadros = [];
+  let r = r0;
+  while(r <= R){
+    // fila de títulos: tramo continuo de celdas con borde que contiene celdas oscuras
+    let c1 = 0, c2 = 0;
+    for(let c=1; c<=Cn; c++){ if(oculta(c)) continue; if(borde(r, c) && oscuro(r, c)){ c1 = c; break; } }
+    if(!c1){ r++; continue; }
+    c2 = c1; while(c2 + 1 <= Cn && !oculta(c2 + 1) && borde(r, c2 + 1)) c2++;
+    if(c2 - c1 < 2){ r++; continue; }
+    let r2 = r;
+    while(r2 + 1 <= R){ let alguna = false; for(let c=c1; c<=c2 && !alguna; c++) if(!oculta(c) && borde(r2 + 1, c)) alguna = true; if(!alguna) break; r2++; }
+    cuadros.push({ r1:r, r2, c1, c2, estilo: borde(r, c1) });
+    r = r2 + 1;
+  }
+  const poner = (y, x, lado, b) => { const cell = ws.getCell(y, x), bo = Object.assign({}, cell.border || {}); if(bo[lado] && bo[lado].style) return; bo[lado] = b; cell.style = Object.assign({}, cell.style, { border: bo }); };
+  for(const q of cuadros){
+    const b = { style: (q.estilo && q.estilo.style) || "thin", color: q.estilo && q.estilo.color };
+    for(let y=q.r1; y<=q.r2; y++){ poner(y, q.c1, "left", b); poner(y, q.c2, "right", b); }
+    for(let x=q.c1; x<=q.c2; x++) if(!oculta(x)){ poner(q.r1, x, "top", b); poner(q.r2, x, "bottom", b); }
+  }
+}
+
 export async function rellenarExcel(ExcelJS, buffer, datos){
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(buffer);
@@ -318,6 +350,8 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
     for(const g of grupos) rellenarTabla(H, g, t.tablas[g.nombre] || [], t.scal);
     if(enc && t.man.encabezado.ajustarAltos) ajustarAltos(H, enc.fin+1);
     H.remerge();
+    // cuadros cerrados: cada tabla (con su bloque de totales) queda encerrada en un marco continuo
+    if(t.man && t.man.encerrar) encerrarTablas(t.ws, enc ? enc.fin + 1 : 1);
     t.ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:false }, cell=>{
       const v = cell.value;
       if(textoCelda(v).includes("{{")) cell.value = sustituir(v, t.scal, null);
@@ -330,8 +364,12 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
     if(estandar) encabezadoPieExcel(t.ws, datos.scal||{}, { unaPagina: !!(t.man && t.man.encabezado && t.man.encabezado.unaPagina) });
     const man = enc ? Object.assign({}, t.man, enc.logos) : t.man;
     if(man && datos.logos){
-      if(man.org && datos.logos.org) colocarLogo(wb, t.ws, datos.logos.org.dataURL, Object.assign({ aspect: datos.logos.org.aspect }, man.org));
-      if(man.cliente && datos.logos.cliente) colocarLogo(wb, t.ws, datos.logos.cliente.dataURL, Object.assign({ aspect: datos.logos.cliente.aspect }, man.cliente));
+      // con el bloque de encabezado estándar: los dos logos a la misma altura (empresa a la izquierda, cliente a la derecha)
+      if(enc) logosEncabezado(wb, t.ws, datos.logos, { org:man.org, cliente:man.cliente });
+      else {
+        if(man.org && datos.logos.org) colocarLogo(wb, t.ws, datos.logos.org.dataURL, Object.assign({ aspect: datos.logos.org.aspect }, man.org));
+        if(man.cliente && datos.logos.cliente) colocarLogo(wb, t.ws, datos.logos.cliente.dataURL, Object.assign({ aspect: datos.logos.cliente.aspect }, man.cliente));
+      }
     }
   }
   if(estandar) reemplazarCaratulaExcel(wb, datos.scal||{}, datos.logos);

@@ -46,9 +46,18 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
   - Ingenia lo deja fijo en T1+2 con 125 A.
 - ☐ Bobina de mínima tensión y relé de fases dibujados también en el unifilar (U3). Hoy solo están en el multifilar.
 
+**Control interno del tablero de fuerza** (observación del usuario, corrección 04)
+- ✅ No se dibuja como una sola línea: portafusibles (F9/F10…) → transformador de control (p. ej. T2 2 kVA 460/220 Vac+T, 25 % de reserva sobre la suma de los circuitos) → interruptor general de control (QG2, un escalón sobre el mayor circuito) → barra «R,S 220 VAC, 1F, 60Hz, 10 KA» (o «L,N 120 VAC…») → un circuito por destino (C1…Cn) con su ITM 2P (CB2…), su cable (2C#16AWG+16AWG(T) 0.6/1kV hasta 6 A dentro del tablero; 1-2C#12AWG… hacia otro tablero) y su descripción: hacia el tablero de control, ventiladores, calefacción, luminaria y tomacorriente con diferencial ID 30 mA.
+- ✅ Dos tensiones de control (p. ej. 120 Vac para el control y 220 Vac para servicios): un transformador por tensión. La barra de servicios puede llegar de una segunda fuente externa (recuadro «VIENE DE …» directo al interruptor general).
+- ✅ Mismos TAG en unifilar, multifilar y mecánico: fusibles numerados después de los de luces, relé de fases y bobina de mínima tensión (F1-F8); T1 y CB1 son los de la bobina, por eso el control interno empieza en T2 y CB2.
+- ✅ Los circuitos salen de los accesorios del tablero (ventilación, calefacción, luminaria, tomacorriente) y de los tableros de control alimentados desde él.
+
+**Simetría**
+- ✅ Todas las verticales de carga (circuitos y derivaciones del control interno) a la misma distancia; la acometida llega al centro de la barra, entre dos verticales.
+
 **Circuitos**
 - ✅ Alimentadores y cargas generales de hasta 63 A con MCB curva C (S20p-Cxx, escalones de 2 a 63 A) en vez de caja moldeada (U1, M1). Por encima de 63 A, MCCB.
-- ☐ Diferencial de 30 mA por circuito terminal (U1, M1, M2). Configurable por carga: en tomacorrientes siempre; en las demás según el criterio del proyecto.
+- ◐ Diferencial de 30 mA por circuito terminal (U1, M1, M2). Ingenia lo pone en el tomacorriente del control interno (opción «Diferencial» en la protección del tablero); falta la opción por carga.
 - ☐ Sistema 3F+N+T con cargas 1F+N (U1, M1):
   - corriente con V/√3;
   - MCB de 2P o 4P;
@@ -58,7 +67,7 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
 - ☐ Reservas equipadas: interruptor (y diferencial), sin cable ni carga, rotuladas «RESERVA» (U1, U2, U3, M1).
 - ☐ Columna propia de arrancador suave (U3): MCCB solo magnético, fusibles aR, contactor de línea, arrancador y contactor de bypass, sin relé térmico aparte.
 - ☐ Alimentador con trafo intermedio hacia un subtablero de otra tensión (U2).
-- ☐ Alimentador al tablero de control desde el tablero de fuerza, cuando el control declara su acometida auxiliar desde él (U1).
+- ✅ Alimentador al tablero de control desde el tablero de fuerza, cuando el control declara su acometida auxiliar desde él (U1). Ingenia lo deriva del control interno (circuito CBn «HACIA EL TABLERO DE CONTROL …», barra estabilizada y de servicios) y el unifilar del tablero de control cita ese circuito.
 - ☐ Equipos existentes en gris, con su tabla y su nota (U2).
 - ☐ Formato de cable configurable. Conviven tres convenciones:
   - AWG con THW-90 (referencias anteriores; es el formato actual de Ingenia);
@@ -67,7 +76,7 @@ Cuando dos referencias se contradicen, el criterio queda como **opción configur
 - ☐ Esquema de TAG configurable:
   - prefijo «-» según IEC 81346 (-QG1, -Qnn, -KMn, -U1, -HLn) en U3 y M3;
   - correlativos de 2 dígitos (Q01 / QF01) y QC solo para interruptores auxiliares (U1, M1).
-- ☐ Leyenda dinámica, solo con los símbolos usados y la explicación de los campos de cada rótulo (U1, U2).
+- ◐ Leyenda dinámica, solo con los símbolos usados (U1, U2). Ingenia ya arma la leyenda con lo dibujado en cada lámina (incluye guardamotor, contactor y arrancador suave); falta la explicación de los campos de cada rótulo.
 - ☐ Notas automáticas: acometida a cargo del cliente, justificación en el listado de cargas, arranque desde el tablero de control, medidor con TC y nomenclatura de cables.
 - ☐ Derrateo por altitud configurable (U3 usa 0,51 a 4500 m) y nota automática.
 

@@ -7,7 +7,7 @@
      doc:{codigo,titulo,rev,fecha,disciplina,emitidoPara}, revisiones:[{rev,fecha,descripcion,elaboro,reviso,aprobo}],
      tablas:{ NOMBRE:{columnas:[{key,titulo,ancho,num}], filas:[{...}]} }, campos:{...} } */
 
-import { reemplazarCaratulaExcel, encabezadoPieExcel, bloqueEncabezadoExcel, logoEnCaja, FILAS_ENCABEZADO } from "./formato-doc.js";
+import { reemplazarCaratulaExcel, encabezadoPieExcel, bloqueEncabezadoExcel, logoEnCaja, logosEncabezado, FILAS_ENCABEZADO } from "./formato-doc.js";
 const fmtF = f => { const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (f||""); };
 
 // paleta INGENIA: grafito (encabezados), amarillo suave (resaltados), gris claro
@@ -61,8 +61,7 @@ function hojaTabla(wb, ctx, nombre, tabla){
   // bloque de encabezado estándar (el mismo de todos los listados: logo, título, Cliente / Proyecto / Fecha / P&ID / Revisión)
   const enc = bloqueEncabezadoExcel(ws, 1, 1, last, (tabla.titulo||nombre).toUpperCase(), { cliente:ctx.proyecto.cliente||"", proyecto:ctx.proyecto.nombre||"", fecha:fmtF(ctx.doc.fecha), referencia:tabla.referencia||ctx.doc.referencia||"—", rev:ctx.doc.rev||"A" });
   enc.merges.forEach(m=>ws.mergeCells(...m));
-  if(ctx.logos && ctx.logos.org) logoEnCaja(wb, ws, ctx.logos.org.dataURL, Object.assign({ aspect:ctx.logos.org.aspect }, enc.logos.org));
-  if(ctx.logos && ctx.logos.cliente) logoEnCaja(wb, ws, ctx.logos.cliente.dataURL, Object.assign({ aspect:ctx.logos.cliente.aspect }, enc.logos.cliente));
+  logosEncabezado(wb, ws, ctx.logos, enc.logos);
   // encabezados
   const hr = FILAS_ENCABEZADO+2;
   cols.forEach((c,i)=>{ put(hr, i+1, c.titulo, { font:{ bold:true, size:8.5, color:{argb:"FFFFFFFF"} }, fill:AZUL, al:{ horizontal:"center" } }); });

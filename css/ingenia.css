@@ -568,3 +568,21 @@ td.num.err{color:var(--err); font-weight:600;}
 .acc-lista{display:flex; flex-direction:column; gap:3px; align-items:flex-start;}
 .acc-lista .checkbox{font-size:12.5px; white-space:nowrap; margin:0;}
 .tb-tableros td{vertical-align:top;}
+
+/* ---------- ruta de trabajo de los documentos ---------- */
+.badge-accent{background:var(--amarillo); color:var(--grafito);}
+.ruta-card{display:flex; gap:18px; align-items:center; justify-content:space-between; padding:14px 16px; border:1px solid var(--amarillo-100); border-left:4px solid var(--amarillo); border-radius:var(--radius); background:var(--amarillo-50);}
+.ruta-doc{font-size:16px; font-weight:600; margin:2px 0 3px;}
+.ruta-prog{display:flex; flex-direction:column; align-items:flex-end; gap:6px; min-width:170px;}
+.ruta-prog .barra{width:170px; height:6px; border-radius:99px; background:var(--gris-100); overflow:hidden;}
+.ruta-prog .barra span{display:block; height:100%; background:var(--ok);}
+.docs-table tr.etapa-fila td{background:var(--gris-50); font-size:12.5px; padding:7px 12px;}
+.etapa-n{display:inline-flex; width:20px; height:20px; border-radius:50%; align-items:center; justify-content:center; background:var(--grafito); color:#fff; font-size:11px; font-weight:700; margin-right:8px;}
+.docs-table tr.doc-sig td{background:var(--amarillo-50);}
+.doc-luego{font-size:11.5px; margin-top:3px;}
+.doc-req{max-width:260px;}
+.req-chip{display:inline-flex; align-items:center; gap:4px; font-size:11.5px; padding:1px 7px; margin:1px 4px 2px 0; border-radius:99px; border:1px solid var(--border); color:var(--acero); text-decoration:none; white-space:nowrap;}
+.req-chip.ok{background:var(--ok-soft); color:var(--ok); border-color:transparent;}
+.req-chip .icon{width:12px; height:12px;}
+.ws-ruta{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; font-size:12.5px; margin:-4px 0 12px;}
+@media (max-width:900px){ .ruta-card{flex-direction:column; align-items:flex-start;} .ruta-prog{align-items:flex-start;} }

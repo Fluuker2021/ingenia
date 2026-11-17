@@ -1,6 +1,6 @@
 /* Ingenia — entorno dedicado de un entregable: solo los datos que usa ese documento, su vista previa,
    el cajetín / historial de revisiones y la plantilla con la que se descarga (por defecto o del cliente). */
-import { entregable, DISCIPLINAS, TIPOS, ESTADOS } from "./catalog.js";
+import { entregable, DISCIPLINAS, TIPOS, ESTADOS, requisitos, habilita, docListo } from "./catalog.js";
 import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, dropzone, leerComoArrayBuffer, kb, fmtFecha, spinner } from "./ui.js";
 import * as X from "./export.js";
@@ -37,13 +37,23 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos", href:"#/proyectos"},{label:p.nombre, href:`#/proyecto/${p.id}/documentos`},{label:e.nombre}], title:e.nombre,
     sub:`<span class="mono">Rev. ${esc(di.rev||"A")}</span><span>${esc(DISCIPLINAS[e.disciplina].nombre)} · ${esc(FMT[def.formato])}</span>`,
     actions:`<a class="btn" href="#/proyecto/${p.id}/documentos">${ICON.back} Documentos</a>` }) +
-    `<div class="tabs">${tabs.map(t=>`<button data-wtab="${t[0]}" class="${t[0]===tab?"active":""}">${t[1]}</button>`).join("")}</div><div id="ws-body"></div>`;
+    `<div class="tabs">${tabs.map(t=>`<button data-wtab="${t[0]}" class="${t[0]===tab?"active":""}">${t[1]}</button>`).join("")}</div>${rutaDoc(p, id)}<div id="ws-body"></div>`;
   $$("[data-wtab]").forEach(b=>b.onclick = ()=>location.hash = `#/proyecto/${p.id}/doc/${id}/${b.dataset.wtab}`);
   const body = $("#ws-body");
   if(tab==="datos") return tabDatos(body, p, id, def);
   if(tab==="vista") return Promise.resolve(tabVista(body, state, p, id, def)).then(()=>montarBarraCopito(body, p, id));
   if(tab==="vista3d") return tabVista3D(body, p, id);
   if(tab==="cajetin") return tabCajetin(body, state, p, id, def);
+}
+
+/* ruta de trabajo: de qué documentos toma datos y qué documentos se pueden elaborar al terminarlo */
+function rutaDoc(p, id){
+  const req = requisitos(p, id), sig = habilita(p, id);
+  if(!req.length && !sig.length) return "";
+  const nombre = x => (entregable(x)||{}).nombre || x;
+  const enlace = (x, marca) => `<a class="req-chip ${marca && docListo(p.documentos[x]) ? "ok" : ""}" href="#/proyecto/${p.id}/doc/${x}">${marca ? (docListo(p.documentos[x]) ? ICON.check : "○") + " " : ""}${esc(nombre(x))}</a>`;
+  return `<div class="ws-ruta">${req.length ? `<span class="muted">Usa los datos de:</span> ${req.map(x=>enlace(x, true)).join("")}` : `<span class="muted">Punto de partida del proyecto.</span>`}
+    ${sig.length ? `<span class="muted">Al terminarlo puedes elaborar:</span> ${sig.map(x=>enlace(x, false)).join("")}` : ""}</div>`;
 }
 
 /* ---------------- 1. datos ---------------- */

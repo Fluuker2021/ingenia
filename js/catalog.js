@@ -141,3 +141,37 @@ export function entregablesPor(disciplina, etapa){
   return CATALOGO.filter(e => (!disciplina || e.disciplina===disciplina) && (!etapa || e.etapas.includes(etapa)));
 }
 export function entregable(id){ return ENTREGABLES.find(e=>e.id===id); }
+
+/* ---------------- ruta de trabajo de los documentos ----------------
+   Orden de desarrollo recomendado: se parte del proceso (P&ID) y de las cargas, siguen los cálculos y listados que
+   dependen de ellos, luego los diagramas, el detalle de los tableros y al final las especificaciones y la filosofía.
+   REQUIERE: documentos que conviene tener listos antes (sus datos alimentan al documento). Ninguno se bloquea: la ruta
+   orienta al usuario y le dice qué puede elaborar al terminar cada documento. */
+export const ETAPAS_TRABAJO = [
+  { n:1, titulo:"Punto de partida", desc:"El proceso y las cargas: definen qué se alimenta, qué se mide y qué se controla.", docs:["ins-pid","ele-cargas"] },
+  { n:2, titulo:"Cálculos y listados base", desc:"Instrumentos, máxima demanda, conductores, cables y señales.", docs:["ins-instrumentos","ele-md","ele-mc","ele-cables","ins-io"] },
+  { n:3, titulo:"Diagramas eléctricos y de control", desc:"Unifilares, arquitectura de control y lazos.", docs:["ele-unifilar","ins-unifilar-tc","ins-arquitectura","ins-lazo"] },
+  { n:4, titulo:"Detalle de los tableros", desc:"Multifilares y mecánicos para fabricación.", docs:["ele-multifilar","ins-multifilar-tc","ele-mecanico","ins-mecanico-tc"] },
+  { n:5, titulo:"Especificaciones y cierre", desc:"Equipos, hojas de datos y filosofía de control.", docs:["ele-equipos","ele-hd","ins-hd","ins-filosofia"] },
+];
+export const REQUIERE = {
+  "ins-pid":[], "ele-cargas":[],
+  "ins-instrumentos":["ins-pid"], "ele-md":["ele-cargas"], "ele-mc":["ele-cargas"], "ele-cables":["ele-mc"], "ins-io":["ins-instrumentos","ele-cargas"],
+  "ele-unifilar":["ele-cargas","ele-md"], "ins-unifilar-tc":["ins-io"], "ins-arquitectura":["ins-io"], "ins-lazo":["ins-io"],
+  "ele-multifilar":["ele-unifilar"], "ins-multifilar-tc":["ins-unifilar-tc"], "ele-mecanico":["ele-multifilar"], "ins-mecanico-tc":["ins-multifilar-tc"],
+  "ele-equipos":["ele-unifilar"], "ele-hd":["ele-mecanico"], "ins-hd":["ins-instrumentos"], "ins-filosofia":["ins-io","ins-pid"],
+};
+const ORDEN_TRABAJO = ETAPAS_TRABAJO.flatMap(e=>e.docs);
+export const ordenTrabajo = id => { const i = ORDEN_TRABAJO.indexOf(id); return i < 0 ? 999 : i; };
+export const etapaDe = id => ETAPAS_TRABAJO.find(e=>e.docs.includes(id)) || null;
+/* documento terminado: emitido o enviado a revisión / aprobado */
+export const docListo = d => !!d && (["Para revisión","Aprobado","Emitido"].includes(d.estado) || !!d.emitida);
+/* requisitos (entre los documentos seleccionados del proyecto) y documentos que habilita */
+export function requisitos(p, id){ const sel = new Set(p.entregables||[]); return (REQUIERE[id]||[]).filter(x=>sel.has(x)); }
+export function habilita(p, id){ const sel = new Set(p.entregables||[]); return Object.keys(REQUIERE).filter(x=>sel.has(x) && REQUIERE[x].includes(id)).sort((a, b)=>ordenTrabajo(a) - ordenTrabajo(b)); }
+/* siguiente paso recomendado: el primer documento (en el orden de la ruta) sin terminar cuyos requisitos están listos */
+export function siguienteDoc(p){
+  const sel = (p.entregables||[]).filter(id=>REQUIERE[id]).sort((a, b)=>ordenTrabajo(a) - ordenTrabajo(b));
+  const listo = id => docListo((p.documentos||{})[id]);
+  return sel.find(id=>!listo(id) && requisitos(p, id).every(listo)) || sel.find(id=>!listo(id)) || null;
+}

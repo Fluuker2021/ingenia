@@ -33,7 +33,10 @@ async function proyectoDemo(){
   I('SSL-006', 'Interruptor de velocidad cero', 'Velocidad cero del transportador', 'Discreta', 'Contacto seco / Relé', '120 Vac');
   I('XV-003A@003R', 'Válvula solenoide', 'Limpieza de mangas', 'Discreta', 'N. A.', '120 Vac', 18);
   d['ins-io'] = D.derivarIO(p);
-  for(const id of p.entregables){ const x = p.documentos[id]; if(!x) continue; x.estado = 'Emitido'; x.revisiones = [{ rev:'A', fecha:new Date().toISOString().slice(0, 10), descripcion:'Emitido para revisión interna' }]; x.rev = 'A'; x.elaboro = 'J.P.'; x.reviso = 'M.R.'; }
+  // revisiones emitidas: el estado de cada documento sale de su revisión vigente (como en la plataforma)
+  p.entregables.forEach((id, i)=>{ const x = p.documentos[id]; if(!x) return; const hoy = new Date().toISOString().slice(0, 10);
+    x.revisiones = i < 6 ? [{ rev:'A', fecha:hoy, descripcion:'Emitido para revisión del cliente' }, { rev:'0', fecha:hoy, descripcion:'Emitido para construcción' }] : [{ rev:'A', fecha:hoy, descripcion:'Emitido para revisión del cliente' }];
+    const v = x.revisiones[x.revisiones.length-1]; x.rev = v.rev; x.emitida = true; x.estadoDe = null; C.sincronizarEstado(x); x.elaboro = 'J.P.'; x.reviso = 'M.R.'; });
   S.load().cuenta = { plan:'pro' };          // plan Profesional: las vistas previas de todos los documentos
   S.save();
   return p.id;

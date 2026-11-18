@@ -40,7 +40,9 @@ Plataforma web para elaborar ingenierías de **Electricidad e Instrumentación &
 - **Modo IA opcional** (desactivado por defecto; Copito no lo necesita para hacer cambios): se activa en los ajustes de Copito con una clave de API propia guardada solo en ese navegador; envía la pregunta y los datos de los proyectos a Anthropic. SDK oficial empaquetado en `vendor/anthropic-sdk-1.3.0.mjs` (se carga solo en modo IA). Para producción, la clave debe ir en un servidor intermedio, no en el navegador.
 
 ## Página de inicio
-Carrusel con vistas reales de un proyecto demostrativo (`assets/vistas/*.jpg`, datos ficticios), planes de membresía y pie con copyright.
+`index.html` + `css/inicio.css` (clases `ini-`): hero oscuro con los formatos de salida (Excel, Word, DXF para AutoCAD y PDF) y la plataforma en una ventana con carrusel; cifras del producto (entregables, formatos, disciplinas, familias de PLC y marcas, recontadas desde `js/catalog.js`, `js/control/plc-modulos.js` y `js/engine/marcas.js` al cargar); salidas por formato; cómo funciona; **Copito** como asesor en tiempo real; entregables por disciplina; planes y llamado final.
+- Las vistas del carrusel (`assets/vistas/*.jpg`, 1440 × 900, proyecto demostrativo con datos ficticios) se generan con `node tools/vistas/capturas.cjs`: unifilar, multifilar de control y P&ID son capturas de la **vista previa dentro de la plataforma**. Volver a correrlo cuando cambie la interfaz.
+- Hay una franja comentada para métricas de uso (usuarios, países, proyectos): se activa solo con cifras reales y su fecha de corte.
 
 ## Formatos estándar
 Formatos propios de Ingenia (carátula, tabla de revisiones, estilos y fórmulas), sin datos de ningún cliente:

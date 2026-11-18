@@ -8,9 +8,9 @@ import { DOCS } from "./docs.js";
 const DIAS_PRUEBA = 14;
 export const PLANES = [
   { id:"prueba", nombre:"Prueba", precio:"Gratis", periodo:`${DIAS_PRUEBA} días`, items:["1 proyecto","Todos los documentos y planos","Copito con tus datos","Sin tarjeta"] },
-  { id:"pro", nombre:"Profesional", precio:"US$ 29", periodo:"/ mes", destacado:true, items:["1 usuario","Proyectos ilimitados","Excel, Word y planos AutoCAD","Formatos y logo del cliente","Copito con tus datos"] },
+  { id:"pro", nombre:"Profesional", precio:"US$ 29", periodo:"/ mes", destacado:true, items:["1 usuario","Proyectos ilimitados","Excel, Word, planos DXF para AutoCAD y PDF","Logo del cliente","Copito con tus datos"] },
   { id:"equipo", nombre:"Equipo", precio:"US$ 79", periodo:"/ mes", items:["Hasta 3 usuarios","Proyectos compartidos","Todo lo del plan Profesional","Copito con IA"] },
-  { id:"empresa", nombre:"Empresa", precio:"A medida", periodo:"", items:["Usuarios ilimitados","Formatos, capas y cajetín del cliente","Capacitación y soporte prioritario","Factura"] },
+  { id:"empresa", nombre:"Empresa", precio:"A medida", periodo:"", items:["Usuarios ilimitados","Logo y firmas de la organización en todos los entregables","Capacitación y soporte prioritario","Factura"] },
 ];
 
 const hoyISO = () => new Date().toISOString().slice(0,10);

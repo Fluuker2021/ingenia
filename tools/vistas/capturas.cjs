@@ -39,9 +39,12 @@ async function proyectoDemo(){
   return p.id;
 }
 
+// todas las vistas con la misma pantalla de escritorio (16:10), así el carrusel las muestra a la misma escala
+const PANTALLA = { width:1440, height:900 };
+
 (async () => {
   const b = await chromium.launch(), errores = [];
-  const ctx = await b.newContext({ viewport:{ width:1280, height:780 }, deviceScaleFactor:1 }); await servir(ctx);
+  const ctx = await b.newContext({ viewport:PANTALLA, deviceScaleFactor:1 }); await servir(ctx);
   const pg = await ctx.newPage();
   pg.on('pageerror', e => errores.push(e.message)); pg.on('console', m => { if(m.type()==='error') errores.push(m.text()); });
   await pg.goto(BASE); await pg.waitForTimeout(1500);
@@ -52,13 +55,37 @@ async function proyectoDemo(){
   const foto = async n => { await pg.screenshot({ path:path.join(TMP, n+'.png') }); console.log(n); };
   await ir('resumen'); await foto('01-resumen');
   await ir('doc/ele-cargas/vista', 3500); await foto('02-cargas');
-  // planos: solo la lámina de la vista previa (más resolución)
+  // planos: la pantalla completa de la plataforma en la vista previa del documento (menú lateral, pestañas
+  // «1. Datos de entrada · 2. Vista previa · 3. Cajetín y descarga» y la lámina), para que se vea que el plano
+  // se genera en el mismo entorno. Se espera a que la lámina esté dibujada antes de la captura.
   const plano = async (doc, n, hoja) => {
-    const c2 = await b.newContext({ viewport:{ width:1900, height:1400 }, deviceScaleFactor:1 }); await servir(c2);
+    const c2 = await b.newContext({ viewport:PANTALLA, deviceScaleFactor:1 }); await servir(c2);
     await c2.addInitScript(s => { localStorage.setItem('ingenia.v1', s); }, LS);
-    const p2 = await c2.newPage(); await p2.goto(`${BASE}#/proyecto/${pid}/doc/${doc}/vista`); await p2.waitForTimeout(6000);
-    if(hoja!=null){ await p2.selectOption('#pl-h', String(hoja)); await p2.waitForTimeout(1500); }
-    const cv = await p2.$('#pl-cv'); if(cv){ await cv.screenshot({ path:path.join(TMP, n+'.png') }); console.log(n); } else errores.push(n+': sin lámina');
+    const p2 = await c2.newPage();
+    p2.on('pageerror', e => errores.push(n+': '+e.message));
+    await p2.goto(`${BASE}#/proyecto/${pid}/doc/${doc}/vista`);
+    const cv = await p2.waitForSelector('#pl-cv', { timeout:60000 }).catch(()=>null);
+    if(!cv){ errores.push(n+': sin lámina'); await c2.close(); return; }
+    if(hoja!=null && await p2.$('#pl-h')){ await p2.selectOption('#pl-h', String(hoja)); }
+    // lámina dibujada: el lienzo tiene tamaño y algo distinto del fondo blanco
+    await p2.waitForFunction(() => { const c = document.querySelector('#pl-cv'); if(!c || !c.width || !c.height) return false;
+      const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; for(let i = 0; i < d.length; i += 4*97) if(d[i] < 200) return true; return false; }, null, { timeout:30000 }).catch(()=>errores.push(n+': lámina vacía'));
+    await p2.evaluate(() => document.fonts && document.fonts.ready); await p2.waitForTimeout(1200);
+    // arriba de la página: barra del documento, pestañas y la lámina en la misma pantalla
+    await p2.evaluate(() => { window.scrollTo(0, 0); const m = document.querySelector('.main'); if(m) m.scrollTop = 0; });
+    // si la lámina no entra entera bajo las pestañas, se aleja con la rueda del ratón (como lo haría el usuario),
+    // centrada y desde su borde superior, hasta que se vea completa con su cajetín; luego se arrastra para
+    // centrarla en el alto visible del lienzo
+    const caja = await cv.boundingBox(), alto = PANTALLA.height - caja.y - 12;
+    let k = 1, pasos = 0; while(caja.height*k > alto && pasos < 5){ k /= 1.2; pasos++; }
+    if(pasos){
+      const x0 = caja.x + caja.width/2, y0 = caja.y + 4;
+      await p2.mouse.move(x0, y0); for(let i = 0; i < pasos; i++){ await p2.mouse.wheel(0, 120); await p2.waitForTimeout(150); }
+      const dy = Math.round((alto - caja.height*k)/2 - 4*(1 - k));
+      if(dy > 2){ await p2.mouse.down(); await p2.mouse.move(x0, y0 + dy, { steps:4 }); await p2.mouse.up(); }
+    }
+    await p2.mouse.move(PANTALLA.width - 10, 4); await p2.waitForTimeout(400);
+    await p2.screenshot({ path:path.join(TMP, n+'.png') }); console.log(n);
     await c2.close();
   };
   await plano('ele-unifilar', '03-unifilar'); await plano('ins-pid', '04-pid');
@@ -77,7 +104,7 @@ async function proyectoDemo(){
   await pg.$eval('#cp-msgs', el => { el.scrollTop = el.scrollHeight; }).catch(()=>{});
   await foto('07-copito');
   await b.close();
-  // PNG → JPG (calidad 85; los planos a 1400 px de ancho como máximo)
+  // PNG → JPG (calidad 85; 1440 px de ancho como máximo)
   fs.mkdirSync(SALIDA, { recursive:true });
   execFileSync('python3', ['-I', '-c', `
 import sys, glob, os
@@ -85,7 +112,7 @@ from PIL import Image
 src, dst = sys.argv[1], sys.argv[2]
 for f in sorted(glob.glob(os.path.join(src, '*.png'))):
     im = Image.open(f).convert('RGB')
-    if im.width > 1400: im = im.resize((1400, round(im.height*1400/im.width)), Image.LANCZOS)
+    if im.width > 1440: im = im.resize((1440, round(im.height*1440/im.width)), Image.LANCZOS)
     im.save(os.path.join(dst, os.path.basename(f)[:-4] + '.jpg'), quality=85, optimize=True, progressive=True)
 `, TMP, SALIDA], { stdio:'inherit' });
   console.log('salida:', SALIDA, '| errores:', errores.length ? errores.join('\n') : 'ninguno');

@@ -1,133 +1,409 @@
 <!doctype html>
-<html lang="es">
+<html lang="es-PE">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#17191D">
 <title>Ingenia — Ingeniería eléctrica e instrumentación automatizada</title>
-<meta name="description" content="Ingenia genera los entregables de ingeniería de Electricidad e Instrumentación & Control a partir de pocos datos: listados, memorias de cálculo, unifilares y planos con el formato de cada cliente, con un asistente de IA para tus proyectos.">
+<meta name="description" content="Ingenia genera los entregables de ingeniería de Electricidad e Instrumentación & Control a partir de pocos datos: listados y hojas de datos en Excel, memorias de cálculo en Word y planos DXF para AutoCAD, con Copito, un asesor que aplica tus cambios en tiempo real.">
 <link rel="stylesheet" href="css/ingenia.css">
+<link rel="stylesheet" href="css/inicio.css">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<script>document.documentElement.classList.add("js");</script>
 </head>
-<body class="landing">
-<header class="cabecera" id="cabecera">
-<nav class="nav">
-  <a class="brand" href="./"><b class="marca">ingen<span>IA</span></b></a>
-  <div class="links">
-    <a href="#como-funciona">Cómo funciona</a>
-    <a href="#entregables">Entregables</a>
-    <a href="#plantillas">Formatos de cliente</a>
-    <a href="#planes">Planes</a>
-    <a class="btn btn-accent" href="app.html"><span>Entrar<span class="hide-sm"> a la plataforma</span></span></a>
-  </div>
-</nav>
+<body class="inicio">
+<a class="ini-saltar" href="#contenido">Saltar al contenido</a>
+
+<header class="ini-cab" id="cabecera">
+  <nav class="ini-wrap ini-nav" aria-label="Principal">
+    <a class="ini-logo" href="./" aria-label="Ingenia, inicio"><b class="marca">ingen<span>IA</span></b></a>
+    <div class="ini-links">
+      <a href="#como-funciona">Cómo funciona</a>
+      <a href="#entregables">Entregables</a>
+      <a href="#copito">Copito</a>
+      <a href="#planes">Planes</a>
+    </div>
+    <a class="ini-btn ini-btn-amarillo ini-btn-sm" href="app.html"><span>Entrar<span class="ini-ocultar-sm"> a la plataforma</span></span></a>
+  </nav>
 </header>
 
-<section class="hero">
-  <div>
+<main id="contenido">
+
+<!-- ============ HERO (oscuro) + vistas reales de la plataforma ============ -->
+<section class="ini-hero">
+  <div class="ini-wrap ini-hero-txt">
+    <p class="ini-eyebrow">Electricidad · Instrumentación &amp; Control</p>
     <h1>Ingeniería eléctrica e instrumentación, <span>generada desde los datos</span>.</h1>
-    <p class="lead">Ingresa cargas, tensiones e instrumentos una sola vez. Ingenia genera listados, memorias de cálculo, unifilares y planos de E&amp;I con el formato de tu cliente, y <b>Copito</b>, tu asistente, responde cualquier pregunta sobre tus proyectos.</p>
-  </div>
-  <div class="carrusel" id="carrusel" aria-roledescription="carrusel" aria-label="Vistas de proyectos generados">
-    <div class="car-pista" id="car-pista">
-      <figure><img src="assets/vistas/08-tablero-3d.jpg" alt="Tablero de control en 3D con sus equipos" loading="eager" width="1280" height="780"><figcaption>Tablero de control en 2D y 3D</figcaption></figure>
-      <figure><img src="assets/vistas/07-copito.jpg" alt="Copito aplicando un cambio en un plano y listando los entregables actualizados" loading="lazy" width="1280" height="780"><figcaption>Copito edita los planos y actualiza todos los entregables</figcaption></figure>
-      <figure><img src="assets/vistas/03-unifilar.jpg" alt="Diagrama unifilar del tablero de fuerza generado en DXF" loading="lazy"><figcaption>Diagrama unifilar (DXF)</figcaption></figure>
-      <figure><img src="assets/vistas/05-conexionado.jpg" alt="Multifilar de control: conexionado de entradas analógicas del PLC" loading="lazy"><figcaption>Multifilar de control: conexionado de E/S del PLC</figcaption></figure>
-      <figure><img src="assets/vistas/04-pid.jpg" alt="P&amp;ID esquemático con instrumentos ISA" loading="lazy"><figcaption>P&amp;ID con simbología ISA 5.1</figcaption></figure>
-      <figure><img src="assets/vistas/01-resumen.jpg" alt="Resumen de un proyecto con su avance" loading="lazy" width="1280" height="780"><figcaption>Resumen y avance del proyecto</figcaption></figure>
-      <figure><img src="assets/vistas/02-cargas.jpg" alt="Vista previa del listado de cargas" loading="lazy" width="1280" height="780"><figcaption>Listado de cargas con máxima demanda</figcaption></figure>
-      <figure><img src="assets/vistas/06-documentos.jpg" alt="Lista de documentos con revisiones emitidas" loading="lazy" width="1280" height="780"><figcaption>Documentos y emisión de revisiones</figcaption></figure>
+    <p class="ini-lead">Ingresa cargas, tensiones e instrumentos una sola vez. Ingenia arma listados, memorias de cálculo y planos en <b>Excel</b>, <b>Word</b> y <b>DXF para AutoCAD</b>, y <b>Copito</b>, tu asesor en tiempo real, aplica en el momento los cambios que le pidas.</p>
+    <div class="ini-cta">
+      <a class="ini-btn ini-btn-amarillo" href="app.html">Entrar a la plataforma <svg class="ini-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="ini-btn ini-btn-linea" href="#como-funciona">Ver cómo funciona</a>
     </div>
-    <button class="car-flecha izq" id="car-izq" aria-label="Imagen anterior"><svg class="icon" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
-    <button class="car-flecha der" id="car-der" aria-label="Imagen siguiente"><svg class="icon" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg></button>
-    <div class="car-puntos" id="car-puntos"></div>
+    <p class="ini-micro">Prueba gratis de 14 días, sin tarjeta.</p>
+    <ul class="ini-formatos" aria-label="Formatos de descarga">
+      <li><span class="ext">XLSX</span>Excel</li>
+      <li><span class="ext">DOCX</span>Word</li>
+      <li><span class="ext">DXF</span>Planos para AutoCAD</li>
+    </ul>
+  </div>
+
+  <div class="ini-wrap">
+    <div class="ini-pantalla" id="carrusel" role="region" aria-roledescription="carrusel" aria-label="Vistas de la plataforma con un proyecto demostrativo">
+      <div class="ini-pantalla-barra" aria-hidden="true"><i></i><i></i><i></i><span>ingenIA · proyecto demostrativo</span></div>
+      <div class="ini-car-pista" id="car-pista" tabindex="0">
+        <figure data-t="Diagrama unifilar del tablero de fuerza" data-d="Vista previa en la plataforma · se descarga en DXF para AutoCAD">
+          <img src="assets/vistas/03-unifilar.jpg" alt="Vista previa del diagrama unifilar del tablero de fuerza dentro de la plataforma, con el menú lateral y las pestañas Datos de entrada, Vista previa y Cajetín y descarga" width="1440" height="900" loading="eager" decoding="async">
+          <figcaption>Diagrama unifilar del tablero de fuerza, en la vista previa de la plataforma (DXF para AutoCAD)</figcaption>
+        </figure>
+        <figure data-t="Copito aplica un cambio en el plano" data-d="Pides el cambio, lo apruebas y se actualizan los entregables relacionados">
+          <img src="assets/vistas/07-copito.jpg" alt="Copito aplicando un cambio sobre el unifilar del tablero de control y listando los entregables actualizados" width="1440" height="900" loading="lazy" decoding="async">
+          <figcaption>Copito aplica un cambio en el plano y lista los entregables actualizados</figcaption>
+        </figure>
+        <figure data-t="Diagrama multifilar del tablero de control" data-d="Conexionado de las entradas analógicas del PLC · DXF para AutoCAD">
+          <img src="assets/vistas/05-conexionado.jpg" alt="Vista previa del multifilar del tablero de control, hoja de entradas analógicas del PLC, dentro de la plataforma" width="1440" height="900" loading="lazy" decoding="async">
+          <figcaption>Multifilar del tablero de control: conexionado de las entradas analógicas del PLC (DXF)</figcaption>
+        </figure>
+        <figure data-t="Diagrama P&amp;ID" data-d="Simbología ISA 5.1, desde los equipos del proceso y los instrumentos · DXF">
+          <img src="assets/vistas/04-pid.jpg" alt="Vista previa del P&amp;ID con instrumentos ISA dentro de la plataforma" width="1440" height="900" loading="lazy" decoding="async">
+          <figcaption>P&amp;ID con simbología ISA 5.1, en la vista previa de la plataforma (DXF)</figcaption>
+        </figure>
+        <figure data-t="Tablero de control en 3D" data-d="El mismo arreglo del plano mecánico 2D, con sus equipos reales">
+          <img src="assets/vistas/08-tablero-3d.jpg" alt="Vista 3D del tablero de control con sus equipos" width="1440" height="900" loading="lazy" decoding="async">
+          <figcaption>Tablero de control en 3D, con el mismo arreglo del plano 2D</figcaption>
+        </figure>
+        <figure data-t="Listado de cargas" data-d="Potencia instalada y máxima demanda por tablero · se descarga en Excel">
+          <img src="assets/vistas/02-cargas.jpg" alt="Vista previa del listado de cargas con la máxima demanda" width="1440" height="900" loading="lazy" decoding="async">
+          <figcaption>Listado de cargas con máxima demanda (Excel)</figcaption>
+        </figure>
+        <figure data-t="Ruta de trabajo y revisiones" data-d="Documentos por etapas, siguiente paso recomendado y emisión en lote">
+          <img src="assets/vistas/06-documentos.jpg" alt="Lista de documentos del proyecto ordenada por etapas, con revisiones emitidas" width="1440" height="900" loading="lazy" decoding="async">
+          <figcaption>Documentos por etapas y emisión de revisiones</figcaption>
+        </figure>
+        <figure data-t="Resumen del proyecto" data-d="Avance, datos generales y tableros de un vistazo">
+          <img src="assets/vistas/01-resumen.jpg" alt="Resumen de un proyecto con su avance" width="1440" height="900" loading="lazy" decoding="async">
+          <figcaption>Resumen y avance del proyecto</figcaption>
+        </figure>
+      </div>
+      <div class="ini-car-pie">
+        <div class="ini-car-txt"><b id="car-t">Diagrama unifilar del tablero de fuerza</b><small id="car-d">Vista previa en la plataforma · se descarga en DXF para AutoCAD</small></div>
+        <div class="ini-car-puntos" id="car-puntos"></div>
+        <span class="ini-car-cuenta" id="car-cuenta" aria-hidden="true">01 / 08</span>
+        <button class="ini-car-btn" id="car-izq" type="button" aria-label="Vista anterior"><svg class="ini-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
+        <button class="ini-car-btn" id="car-der" type="button" aria-label="Vista siguiente"><svg class="ini-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+      </div>
+    </div>
+    <p class="ini-pantalla-nota">Capturas de la plataforma con un proyecto demostrativo (datos ficticios).</p>
   </div>
 </section>
 
-<section class="section" id="como-funciona">
-  <h2>Tres pasos, un solo origen de datos</h2>
-  <p class="sub">Cada dato se ingresa una vez y se propaga a todos los documentos.</p>
-  <div class="steps">
-    <div class="step"><h3>Define el proyecto</h3><p>Cliente, tensión, condiciones del sitio y tableros. Parte de un proyecto anterior para no repetir datos.</p></div>
-    <div class="step"><h3>Completa cada documento</h3><p>Cargas, instrumentos y señales. Protecciones, cables, demanda y canales I/O se calculan solos.</p></div>
-    <div class="step"><h3>Emite y descarga</h3><p>Revisa la vista previa, emite la revisión de todos los documentos a la vez y descarga en Excel, Word o DXF.</p></div>
+<!-- ============ INDICADORES DEL PRODUCTO (datos verdaderos, se recalculan desde el código) ============ -->
+<section class="ini-sec ini-claro ini-sec-cifras" aria-labelledby="cifras-t">
+  <div class="ini-wrap">
+    <h2 class="ini-oculto" id="cifras-t">Ingenia en cifras</h2>
+    <!-- Cada cifra se comprueba en el código y se vuelve a contar al cargar la página:
+         entregables = CATALOGO de js/catalog.js (ENTREGABLES sin los «interno»); formatos y disciplinas = de esos entregables;
+         familias de PLC = LISTA_FAMILIAS de js/control/plc-modulos.js; marcas = opciones de FAMILIAS_MARCA de js/engine/marcas.js
+         (sin «Fabricación local»). -->
+    <div class="ini-cifras rv">
+      <div class="ini-cifra"><b data-cifra="entregables">19</b><p>entregables de ingeniería automatizados</p></div>
+      <div class="ini-cifra"><b data-cifra="formatos">3</b><p>formatos de salida: Excel, Word y DXF para AutoCAD</p></div>
+      <div class="ini-cifra"><b data-cifra="disciplinas">2</b><p>disciplinas: Electricidad e Instrumentación &amp; Control</p></div>
+      <div class="ini-cifra"><b data-cifra="plc">6</b><p>familias de PLC de Allen-Bradley, Siemens y Schneider Electric</p></div>
+      <div class="ini-cifra"><b data-cifra="marcas">9</b><p>marcas de equipos para elegir en los tableros</p></div>
+    </div>
+    <p class="ini-cifras-nota">Cifras de la versión actual de la plataforma.</p>
+
+    <!--
+      FRANJA DE MÉTRICAS DE USO — DESACTIVADA A PROPÓSITO.
+      Nota para el dueño del producto: actívala solo cuando tengas cifras reales y comprobables (por ejemplo, de la
+      analítica del sitio o de la base de cuentas), con su fecha de corte. No publiques cifras estimadas ni ficticias de
+      usuarios, países, proyectos o clientes: sería publicidad engañosa (Código de Protección y Defensa del Consumidor,
+      Ley N.º 29571, y Ley de Represión de la Competencia Desleal, D. Leg. N.º 1044).
+      Para activarla: quita este comentario, reemplaza cada «—» por la cifra real y completa la fecha. Los estilos
+      (.ini-uso) ya están en css/inicio.css.
+
+    <div class="ini-uso rv" aria-label="Ingenia en uso">
+      <p class="ini-eyebrow ini-eyebrow-claro">Ingenia en uso</p>
+      <div class="ini-cifras ini-cifras-uso">
+        <div class="ini-cifra"><b>—</b><p>usuarios registrados</p></div>
+        <div class="ini-cifra"><b>—</b><p>países</p></div>
+        <div class="ini-cifra"><b>—</b><p>proyectos creados</p></div>
+        <div class="ini-cifra"><b>—</b><p>documentos descargados</p></div>
+      </div>
+      <p class="ini-cifras-nota">Cifras al DD/MM/AAAA.</p>
+    </div>
+    -->
   </div>
 </section>
 
-<section class="section" id="entregables" style="background:var(--gris-50); max-width:none;">
-  <div style="max-width:1200px; margin:0 auto;">
-    <h2>Entregables por disciplina</h2>
-    <p class="sub">Basados en una ingeniería de detalle real de minería, por etapa y tipo de salida.</p>
-    <div class="features">
-      <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg></div><h3>Electricidad</h3><p>Listados de cargas, cables y equipos, hojas de datos, memorias de conductores y máxima demanda, unifilares.</p></div>
-      <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>Instrumentación &amp; Control</h3><p>P&amp;ID con recomendación de instrumentos, listados de instrumentos e I/O, hojas de datos, lazos, arquitectura, bloques y filosofía de control.</p></div>
-      <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div><h3>Gestión documental</h3><p>Documentos identificados por su nombre, control de revisiones, emisión en lote y lista de documentos.</p></div>
+<!-- ============ FORMATOS DE SALIDA ============ -->
+<section class="ini-sec ini-claro ini-sec-salidas" id="formatos" aria-labelledby="formatos-t">
+  <div class="ini-wrap">
+    <header class="ini-titulo rv">
+      <p class="ini-eyebrow ini-eyebrow-claro">Entregables listos para emitir</p>
+      <h2 id="formatos-t">Excel, Word y planos para AutoCAD</h2>
+      <p>Cada entregable se descarga en el formato estándar de Ingenia, con carátula o cajetín, logos y control de revisiones. Los archivos se abren y se editan en tus programas de siempre.</p>
+    </header>
+    <div class="ini-salidas">
+      <article class="ini-salida rv">
+        <div class="ini-archivo" aria-hidden="true"><span>XLSX</span></div>
+        <h3>Excel</h3>
+        <p class="ini-salida-n"><b data-cifra="excel">7</b> listados y hojas de datos</p>
+        <p>Libros con carátula, logos y revisiones. Cada fórmula se guarda con su resultado, así se lee bien en cualquier visor.</p>
+        <ul><li>Listados de cargas, cables, equipos e instrumentos</li><li>Listado I/O con resumen de módulos</li><li>Hojas de datos de equipos eléctricos e instrumentos</li></ul>
+      </article>
+      <article class="ini-salida rv">
+        <div class="ini-archivo" aria-hidden="true"><span>DOCX</span></div>
+        <h3>Word</h3>
+        <p class="ini-salida-n"><b data-cifra="word">3</b> memorias y documentos</p>
+        <p>Documentos con índice, tablas y figuras, con la estructura de una ingeniería de detalle.</p>
+        <ul><li>Memoria de cálculo de conductores</li><li>Memoria de cálculo de máxima demanda</li><li>Filosofía de control: alarmas, set points, interlocks y secuencias</li></ul>
+      </article>
+      <article class="ini-salida ini-salida-dxf rv">
+        <div class="ini-archivo" aria-hidden="true"><span>DXF</span></div>
+        <h3>Planos DXF para AutoCAD</h3>
+        <p class="ini-salida-n"><b data-cifra="dxf">9</b> tipos de plano</p>
+        <p>Planos en <b>DXF (AutoCAD R12)</b>, en lámina A1 con cajetín, capas y colores: se abren en AutoCAD y se guardan como DWG.</p>
+        <ul><li>Unifilares y multifilares de tableros de fuerza y de control</li><li>Planos mecánicos de tableros, con vista 3D</li><li>P&amp;ID, diagramas de lazo y arquitectura de control</li></ul>
+      </article>
     </div>
   </div>
 </section>
 
-<section class="section" id="plantillas">
-  <h2>El formato de cada cliente</h2>
-  <p class="sub">Carga sus formatos una vez por proyecto. Sin ellos, se usa el formato estándar con tu logo.</p>
-  <div class="features">
-    <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg></div><h3>Excel y Word</h3><p>Marcadores <code>{{proyecto}}</code>, <code>{{codigo}}</code>, <code>{{rev}}</code> y filas <code>{{tabla:cargas}}</code>. Se conservan estilos, logos y firmas.</p></div>
-    <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><path d="M4 20V4h16v16H4Z"/><path d="M4 15h16M14 15v5"/></svg></div><h3>Cajetín y lámina</h3><p>DXF del cliente con <code>{{PLANO}}</code>, <code>{{REV}}</code>, <code>{{TITULO}}</code>; el plano se arma dentro de ese formato.</p></div>
-    <div class="feature"><div class="ic"><svg class="icon" viewBox="0 0 24 24"><path d="M4 19h16M6 15l4-8 4 5 4-9"/></svg></div><h3>Plumillas (CTB)</h3><p>Se validan colores, grosores y tramas por capa para la impresión.</p></div>
+<!-- ============ CÓMO FUNCIONA (blanco) ============ -->
+<section class="ini-sec ini-blanco" id="como-funciona" aria-labelledby="como-t">
+  <div class="ini-wrap">
+    <header class="ini-titulo rv">
+      <p class="ini-eyebrow ini-eyebrow-claro">Cómo funciona</p>
+      <h2 id="como-t">Tres pasos, un solo origen de datos</h2>
+      <p>Cada dato se ingresa una vez y se propaga a todos los documentos: si cambia una carga, cambian el listado, la memoria, el unifilar y el tablero.</p>
+    </header>
+    <ol class="ini-pasos">
+      <li class="ini-paso rv"><span class="ini-paso-n">01</span><h3>Define el proyecto</h3><p>Cliente, tensiones de fuerza y de control, condiciones del sitio y tableros, en un asistente de cuatro pasos.</p></li>
+      <li class="ini-paso rv"><span class="ini-paso-n">02</span><h3>Completa cada documento</h3><p>Datos de entrada → vista previa → cajetín. Protecciones, cables, demanda y canales I/O se calculan solos, y la ruta de trabajo te indica qué sigue.</p></li>
+      <li class="ini-paso rv"><span class="ini-paso-n">03</span><h3>Emite y descarga</h3><p>Emite la revisión de todos los documentos a la vez y descárgalos en Excel, Word o DXF para AutoCAD.</p></li>
+    </ol>
   </div>
 </section>
 
-<section class="section" id="planes">
-  <h2>Planes</h2>
-  <p class="sub">Precios por cuenta, en dólares, con pago mensual. Pagando el año completo obtienes 2 meses gratis.</p>
-  <div class="planes">
-    <div class="plan">
-      <h3>Prueba</h3>
-      <div class="precio"><b>Gratis</b><span>14 días</span></div>
-      <ul><li>1 proyecto</li><li>Todos los entregables</li><li>Copito con tus datos</li><li>Sin tarjeta</li></ul>
+<!-- ============ COPITO (oscuro) ============ -->
+<section class="ini-sec ini-oscuro ini-sec-copito" id="copito" aria-labelledby="copito-t">
+  <div class="ini-wrap ini-copito">
+    <div class="ini-copito-txt">
+      <header class="ini-titulo ini-titulo-izq rv">
+        <p class="ini-eyebrow">Copito · asesor en tiempo real</p>
+        <h2 id="copito-t">Pide el cambio. Copito lo hace en el momento.</h2>
+        <p>Copito es tu asesor personalizado dentro de la plataforma: conoce tu proyecto y el documento que tienes abierto. Le pides el cambio en lenguaje natural, te muestra la propuesta, la aplicas y se actualizan todos los entregables relacionados.</p>
+      </header>
+      <ol class="ini-ciclo">
+        <li class="rv"><span>1</span><div><h3>Lo pides con tus palabras</h3><p>«Agrega una reserva de 24 Vdc en <span class="ini-nw">TC-001</span>», «Pon el PLC Siemens», «Mueve PS1 a la derecha». Con doble clic sobre un TAG del plano, Copito se abre con ese equipo.</p></div></li>
+        <li class="rv"><span>2</span><div><h3>Copito lo propone</h3><p>Te muestra qué va a cambiar y su impacto: máxima demanda, corriente, interruptor general, señales I/O.</p></div></li>
+        <li class="rv"><span>3</span><div><h3>Lo aplicas</h3><p>Nada cambia hasta que confirmas, y puedes deshacerlo.</p></div></li>
+        <li class="rv"><span>4</span><div><h3>Se actualiza todo</h3><p>Unifilar, multifilar, mecánico 2D y 3D, listados y hojas de datos salen del mismo juego de datos y se regeneran con enlace a cada uno.</p></div></li>
+      </ol>
     </div>
-    <div class="plan destacado">
-      <div class="etq">Recomendado</div>
-      <h3>Profesional</h3>
-      <div class="precio"><b>US$ 29</b><span>/ mes</span></div>
-      <ul><li>1 usuario</li><li>Proyectos ilimitados</li><li>Excel, Word y planos DXF</li><li>Formatos y logo del cliente</li><li>Copito con tus datos</li></ul>
-    </div>
-    <div class="plan">
-      <h3>Equipo</h3>
-      <div class="precio"><b>US$ 79</b><span>/ mes</span></div>
-      <ul><li>Hasta 3 usuarios (US$ 25 por usuario adicional)</li><li>Proyectos compartidos</li><li>Todo lo del plan Profesional</li><li>Copito con IA</li></ul>
-    </div>
-    <div class="plan">
-      <h3>Empresa</h3>
-      <div class="precio"><b>A medida</b><span>&nbsp;</span></div>
-      <ul><li>Usuarios ilimitados</li><li>Formatos, capas y cajetín del cliente configurados</li><li>Capacitación y soporte prioritario</li><li>Factura</li></ul>
+
+    <figure class="ini-chat rv" aria-label="Ejemplo de conversación con Copito">
+      <div class="ini-chat-cab"><img src="assets/copito.png" alt="" width="40" height="40"><div><b>Copito</b><small>Asesor de tus proyectos</small></div><span class="ini-chat-vivo">En tu navegador</span></div>
+      <div class="ini-chat-cuerpo">
+        <p class="ini-msg ini-msg-yo">Agrega una reserva de 24 Vdc en TC-001</p>
+        <div class="ini-msg ini-msg-cp">
+          <p>Esto es lo que voy a cambiar en <b>Colector de polvos</b>:</p>
+          <ul><li><b>TC-001</b>: agregar un circuito de <b>24 Vdc</b> «Reserva» con fusible de <b>1 A</b></li></ul>
+          <div class="ini-msg-acc"><span class="si">Aplicar</span><span>Cancelar</span></div>
+        </div>
+        <div class="ini-msg ini-msg-cp">
+          <p>Listo, cambios aplicados.</p>
+          <div class="ini-msg-act"><b>Entregables actualizados (5)</b>
+            <span>Diagrama unifilar del tablero de control</span><span>Diagrama multifilar del tablero de control</span><span>Diagrama mecánico del tablero de control</span><span>Listado de cargas</span><span>Hoja de datos de equipos eléctricos</span></div>
+          <div class="ini-msg-acc"><span>Deshacer</span></div>
+        </div>
+      </div>
+      <figcaption>Ejemplo real con el proyecto demostrativo.</figcaption>
+    </figure>
+
+    <div class="ini-copito-pie rv">
+      <p class="ini-copito-k">Qué puede cambiar</p>
+      <ul class="ini-chips">
+        <li>Cargas e instrumentos</li><li>Circuitos del tablero de control</li><li>PLC, HMI, switch y router</li><li>Arreglo mecánico 2D y 3D</li><li>Cajetín y revisiones</li><li>Notas de los planos</li><li>Equipos del P&amp;ID</li><li>Alarmas, set points e interlocks</li>
+      </ul>
+      <p class="ini-copito-nota"><svg class="ini-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Copito trabaja en tu navegador con un motor propio: tus proyectos no se envían a ningún servidor. El modo con IA es opcional.</p>
     </div>
   </div>
-  <p class="nota-planes">El acceso y el pago se harán con tu cuenta de Google desde «Entrar». Los precios no incluyen impuestos.</p>
 </section>
 
-<footer class="footer">© <span id="anio">2026</span> Ingenia. Todos los derechos reservados.</footer>
+<!-- ============ ENTREGABLES POR DISCIPLINA (claro) ============ -->
+<section class="ini-sec ini-claro" id="entregables" aria-labelledby="entregables-t">
+  <div class="ini-wrap">
+    <header class="ini-titulo rv">
+      <p class="ini-eyebrow ini-eyebrow-claro">Entregables</p>
+      <h2 id="entregables-t">Entregables por disciplina</h2>
+      <p>Basados en una ingeniería de detalle real de minería y ordenados en una ruta de trabajo: del P&amp;ID y el listado de cargas a los planos de detalle de cada tablero.</p>
+    </header>
+    <div class="ini-disc">
+      <article class="ini-disc-card rv">
+        <div class="ini-disc-cab"><span class="ini-disc-ic" aria-hidden="true"><svg class="ini-ic" viewBox="0 0 24 24"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z"/></svg></span><h3>Electricidad</h3><span class="ini-disc-n"><b data-cifra="ele">9</b> entregables</span></div>
+        <ul class="ini-lista" data-disc="ELE">
+          <li>Listado de cargas<span>XLSX</span></li>
+          <li>Listado de cables<span>XLSX</span></li>
+          <li>Listado de equipos eléctricos<span>XLSX</span></li>
+          <li>Hoja de datos de equipos eléctricos<span>XLSX</span></li>
+          <li>Memoria de cálculo de conductores<span>DOCX</span></li>
+          <li>Memoria de cálculo de máxima demanda<span>DOCX</span></li>
+          <li>Diagrama unifilar del tablero de fuerza<span>DXF</span></li>
+          <li>Diagrama multifilar del tablero de fuerza<span>DXF</span></li>
+          <li>Diagrama mecánico del tablero de fuerza<span>DXF</span></li>
+        </ul>
+      </article>
+      <article class="ini-disc-card rv">
+        <div class="ini-disc-cab"><span class="ini-disc-ic" aria-hidden="true"><svg class="ini-ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span><h3>Instrumentación &amp; Control</h3><span class="ini-disc-n"><b data-cifra="ins">10</b> entregables</span></div>
+        <ul class="ini-lista" data-disc="INS">
+          <li>Diagrama P&amp;ID<span>DXF</span></li>
+          <li>Listado de equipos de instrumentación<span>XLSX</span></li>
+          <li>Hoja de datos de instrumentos<span>XLSX</span></li>
+          <li>Diagrama de lazo<span>DXF</span></li>
+          <li>Diagrama unifilar del tablero de control<span>DXF</span></li>
+          <li>Diagrama multifilar del tablero de control<span>DXF</span></li>
+          <li>Diagrama mecánico del tablero de control<span>DXF</span></li>
+          <li>Arquitectura de control<span>DXF</span></li>
+          <li>Listado I/O<span>XLSX</span></li>
+          <li>Filosofía de control<span>DOCX</span></li>
+        </ul>
+      </article>
+    </div>
+    <div class="ini-gestion rv">
+      <span class="ini-disc-ic" aria-hidden="true"><svg class="ini-ic" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10"/></svg></span>
+      <div><h3>Gestión documental incluida</h3><p>Ruta de trabajo por etapas con el siguiente paso recomendado, control de revisiones, emisión en lote y lista de documentos del proyecto.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PLANES (blanco) ============ -->
+<section class="ini-sec ini-blanco" id="planes" aria-labelledby="planes-t">
+  <div class="ini-wrap">
+    <header class="ini-titulo rv">
+      <p class="ini-eyebrow ini-eyebrow-claro">Planes</p>
+      <h2 id="planes-t">Elige cómo trabajar con Ingenia</h2>
+      <p>Precios por cuenta, en dólares, con pago mensual. Pagando el año completo obtienes 2 meses gratis.</p>
+    </header>
+    <div class="ini-planes">
+      <article class="ini-plan rv">
+        <h3>Prueba</h3>
+        <div class="ini-precio"><b>Gratis</b><span>14 días</span></div>
+        <ul><li>1 proyecto</li><li>Todos los entregables</li><li>Copito con tus datos</li><li>Sin tarjeta</li></ul>
+        <a class="ini-btn ini-btn-borde" href="app.html">Probar gratis</a>
+      </article>
+      <article class="ini-plan ini-plan-dest rv">
+        <span class="ini-plan-etq">Recomendado</span>
+        <h3>Profesional</h3>
+        <div class="ini-precio"><b>US$ 29</b><span>/ mes</span></div>
+        <ul><li>1 usuario</li><li>Proyectos ilimitados</li><li>Excel, Word y planos DXF para AutoCAD</li><li>Logo del cliente</li><li>Copito con tus datos</li></ul>
+        <a class="ini-btn ini-btn-amarillo" href="app.html">Empezar ahora</a>
+      </article>
+      <article class="ini-plan rv">
+        <h3>Equipo</h3>
+        <div class="ini-precio"><b>US$ 79</b><span>/ mes</span></div>
+        <ul><li>Hasta 3 usuarios (US$ 25 por usuario adicional)</li><li>Proyectos compartidos</li><li>Todo lo del plan Profesional</li><li>Copito con IA</li></ul>
+        <a class="ini-btn ini-btn-borde" href="app.html">Empezar ahora</a>
+      </article>
+      <article class="ini-plan rv">
+        <h3>Empresa</h3>
+        <div class="ini-precio"><b>A medida</b></div>
+        <ul><li>Usuarios ilimitados</li><li>Formatos, capas y cajetín del cliente configurados</li><li>Capacitación y soporte prioritario</li><li>Factura</li></ul>
+      </article>
+    </div>
+    <p class="ini-planes-nota">El acceso y el pago se harán con tu cuenta de Google desde «Entrar». Los precios no incluyen impuestos.</p>
+  </div>
+</section>
+
+<!-- ============ LLAMADO FINAL (amarillo) ============ -->
+<section class="ini-final" aria-labelledby="final-t">
+  <div class="ini-wrap ini-final-in rv">
+    <div>
+      <h2 id="final-t">Tu próxima ingeniería de E&amp;I, desde los datos.</h2>
+      <p>Listados, memorias y planos coherentes entre sí, con Copito a tu lado para cada cambio.</p>
+    </div>
+    <a class="ini-btn ini-btn-oscuro" href="app.html">Entrar a la plataforma <svg class="ini-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+  </div>
+</section>
+
+</main>
+
+<footer class="ini-pie">
+  <div class="ini-wrap ini-pie-in">
+    <div class="ini-pie-marca">
+      <a class="ini-logo" href="./" aria-label="Ingenia, inicio"><b class="marca">ingen<span>IA</span></b></a>
+      <p>Ingeniería de Electricidad e Instrumentación &amp; Control, generada desde los datos.</p>
+    </div>
+    <nav class="ini-pie-links" aria-label="Pie de página">
+      <a href="#como-funciona">Cómo funciona</a><a href="#entregables">Entregables</a><a href="#copito">Copito</a><a href="#planes">Planes</a><a href="app.html">Entrar</a>
+    </nav>
+  </div>
+  <div class="ini-wrap ini-pie-legal">© <span id="anio">2026</span> Ingenia. Todos los derechos reservados.</div>
+</footer>
+
 <script type="module">
 import { comprobarVersion } from "./js/actualizar.js"; comprobarVersion();
 document.getElementById("anio").textContent = new Date().getFullYear();
-/* encabezado fijo: muestra un borde al bajar */
+const quieto = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* encabezado: sombra al bajar y enlace de la sección visible */
 const cab = document.getElementById("cabecera");
 const sombra = ()=>cab.classList.toggle("bajado", window.scrollY > 8);
 window.addEventListener("scroll", sombra, { passive:true }); sombra();
-/* carrusel: deslizar con el dedo o con las flechas; puntos de posición */
+const enlaces = [...document.querySelectorAll(".ini-links a")];
+const espia = new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting) enlaces.forEach(a=>a.classList.toggle("activo", a.hash==="#"+e.target.id)); }), { rootMargin:"-45% 0px -50% 0px" });
+enlaces.forEach(a=>{ const s = document.querySelector(a.hash); if(s) espia.observe(s); });
+
+/* aparición suave al entrar en pantalla */
+const rv = [...document.querySelectorAll(".rv")];
+if(quieto || !("IntersectionObserver" in window)) rv.forEach(e=>e.classList.add("visto"));
+else { const io = new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add("visto"); io.unobserve(e.target); } }), { rootMargin:"0px 0px -8% 0px" }); rv.forEach(e=>io.observe(e)); }
+
+/* carrusel: deslizar con el dedo, flechas, puntos y teclado; avance automático en pausa al interactuar */
 const pista = document.getElementById("car-pista"), puntos = document.getElementById("car-puntos");
-const n = pista.children.length;
-puntos.innerHTML = Array.from({ length:n }, (_, i)=>`<button aria-label="Imagen ${i+1}"></button>`).join("");
-const actual = ()=>Math.round(pista.scrollLeft / pista.clientWidth);
-const ir = i=>pista.scrollTo({ left: ((i+n)%n) * pista.clientWidth, behavior:"smooth" });
-const marcar = ()=>[...puntos.children].forEach((b, i)=>b.classList.toggle("on", i===actual()));
-pista.addEventListener("scroll", ()=>requestAnimationFrame(marcar), { passive:true });
-document.getElementById("car-izq").onclick = ()=>ir(actual()-1);
-document.getElementById("car-der").onclick = ()=>ir(actual()+1);
-puntos.addEventListener("click", ev=>{ const i = [...puntos.children].indexOf(ev.target); if(i>=0) ir(i); });
-let pausa = false; ["pointerdown","mouseenter","focusin"].forEach(e=>pista.parentElement.addEventListener(e, ()=>{ pausa = true; }));
-setInterval(()=>{ if(!pausa && document.visibilityState==="visible") ir(actual()+1); }, 5000);
+const figs = [...pista.children], n = figs.length, dos = i=>String(i).padStart(2, "0");
+puntos.innerHTML = figs.map((f, i)=>`<button type="button" aria-label="Vista ${i+1}: ${f.dataset.t}"></button>`).join("");
+const actual = ()=>Math.round(pista.scrollLeft / Math.max(1, pista.clientWidth));
+// «objetivo» guarda la vista pedida aunque el desplazamiento suave siga en curso (dos clics seguidos avanzan dos)
+let objetivo = 0, quieta;
+const ir = i=>{ objetivo = (i+n)%n; pista.scrollTo({ left: objetivo * pista.clientWidth, behavior: quieto ? "auto" : "smooth" }); };
+let previo = -1;
+const marcar = ()=>{ const i = Math.min(n-1, Math.max(0, actual())); if(i===previo) return; previo = i;
+  [...puntos.children].forEach((b, k)=>b.classList.toggle("on", k===i));
+  document.getElementById("car-t").textContent = figs[i].dataset.t; document.getElementById("car-d").textContent = figs[i].dataset.d;
+  document.getElementById("car-cuenta").textContent = `${dos(i+1)} / ${dos(n)}`; };
+pista.addEventListener("scroll", ()=>{ requestAnimationFrame(marcar); clearTimeout(quieta); quieta = setTimeout(()=>{ objetivo = actual(); }, 160); }, { passive:true });
+window.addEventListener("resize", ()=>pista.scrollTo({ left: objetivo * pista.clientWidth }), { passive:true });
+document.getElementById("car-izq").onclick = ()=>ir(objetivo-1);
+document.getElementById("car-der").onclick = ()=>ir(objetivo+1);
+puntos.addEventListener("click", ev=>{ const i = [...puntos.children].indexOf(ev.target.closest("button")); if(i>=0) ir(i); });
+pista.addEventListener("keydown", ev=>{ if(ev.key==="ArrowRight"){ ev.preventDefault(); ir(objetivo+1); } if(ev.key==="ArrowLeft"){ ev.preventDefault(); ir(objetivo-1); } });
+let pausa = quieto, enPantalla = true;
+const car = document.getElementById("carrusel");
+["pointerdown","mouseenter","focusin","touchstart"].forEach(e=>car.addEventListener(e, ()=>{ pausa = true; }, { passive:true }));
+new IntersectionObserver(es=>{ enPantalla = es[0].isIntersecting; }).observe(car);
+setInterval(()=>{ if(!pausa && enPantalla && document.visibilityState==="visible") ir(objetivo+1); }, 6000);
 marcar();
+
+/* indicadores: se cuentan desde el código del programa (catálogo, PLC y marcas) y se animan al verse */
+const ponerCifras = c=>{ for(const el of document.querySelectorAll("[data-cifra]")){ const v = c[el.dataset.cifra]; if(Number.isFinite(v) && v > 0) el.textContent = v; } };
+const contar = el=>{ const fin = +el.textContent; if(!(fin > 0) || quieto) return; const t0 = performance.now(), dur = 1100;
+  const paso = t=>{ const k = Math.min(1, (t - t0)/dur); el.textContent = Math.round(fin * (1 - Math.pow(1 - k, 3))); if(k < 1) requestAnimationFrame(paso); }; el.textContent = "0"; requestAnimationFrame(paso); };
+const FMT = { lista:"XLSX", calculo:"DOCX", documento:"DOCX", plano:"DXF" };
+const datos = Promise.all([import("./js/catalog.js"), import("./js/control/plc-modulos.js"), import("./js/engine/marcas.js")]).then(([C, P, M])=>{
+  const cat = C.CATALOGO || C.ENTREGABLES.filter(e=>!e.interno), cuenta = f=>cat.filter(f).length;
+  const c = { entregables:cat.length, formatos:new Set(cat.map(e=>FMT[e.tipo]).filter(Boolean)).size, disciplinas:new Set(cat.map(e=>e.disciplina)).size,
+    plc:(P.LISTA_FAMILIAS || Object.keys(P.FAMILIAS)).length, marcas:new Set(M.FAMILIAS_MARCA.flatMap(f=>f.opciones).filter(o=>!/fabricaci/i.test(o))).size,
+    excel:cuenta(e=>FMT[e.tipo]==="XLSX"), word:cuenta(e=>FMT[e.tipo]==="DOCX"), dxf:cuenta(e=>FMT[e.tipo]==="DXF"),
+    ele:cuenta(e=>e.disciplina==="ELE"), ins:cuenta(e=>e.disciplina==="INS") };
+  ponerCifras(c);
+  // listas de entregables por disciplina, siempre iguales al catálogo
+  const esc = s=>String(s).replace(/[&<>"]/g, x=>({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[x]));
+  for(const ul of document.querySelectorAll("[data-disc]")){ const l = cat.filter(e=>e.disciplina===ul.dataset.disc); if(l.length) ul.innerHTML = l.map(e=>`<li>${esc(e.nombre)}<span>${FMT[e.tipo]||""}</span></li>`).join(""); }
+}).catch(()=>{ /* sin los módulos quedan las cifras escritas en la página */ });
+const franja = document.querySelector(".ini-sec-cifras .ini-cifras");
+new IntersectionObserver((es, o)=>{ if(es[0].isIntersecting){ o.disconnect(); datos.finally(()=>franja.querySelectorAll("[data-cifra]").forEach(contar)); } }, { threshold:.4 }).observe(franja);
 </script>
 </body>
 </html>

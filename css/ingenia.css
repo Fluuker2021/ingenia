@@ -213,13 +213,12 @@ details.more > summary::-webkit-details-marker{display:none;}
   .docs-table{display:block;}
   .docs-table thead, .docs-table thead tr{display:block;}
   .docs-table thead th{display:none;}
-  .docs-table thead th:first-child{display:flex; align-items:center; gap:8px; width:auto; padding:10px 12px;}
-  .docs-table .m-only{display:inline;}
   .docs-table tbody, .docs-table tbody tr, .docs-table tbody td{display:block; width:auto;}
-  .docs-table tbody tr{position:relative; padding:12px 12px 12px 42px; border-bottom:1px solid var(--border);}
+  .docs-table tbody tr[hidden]{display:none;}
+  .docs-table tbody tr{position:relative; padding:12px; border-bottom:1px solid var(--border);}
+  .docs-table tbody tr.etapa-fila{padding:0;}
   .docs-table tbody tr:last-child{border-bottom:none;}
   .docs-table tbody td{border:none; padding:2px 0; white-space:normal !important;}
-  .docs-table tbody td:first-child{position:absolute; left:12px; top:14px; padding:0;}
   .docs-table tbody td select{width:100%; min-width:0 !important; margin:6px 0 4px;}
   .docs-table tbody tr:hover td{background:transparent;}
 }
@@ -373,11 +372,10 @@ canvas.preview{width:100%; border:1px solid var(--border); border-radius:var(--r
 .progress > span{display:block; height:100%; background:var(--amarillo);}
 
 /* tabla de documentos */
-.docs-table th:nth-child(2){min-width:260px;}
 .docs-table td{vertical-align:middle;}
 .docs-table a:not(.btn){text-decoration:none; font-weight:500;}
 .docs-table a:not(.btn):hover{text-decoration:underline; text-decoration-color:var(--amarillo);}
-.docs-table td:first-child,.docs-table th:first-child{width:34px; padding-right:0;}
+.docs-table th:first-child{min-width:260px;}
 
 /* ---------- entorno de documento ---------- */
 .ws-note{font-size:13px; color:var(--text-dim); margin:0 0 14px;}
@@ -579,11 +577,19 @@ td.num.err{color:var(--err); font-weight:600;}
 .tb-tableros td{vertical-align:top;}
 
 /* ---------- ruta de trabajo de los documentos ---------- */
-.docs-table tr.etapa-fila td{background:var(--gris-100); font-size:12.5px; padding:7px 12px; border-top:1px solid var(--border-strong);}
-.etapa-n{display:inline-flex; width:20px; height:20px; border-radius:50%; align-items:center; justify-content:center; background:var(--grafito); color:#fff; font-size:11px; font-weight:700; margin-right:8px;}
+/* etapas: fila más oscura que los documentos; toda la fila pliega o despliega sus documentos */
+.docs-table tr.etapa-fila{cursor:pointer; user-select:none;}
+.docs-table tr.etapa-fila td{background:var(--acero); color:#fff; font-size:12.5px; padding:9px 14px; border-top:1px solid var(--grafito); border-bottom:1px solid var(--grafito);}
+.docs-table tr.etapa-fila:hover td{background:var(--acero-600);}
+.docs-table tr.etapa-fila strong{color:#fff; letter-spacing:.01em;}
+.etapa-chev{display:inline-flex; vertical-align:-3px; margin-right:8px; color:var(--amarillo);}
+.etapa-chev .icon{width:16px; height:16px; transform:rotate(90deg); transition:transform .15s;}
+.etapa-fila.plegada .etapa-chev .icon{transform:none;}
+.etapa-cnt{margin-left:10px; font-size:11.5px; color:var(--gris-300);}
 .req-inicio{display:inline-flex; align-items:center; font-size:11.5px; font-weight:600; padding:1px 8px; border-radius:99px; background:var(--grafito); color:#fff; white-space:nowrap;}
 .docs-table tr.doc-listo td{background:var(--ok-soft);}
 .docs-table tr.doc-listo td:first-child{box-shadow:inset 4px 0 0 var(--ok);}
+.docs-table tr[data-g] td:first-child{padding-left:20px;}
 .docs-table tr.doc-listo:hover td{background:#C2EFD6;}
 /* estado de los documentos: cada estado con su color */
 select.sel-estado{font-weight:600; border-width:1.5px;}
@@ -601,4 +607,13 @@ select.sel-estado option{background:#fff; color:var(--text); font-weight:400;}
 .req-chip{display:inline-flex; align-items:center; gap:4px; font-size:11.5px; padding:1px 7px; margin:1px 4px 2px 0; border-radius:99px; border:1px solid var(--border); color:var(--acero); text-decoration:none; white-space:nowrap;}
 .req-chip.ok{background:var(--ok-soft); color:var(--ok); border-color:#8EDCB2; font-weight:600;}
 .req-chip .icon{width:12px; height:12px;}
-.ws-ruta{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:center; font-size:12.5px; margin:-4px 0 12px;}
+/* historial de revisiones: Rev. y fecha centradas */
+.tb-rev th,.tb-rev td.centro{text-align:center;} .tb-rev input.centro{text-align:center;} .tb-rev select{min-width:250px;}
+/* transformadores de control del listado de cargas */
+.trafo-card{border:1px solid var(--border-strong); border-left:4px solid var(--amarillo); border-radius:var(--radius); background:var(--surface); padding:10px 14px; margin-top:10px;}
+.trafo-cab{display:flex; flex-wrap:wrap; gap:6px 10px; align-items:baseline;}
+.trafo-kva{margin-left:auto; font-weight:600;}
+.trafo-cuerpo{display:flex; flex-wrap:wrap; gap:6px 10px; align-items:center; margin-top:8px; font-size:13px;}
+.trafo-cuerpo select{width:auto;}
+.trafo-circ{display:flex; flex-wrap:wrap; gap:4px 16px;}
+@media (max-width:700px){ .docs-table tr[data-g] td:first-child{padding-left:0;} }

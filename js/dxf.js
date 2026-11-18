@@ -55,7 +55,13 @@ function parseLayers(tables){
   return layers;
 }
 
+/* tipo de línea y factor de ancho del texto de cada entidad (para la descarga en PDF) */
 function toPrimitive(e){
+  const out = toPrimitive0(e), lt = get(e,6,""), wf = num(get(e,41,"1"));
+  for(const p of out){ if(lt) p.lt = lt; if(p.t==="T" && wf>0) p.wf = wf; }
+  return out;
+}
+function toPrimitive0(e){
   const layer = get(e,8,"0"); const space = get(e,67,"0")==="1" ? "paper" : "model";
   const t = e.type;
   if(t==="LINE") return [{t:"L", x1:num(get(e,10)), y1:num(get(e,20)), x2:num(get(e,11)), y2:num(get(e,21)), layer, space}];
@@ -224,3 +230,8 @@ export function parseCTB(arrayBuffer, pako){
   estilos.forEach(e=>{ e.lineweightMM = pesos[e.lineweightIdx] != null ? pesos[e.lineweightIdx] : null; });
   return { tipo: head==="PIACTB" ? "ctb" : "stb", estilos, pesos, descripcion: (txt.match(/description="([^"]*)"/)||[])[1]||"" };
 }
+
+/* color de cada capa en la vista previa de los planos de Ingenia (y en su descarga en PDF) */
+const COLOR_CAPA = { "I-SE-ANALO":"#1d6fb8","I-PROTOCOL":"#1d6fb8","I-FZA-AC":"#b8336a","E-FZA-BT-PRI":"#b8336a","E-FZA":"#b8336a","I-FZA-DC":"#7a4fbf","I-TIERRA":"#2e8b57","E-TIERRA":"#2e8b57","I-CONTROL":"#c27c0e","E-CONTROL":"#c27c0e",
+  "M-COBRE":"#c0661f","M-TIERRA":"#2e8b57","M-CABLE":"#a23b72","M-COTA":"#1d6fb8","M-ETIQUETA":"#9a6a00","M-SENAL":"#c99a00","M-CANALETA":"#7b8490","M-RIEL":"#8a93a0","M-PLACA":"#7b8490","M-DETALLE":"#5b6573","M-OCULTO":"#9aa3ae" };
+export const colorCapa = l => COLOR_CAPA[l] || "#1b2a3c";

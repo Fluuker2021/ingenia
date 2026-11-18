@@ -142,6 +142,31 @@
     "espacio": false
    },
    "encerrar": true
+  },
+  "CONTROL": {
+   "org": {
+    "tl": [
+     1,
+     0
+    ],
+    "br": [
+     4,
+     1
+    ]
+   },
+   "encabezado": {
+    "filas": [
+     1,
+     5
+    ],
+    "cols": [
+     2,
+     15
+    ],
+    "titulo": "LISTADO DE CARGAS",
+    "espacio": false
+   },
+   "encerrar": true
   }
  },
  "hoja_datos_instrumentos": {

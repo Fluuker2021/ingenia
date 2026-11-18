@@ -322,17 +322,18 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
   const man = datos.manifiesto || {};
   // hojas clonadas (p.ej. una hoja de datos por instrumento)
   const trabajos = [];
-  if(datos.clonar){
-    const base = wb.getWorksheet(datos.clonar.hoja);
-    if(base){
-      const insts = datos.clonar.instancias || [];
-      insts.forEach((inst, i)=>{
-        const ws = i===0 ? base : clonarHoja(wb, base, inst.nombre);
-        if(i===0) ws.name = inst.nombre;
-        trabajos.push({ ws, scal: Object.assign({}, datos.scal, inst.scal||{}), tablas: Object.assign({}, datos.tablas, inst.tablas||{}), man: man[datos.clonar.hoja] });
-      });
-      if(!insts.length) trabajos.push({ ws: base, scal: datos.scal, tablas: datos.tablas, man: man[datos.clonar.hoja] });
-    }
+  // clonar: una hoja o una lista de hojas; «quitarSiVacia» borra la hoja base cuando no hay instancias
+  for(const cl of [].concat(datos.clonar || [])){
+    const base = wb.getWorksheet(cl.hoja);
+    if(!base) continue;
+    const insts = cl.instancias || [];
+    if(!insts.length && cl.quitarSiVacia){ wb.removeWorksheet(base.id); continue; }
+    insts.forEach((inst, i)=>{
+      const ws = i===0 ? base : clonarHoja(wb, base, inst.nombre);
+      if(i===0) ws.name = inst.nombre;
+      trabajos.push({ ws, scal: Object.assign({}, datos.scal, inst.scal||{}), tablas: Object.assign({}, datos.tablas, inst.tablas||{}), man: man[cl.hoja] });
+    });
+    if(!insts.length) trabajos.push({ ws: base, scal: datos.scal, tablas: datos.tablas, man: man[cl.hoja] });
   }
   wb.eachSheet(ws=>{
     if(trabajos.some(t=>t.ws===ws)) return;

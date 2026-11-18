@@ -189,26 +189,40 @@ export function controlInterno(p, t){
   // segunda tensión: la indicada; si no hay y un tablero de control necesita sus servicios de 220 Vac, 220 Vac
   const v2 = v2ok ? v2in : (aux.length && (dc1 || v1!==220) ? 220 : null);
   const w = (x, barra) => circuitosControl(p, x).filter(c=>c.barra===barra).reduce((a, c)=>a + (+c.potencia||0), 0);
-  const ramasCtl = [], ramasSrv = [];
+  // circuitos que puede alimentar el control interno (cada uno con su tensión por defecto y el divisor de su cálculo)
+  const disp = [];
   for(const x of est){
     // el interruptor del circuito es un escalón mayor que el general de la acometida del tablero de control (MCB1)
-    const wE = w(x, "120 Vac") + w(x, "24 Vdc")*1.5, a = sobre(escalon(1.25*wE/120, 16));
-    ramasCtl.push({ label:`Hacia el tablero de control ${x.tag}`, destino:`HACIA EL ${(x.nombre||"tablero de control").toUpperCase()} ${x.tag}`, breaker:a, va:Math.round(wE), cfg:"tc:"+x.id, externo:true });
+    disp.push({ label:`Hacia el tablero de control ${x.tag}`, destino:`HACIA EL ${(x.nombre||"tablero de control").toUpperCase()} ${x.tag}`, va:Math.round(w(x, "120 Vac") + w(x, "24 Vdc")*1.5), min:16, sobre:true, div:120, cfg:"tc:"+x.id, externo:true });
   }
-  for(const x of aux){
-    const wA = w(x, "220 Vac"), a = sobre(escalon(1.25*wA/220, 10));
-    (v2 ? ramasSrv : ramasCtl).push({ label:`Hacia el tablero de control ${x.tag} (servicios)`, destino:`HACIA EL ${(x.nombre||"tablero de control").toUpperCase()} ${x.tag} (SERVICIOS)`, breaker:a, va:Math.round(wA), cfg:"tca:"+x.id, externo:true });
+  for(const x of aux) disp.push({ label:`Hacia el tablero de control ${x.tag} (servicios)`, destino:`HACIA EL ${(x.nombre||"tablero de control").toUpperCase()} ${x.tag} (SERVICIOS)`, va:Math.round(w(x, "220 Vac")), min:10, sobre:true, div:220, cfg:"tca:"+x.id, externo:true });
+  if(acc.ventilacion) disp.push({ label:"Ventiladores", destino:"VENTILADORES", va:200, min:6, cfg:"ventilacion" });
+  if(acc.calefaccion) disp.push({ label:"Calefacción anticondensación", destino:"CALEFACCIÓN", va:100, min:6, cfg:"calefaccion" });
+  if(acc.luminaria) disp.push({ label:"Luminaria interna", destino:"LUMINARIA", va:40, min:4, cfg:"luminaria" });
+  if(acc.tomacorriente) disp.push({ label:"Tomacorriente", destino:"TOMACORRIENTE", va:180, min:4, cfg:"tomacorriente", id: acc.diferencial!==false });
+  // sin segunda tensión todo va a la tensión de control; con ella, el control a la primera y los servicios a la segunda
+  const enV1 = d => !v2 || /^tc:/.test(d.cfg);
+  const rama = (d, vs, porDefecto) => {
+    const a = d.sobre ? sobre(escalon(1.25*d.va/(porDefecto ? d.div : vs), d.min)) : escalon(1.25*d.va/(vs*0.9), d.min);
+    return Object.assign({ label:d.label, destino:d.destino, breaker:a, va:d.va, cfg:d.cfg }, d.externo ? { externo:true } : {}, d.id ? { id:true } : {});
+  };
+  // transformadores de control que el usuario definió en el listado de cargas: su relación y los circuitos que alimenta
+  const grupos = [], tomados = new Set();
+  const propios = cargasPropias(p, t).filter(l=>l.kind==="control" && Array.isArray(l.alimenta));
+  for(const l of propios){
+    const vs = parseFloat(l.secundario) || v1, dc = l.secundarioTipo ? l.secundarioTipo==="Vdc" : (vs===v1 && dc1);
+    const ramas = l.alimenta.map(k=>disp.find(d=>d.cfg===k)).filter(d=>d && !tomados.has(d.cfg)).map(d=>{ tomados.add(d.cfg); return rama(d, vs, false); });
+    grupos.push({ v:vs, tipo: dc ? "Vdc" : "Vac", ramas, fuente:"trafo", desde:"", loadId:l.id });
   }
-  const srv = v2 ? ramasSrv : ramasCtl, vs = v2 || v1;
-  const rama = (label, destino, va, min, cfg, extra) => { const a = escalon(1.25*va/(vs*0.9), min); srv.push(Object.assign({ label, destino, breaker:a, va, cfg }, extra||{})); };
-  if(acc.ventilacion) rama("Ventiladores", "VENTILADORES", 200, 6, "ventilacion");
-  if(acc.calefaccion) rama("Calefacción anticondensación", "CALEFACCIÓN", 100, 6, "calefaccion");
-  if(acc.luminaria) rama("Luminaria interna", "LUMINARIA", 40, 4, "luminaria");
-  if(acc.tomacorriente) rama("Tomacorriente", "TOMACORRIENTE", 180, 4, "tomacorriente", { id: acc.diferencial!==false });
+  // el resto, como siempre: un transformador por tensión de control
+  const resto = disp.filter(d=>!tomados.has(d.cfg));
+  const ramasCtl = resto.filter(enV1).map(d=>rama(d, v1, true));
+  const ramasSrv = v2 ? resto.filter(d=>!enV1(d)).map(d=>rama(d, v2, true)) : [];
   const fuente = t.fuenteServicios==="externa" ? "externa" : "trafo";
-  const grupos = [];
-  if(ramasCtl.length || !v2) grupos.push({ v:v1, tipo: dc1 ? "Vdc" : "Vac", ramas:ramasCtl, fuente: !v2 ? fuente : "trafo", desde: t.fuenteServiciosDesde || "" });
+  if(ramasCtl.length || (!v2 && !propios.length)) grupos.push({ v:v1, tipo: dc1 ? "Vdc" : "Vac", ramas:ramasCtl, fuente: !v2 ? fuente : "trafo", desde: t.fuenteServiciosDesde || "" });
   if(v2 && ramasSrv.length) grupos.push({ v:v2, tipo:"Vac", ramas:ramasSrv, fuente, desde: t.fuenteServiciosDesde || "" });
+  /* circuitos disponibles (para elegirlos en el listado de cargas) */
+  grupos.disponibles = disp.map(d=>({ cfg:d.cfg, label:d.label, va:d.va }));
   // nombres comunes a todos los entregables: fusibles después de los de la acometida, transformadores después del de la
   // bobina de mínima tensión (T1), interruptores generales QG2…, circuitos CB2… (CB1 es el de la bobina) y diferenciales ID1…
   const fus = fusiblesAcometida(acc); let nCB = 1, nID = 0;
@@ -232,13 +246,17 @@ export function cargasDe(p, t, _depth=0){
   const d = datos(p);
   const propias = cargasPropias(p, t).slice();
   const grupos = _depth < 4 ? controlInterno(p, t) : [];
+  let antiguo = false;
   grupos.forEach((g, i)=>{
     const ramas = g.ramas.map(r=>({ label:r.label, destino:r.destino, breaker:r.breaker, va:r.va, cfg:r.cfg, cb:r.cb, id:!!r.id, idTag:r.idTag, cable:r.cable, externo:!!r.externo }));
-    const k = i===0 ? propias.findIndex(l=>l.kind==="control") : -1;
+    let k = g.loadId ? propias.findIndex(l=>l.id===g.loadId) : -1;
+    if(k < 0 && !g.loadId && !antiguo){ k = propias.findIndex(l=>l.kind==="control" && !Array.isArray(l.alimenta) && !l.controlBranches); if(k >= 0) antiguo = true; }
     const base = k >= 0 ? propias[k] : { id:`ctl_${t.id}_${g.n}`, kind:"control", tag:"", desc:`Control interno ${g.v} ${g.tipo}`, fu:1, fs:1, cableLength:0, auto:true };
     const l = Object.assign({}, base, { controlBranches: ramas, ctrlV:g.v, ctrlTipo:g.tipo, externa: g.fuente==="externa", externaDesde:g.desde, nombres:g.nombres, grupoCtrl:g.n });
     if(k >= 0) propias[k] = l; else propias.push(l);
   });
+  // otro «Transformador de control» sin grupo (p. ej. repetido): sin derivaciones
+  propias.forEach((l, i)=>{ if(l.kind==="control" && !l.controlBranches) propias[i] = Object.assign({}, l, { controlBranches:[] }); });
   const extra = [];
   if(_depth<4) for(const h of tableros(p).filter(x=>x.desde===t.id && esPotencia(x))){
     const ch = calcularTablero(p, h, _depth+1);
@@ -256,12 +274,13 @@ export function calcularTablero(p, t, _depth=0){
   const circuits = [], mr = marcasProyecto(p);
   loads.forEach((l, i)=>{
     let c;
-    if(l.kind==="general"){
+    if(l.kind==="general" || l.kind==="reserva"){
       // carga general en kW con su FDP (p.ej. circuitos de iluminación / tomacorrientes / reserva), mono o trifásica
       const fp = +l.fp||0.9, kw = +l.power||0, fases = +l.fases===1 ? 1 : 3;
       const kva = kw/fp, amps = fases===1 ? kva*1000/g.voltage : kva*1000/(Math.sqrt(3)*g.voltage);
       c = computeCircuit(Object.assign({}, l, { kind:"feeder", feederAmps: Math.max(0.1, amps) }), i, g);
       if(c){ c.esGeneral = true; c.installedKVA = kva; c.demandKVA = kva*(c.fu)*(c.fs); c.installedCurrent = amps; c.powerKWelec = kw; c.fp = fp; c.fases = fases; c.title = l.desc || "Carga general"; }
+      if(c && l.kind==="reserva"){ c.esReserva = true; c.title = l.desc || "Reserva"; c.conductorMemo = null; c.items = (c.items||[]).filter(it=>!/^Cable|^Conductor|^Bornera/.test(it.comp)); }
     } else if(l.kind==="feeder" && !String(l.id||"").startsWith("auto_")){
       // alimentador ingresado por el usuario: la corriente se calcula con la potencia y la tensión del sistema
       const fp = +l.fp||0.85, kw = (+l.power||0)*(l.powerUnit==="hp" ? 0.746 : 1);

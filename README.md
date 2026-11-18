@@ -12,8 +12,8 @@ Plataforma web para elaborar ingenierías de **Electricidad e Instrumentación &
    - *Tableros*: tipo, cantidad, TAG y alimentación.
    - *Documentos*: se marcan los documentos que se elaborarán.
 2. Menú del proyecto: **Resumen · Datos generales · Documentos** (los formatos del cliente se agregarán en otra etapa). Datos generales guarda los tableros en detalle y los criterios de diseño; lo ingresado al crear el proyecto se cambia con *Editar*.
-3. **Documentos** muestra la *ruta de trabajo*: los documentos ordenados por etapas (1 punto de partida: P&ID y listado de cargas → 2 cálculos y listados base → 3 diagramas → 4 detalle de tableros → 5 especificaciones y cierre), con lo que cada uno requiere (✓ listo / ○ pendiente; si un requisito no se elabora en el proyecto se toman los suyos), los documentos listos en verde (para revisión, aprobados o emitidos); los que no requieren otro dicen «Punto de partida» (`ETAPAS_TRABAJO` y `REQUIERE` en `js/catalog.js`). El **estado** sigue a la revisión vigente: «Emitido para revisión interna / del cliente / aprobación» → Para revisión; «para construcción» o «conforme a obra» → Emitido (`sincronizarEstado`). Ningún documento se bloquea; dentro de cada documento se repite «Usa los datos de… / Al terminarlo puedes elaborar…».
-4. Cada documento se trabaja en su propio entorno: **1. Datos de entrada → 2. Vista previa → 3. Cajetín y descarga** (la descarga se habilita recién en el cajetín). El plano mecánico del tablero tiene además **vista previa 3D**: 1. Datos → 2. Vista previa 2D → 3. Vista previa 3D → 4. Cajetín y descarga (el CAD que se descarga es el 2D). Todo se descarga en el formato estándar de Ingenia, con la paleta de INGENIA. Los documentos **no llevan codificación**: se identifican por su nombre y se descargan como «Proyecto - Documento - Rev X».
+3. **Documentos** muestra la *ruta de trabajo*: los documentos ordenados por etapas (1 punto de partida: P&ID y listado de cargas → 2 cálculos y listados base → 3 diagramas → 4 detalle de tableros → 5 especificaciones y cierre), con lo que cada uno requiere (✓ listo / ○ pendiente; si un requisito no se elabora en el proyecto se toman los suyos), los documentos listos en verde (para revisión, aprobados o emitidos); los que no requieren otro dicen «Punto de partida» (`ETAPAS_TRABAJO` y `REQUIERE` en `js/catalog.js`). Cada etapa es una fila oscura: al tocarla en cualquier parte se pliegan o despliegan sus documentos (se recuerda en el navegador). El **estado** sigue a la revisión vigente que se emite en «Cajetín y descarga» de cada documento: «Emitido para revisión interna / del cliente / aprobación» → Para revisión; «para construcción» o «conforme a obra» → Emitido (`sincronizarEstado`). No hay emisión en lote. Ningún documento se bloquea.
+4. Cada documento se trabaja en su propio entorno: **1. Datos de entrada → 2. Vista previa → 3. Cajetín y descarga** (la descarga se habilita recién en el cajetín). Cada documento se descarga en su **formato nativo** (Excel, Word o DXF) o en **PDF** (`js/pdf.js`, en el navegador y a partir del mismo archivo: planos vectoriales en A1 con los colores de la vista previa; Excel vectorial con anchos, combinaciones, bordes, rellenos, logos y filas de título; Word página por página con su encabezado, pie y «Página N de M»). jsPDF, html2canvas, JSZip y docx-preview están en `vendor/` y se cargan solo al pedir el primer PDF. El plano mecánico del tablero tiene además **vista previa 3D**: 1. Datos → 2. Vista previa 2D → 3. Vista previa 3D → 4. Cajetín y descarga (el CAD que se descarga es el 2D). Todo se descarga en el formato estándar de Ingenia, con la paleta de INGENIA. Los documentos **no llevan codificación**: se identifican por su nombre y se descargan como «Proyecto - Documento - Rev X».
 - **Plan Pro**: los documentos y planos son del plan Profesional (`js/plan.js`). Sin él se muestra la etiqueta «Pro» y, al abrir un documento, la pantalla de actualización; con él, el tipo de archivo (EXCEL, WORD, AUTOCAD). Mientras el pago en línea no esté habilitado, el plan se activa en *Configuración → Mi plan* y queda en el navegador.
 - Word: el índice guarda la página estimada de cada título (paginación calculada al generar, `paginasIndice` en `js/formato-doc.js`), así se ve bien aun en visores que no actualizan campos; Word la recalcula al abrir.
 - Excel: cada fórmula se guarda con su resultado (visible aun en visores que no recalculan); rellenos y encabezados con la paleta de INGENIA y valores numéricos centrados.
@@ -47,7 +47,7 @@ Formatos propios de Ingenia (carátula, tabla de revisiones, estilos y fórmulas
 
 | Entregable | Archivo |
 |---|---|
-| Listado de cargas (una hoja por tablero) | `assets/plantillas/xlsx/lista_cargas.xlsx` |
+| Listado de cargas (una hoja por tablero de fuerza y una por tablero de control, con sus cargas por barra) | `assets/plantillas/xlsx/lista_cargas.xlsx` |
 | Listado de cables | `assets/plantillas/xlsx/lista_cables.xlsx` |
 | Listado de equipos eléctricos | `assets/plantillas/xlsx/equipos_electricos.xlsx` |
 | Hoja de datos de equipos eléctricos / de instrumentos | `assets/plantillas/xlsx/hoja_datos_instrumentos.xlsx` + `hd_tipos.json` |
@@ -109,7 +109,7 @@ Planos generados (DXF R12, ANSI 1252): P&ID esquemático, unifilar y multifilar 
 
 ## Código
 ```
-js/app.js          rutas, menú lateral y pantallas del proyecto (asistente, emisión de revisiones en lote)
+js/app.js          rutas, menú lateral y pantallas del proyecto (asistente, documentos por etapa)
 js/version.js      versión publicada (fecha y hora)
 js/actualizar.js   detección de versión nueva y recarga automática
 js/workspace.js    entorno de cada documento (datos, vista previa, cajetín, plantilla, descarga)
@@ -129,3 +129,9 @@ js/mecanico/       componentes.js (dimensiones) · arreglo.js (motor de arreglo)
 Librerías en `vendor/`: ExcelJS, docxtemplater + PizZip, pako y three.js 0.169 (`vendor/three`, con `OrbitControls` y `CSS2DRenderer` importando `./three.module.min.js`).
 - `vendor/exceljs.min.js` lleva un parche: escribe `<outlinePr>` antes de `<pageSetUpPr>` dentro de `<sheetPr>` (orden del esquema OOXML). Sin él, Excel «reparaba» las hojas de los formatos y las dejaba vacías.
 - `tools/ordenar_docx.py` ordena según el esquema las propiedades de tabla y `updateFields` de las plantillas Word. Los archivos generados se verifican con el validador del Open XML SDK de Microsoft.
+
+## Listado de cargas
+- **Cargas de los tableros de fuerza**: tipos Motor, Carga general (kW), Transformador de control, Alimentador y **Reserva** (solo el interruptor: sin cable ni carga aguas abajo; en el unifilar sale «RESERVA»).
+- **Transformadores de control**: bajo la tabla, cada transformador del control interno de los tableros de fuerza con su **relación** (tensión del sistema / secundario) y los **circuitos que alimenta** (tableros de control, servicios de los tableros de control, ventiladores, calefacción, luminaria, tomacorriente). Su potencia se calcula con esos circuitos (25 % de reserva, potencias comerciales). Al editar uno automático pasa a ser una carga «Transformador de control» del listado (`alimenta`, `secundario`, `secundarioTipo`); lo que no toma ninguno sigue en los transformadores automáticos (`controlInterno` en `js/datos.js`). Un circuito sale de un solo transformador y marcar un servicio que el tablero no tenía lo habilita en sus accesorios.
+- **Cargas de los tableros de control**: por barra (24 Vdc, 120 Vac, 220 Vac) con circuito, potencia, protección, diferencial y cable; es la misma tabla del unifilar del tablero de control y sale en el Excel en una hoja «CONTROL TAG» por tablero (`cargasTableroControl` en `js/docs.js`).
+

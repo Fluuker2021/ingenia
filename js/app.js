@@ -7,7 +7,7 @@ import { parseDXF, drawPreview, parseCTB, boundsOf } from "./dxf.js";
 import { ESQUEMAS, renderEditor, tablasParaExportar } from "./modules/tablas.js";
 import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { screenDocumento, descargarDoc, nextRev } from "./workspace.js";
-import { generable, defDoc, DOCS, docInfo } from "./docs.js";
+import { generable, defDoc, DOCS } from "./docs.js";
 import { renderEditores, campoDiseno, enlazarDiseno } from "./editores.js";
 import { datos, nuevoTablero, TIPOS_TABLERO, ipRecomendado, tableros, instrumentos } from "./datos.js";
 import { VERSION } from "./version.js";
@@ -356,75 +356,51 @@ function tabDiseno(body, p){
 }
 
 /* ---------- documentos, emisión y descargas ---------- */
-const MOTIVOS = ["Emitido para revisión interna","Emitido para revisión del cliente","Emitido para aprobación","Emitido para construcción","Conforme a obra"];
+const PLEG_KEY = "ingenia.etapas";
+function etapasPlegadas(pid){ try{ return new Set((JSON.parse(localStorage.getItem(PLEG_KEY))||{})[pid]||[]); }catch(e){ return new Set(); } }
+function guardarPlegadas(pid, set){ try{ const o = JSON.parse(localStorage.getItem(PLEG_KEY))||{}; o[pid] = [...set]; localStorage.setItem(PLEG_KEY, JSON.stringify(o)); }catch(e){} }
 function tabDocumentos(body, p){
   S.sincronizarDocumentos(p, ENTREGABLES);
   // documentos en el orden de la ruta de trabajo (punto de partida → cálculos → diagramas → detalle → cierre)
   const sel = p.entregables.map(entregable).filter(Boolean).sort((a, b)=>ordenTrabajo(a.id) - ordenTrabajo(b.id));
-  const marcados = new Set(sel.map(e=>e.id));
-  // el estado sigue a la revisión vigente (lo emitido en «Cajetín y descarga» o en «Emitir revisión»)
+  // el estado sigue a la revisión vigente (la que se emite en «Cajetín y descarga» de cada documento)
   if(sel.reduce((n, e)=>n + (sincronizarEstado(p.documentos[e.id]) ? 1 : 0), 0)) S.save();
   const nombre = id => (entregable(id)||{}).nombre || id;
   const chip = id => { const ok = docListo(p.documentos[id]); return `<a class="req-chip ${ok ? "ok" : ""}" href="#/proyecto/${p.id}/doc/${id}" title="${ok ? "Listo" : "Pendiente"}">${ok ? ICON.check : "○"} ${esc(nombre(id))}</a>`; };
   const fila = e=>{ const d = p.documentos[e.id]; const rv = (d.revisiones && d.revisiones.length) ? d.revisiones[d.revisiones.length-1] : { rev:d.rev, fecha:d.fecha, descripcion:d.emitido };
     const req = requisitos(p, e.id);
     return `<tr data-id="${e.id}" class="${docListo(d) ? "doc-listo" : ""}">
-        <td><input type="checkbox" data-chk checked></td>
         <td><div style="font-weight:500">${generable(e.id)?`<a href="#/proyecto/${p.id}/doc/${e.id}">${esc(e.nombre)}</a>`:esc(e.nombre)}</div><div class="muted" style="font-size:12px">${esc(DISCIPLINAS[e.disciplina].corto)} ${etiquetaDoc(e, state)}</div></td>
         <td class="doc-req">${req.length ? req.map(chip).join("") : `<span class="req-inicio">Punto de partida</span>`}</td>
         <td style="white-space:nowrap"><span class="mono">Rev. ${esc(rv.rev||"A")}</span> · <span class="mono">${esc(fmtFecha(rv.fecha))}</span><div class="muted" style="font-size:12px">${esc(String(rv.descripcion||"").replace(/^Emitido para /,"Para ")||"—")}</div></td>
         <td><select data-f="estado" class="sel-estado ${claseEstado(d.estado)}" style="min-width:130px">${ESTADOS_DOC.map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select></td>
         <td style="white-space:nowrap">${accionesDoc(e, p)}</td></tr>`; };
-  const grupos = ETAPAS_TRABAJO.map(et=>({ et, docs: sel.filter(e=>et.docs.includes(e.id)) })).filter(g=>g.docs.length);
+  const grupos = ETAPAS_TRABAJO.map(et=>({ k:"e"+et.n, titulo:et.titulo, docs: sel.filter(e=>et.docs.includes(e.id)) })).filter(g=>g.docs.length);
   const sueltos = sel.filter(e=>!etapaDe(e.id));
+  if(sueltos.length) grupos.push({ k:"otros", titulo:"Otros documentos", docs:sueltos });
+  // etapas plegadas (se recuerdan en este navegador, por proyecto)
+  const plegadas = etapasPlegadas(p.id);
+  const etapa = g => { const pl = plegadas.has(g.k);
+    return `<tr class="etapa-fila ${pl ? "plegada" : ""}" data-etapa="${g.k}" aria-expanded="${!pl}"><td colspan="5"><span class="etapa-chev">${IC.chev}</span><strong>${esc(g.titulo)}</strong><span class="etapa-cnt">${g.docs.length} documento${g.docs.length>1?"s":""}</span></td></tr>${g.docs.map(e=>fila(e).replace("<tr ", `<tr data-g="${g.k}" ${pl ? "hidden " : ""}`)).join("")}`; };
   body.innerHTML = html`
     ${!state.org.nombre ? `<div class="notice accent mb-2">Completa <a href="#/organizacion">tu organización</a> (nombre, logo y firmas) una sola vez: se usa en todas las carátulas y cajetines.</div>` : ""}
-    <div class="row between mb-2">
-      <div class="row"><button class="btn-accent btn-sm" id="emitir">${ICON.check} Emitir revisión</button><span class="muted" id="n-sel" style="font-size:12.5px"></span></div>
-      <div class="row"><button class="btn-sm" id="docs-sel">${ICON.edit} Agregar o quitar documentos</button><button class="btn-sm" id="dl-registro">${ICON.open} Lista de documentos</button></div>
+    <div class="row mb-2" style="justify-content:flex-end">
+      <button class="btn-sm" id="docs-sel">${ICON.edit} Agregar o quitar documentos</button><button class="btn-sm" id="dl-registro">${ICON.open} Lista de documentos</button>
     </div>
-    ${sel.length ? `<div class="table-wrap"><table class="docs-table"><thead><tr><th><input type="checkbox" id="chk-all" checked title="Marcar todos"><span class="m-only">Marcar todos</span></th><th>Documento</th><th>Requiere</th><th>Revisión vigente</th><th>Estado</th><th></th></tr></thead><tbody>
-      ${grupos.map(g=>`<tr class="etapa-fila"><td colspan="6"><span class="etapa-n">${g.et.n}</span><strong>${esc(g.et.titulo)}</strong></td></tr>${g.docs.map(fila).join("")}`).join("")}
-      ${sueltos.length ? `<tr class="etapa-fila"><td colspan="6"><strong>Otros documentos</strong></td></tr>${sueltos.map(fila).join("")}` : ""}
+    ${sel.length ? `<div class="table-wrap"><table class="docs-table"><thead><tr><th>Documento</th><th>Requiere</th><th>Revisión vigente</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${grupos.map(etapa).join("")}
       </tbody></table></div>` : `<div class="empty"><p>No hay documentos seleccionados.</p><button class="btn-accent" id="docs-sel2">Seleccionar documentos</button></div>`}`;
-  const cuenta = ()=>{ const n = $("#n-sel"); if(n) n.textContent = `${marcados.size} de ${sel.length} marcados`; const b = $("#emitir"); if(b) b.disabled = !marcados.size; };
-  $$("[data-chk]", body).forEach(c=>c.onchange = ()=>{ const id = c.closest("tr").dataset.id; c.checked ? marcados.add(id) : marcados.delete(id); const all = $("#chk-all"); if(all) all.checked = marcados.size===sel.length; cuenta(); });
-  const all = $("#chk-all"); if(all) all.onchange = ()=>{ $$("[data-chk]", body).forEach(c=>{ c.checked = all.checked; const id = c.closest("tr").dataset.id; all.checked ? marcados.add(id) : marcados.delete(id); }); cuenta(); };
-  cuenta();
+  // toda la fila de la etapa pliega o despliega sus documentos
+  $$("tr[data-etapa]", body).forEach(tr=>tr.onclick = ()=>{
+    const k = tr.dataset.etapa, pl = !plegadas.has(k);
+    pl ? plegadas.add(k) : plegadas.delete(k); guardarPlegadas(p.id, plegadas);
+    tr.classList.toggle("plegada", pl); tr.setAttribute("aria-expanded", String(!pl));
+    $$(`tr[data-g="${k}"]`, body).forEach(x=>{ x.hidden = pl; });
+  });
   // al cambiar el estado se actualizan los requisitos listos
   $$("tr[data-id] [data-f]", body).forEach(el=>el.onchange = ()=>{ const d = p.documentos[el.closest("tr").dataset.id]; d[el.dataset.f] = el.value; S.save(); tabDocumentos(body, p); });
-  $("#emitir").onclick = ()=>modalEmitir(p, [...marcados], ()=>tabDocumentos(body, p));
   $$("#docs-sel,#docs-sel2").forEach(b=>b.onclick = ()=>modalProyecto(p, 3));
   $("#dl-registro").onclick = ()=>{ location.hash = `#/proyecto/${p.id}/doc/gen-registro/vista`; };
-}
-/* emisión en lote: una sola vez la revisión, fecha, motivo y firmas para todos los documentos marcados */
-function modalEmitir(p, ids, onDone){
-  const o = state.org;
-  modal({ title:`Emitir revisión · ${ids.length} documento${ids.length>1?"s":""}`, width:720, body:`
-    <div class="grid-3">
-      <div class="field"><label>Revisión</label><input id="em-rev" class="mono" type="text" placeholder="Automática"><span class="hint">Vacío: A→B→C… / 0→1 en cada documento.</span></div>
-      <div class="field"><label>Fecha</label><input id="em-fecha" type="date" value="${hoy()}"></div>
-      <div class="field"><label>Emitido para</label><select id="em-mot">${MOTIVOS.map(m=>`<option>${m}</option>`).join("")}</select></div>
-      <div class="field"><label>Elaboró</label><input id="em-el" type="text" value="${esc(o.elaboraPor||"")}"></div>
-      <div class="field"><label>Revisó</label><input id="em-re" type="text" value="${esc(o.revisaPor||"")}"></div>
-      <div class="field"><label>Aprobó</label><input id="em-ap" type="text" value="${esc(o.apruebaPor||"")}"></div>
-    </div>`,
-    footer:`<button data-close>Cancelar</button><button class="btn-accent" id="em-ok">${ICON.check} Emitir</button>`,
-    onMount:(root, close)=>{ $("#em-ok", root).onclick = ()=>{
-      const rev = $("#em-rev",root).value.trim().toUpperCase(), fecha = $("#em-fecha",root).value || hoy(), descripcion = $("#em-mot",root).value;
-      const firmas = { elaboro:$("#em-el",root).value.trim(), reviso:$("#em-re",root).value.trim(), aprobo:$("#em-ap",root).value.trim() };
-      for(const id of ids){
-        const d = p.documentos[id]; if(!d) continue; docInfo(p, id);
-        const last = d.revisiones[d.revisiones.length-1];
-        const fila = Object.assign({ rev: rev || last.rev, fecha, descripcion }, firmas);
-        // la revisión inicial (A, aún no emitida) se completa en lugar de crear otra
-        if((!d.emitida && d.revisiones.length===1 && !rev) || (rev && rev===String(last.rev).toUpperCase())) Object.assign(last, fila);
-        else { if(!rev) fila.rev = nextRev(last.rev); d.revisiones.push(fila); }
-        d.emitida = true; d.estadoDe = null; sincronizarEstado(d);
-        docInfo(p, id);
-      }
-      S.save(); close(); toast(`Revisión emitida en ${ids.length} documento(s)`); onDone();
-    }; } });
 }
 /* la descarga se hace dentro de cada documento, en «Cajetín y descarga» */
 function accionesDoc(e, p){

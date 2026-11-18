@@ -6,7 +6,7 @@ import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/c
 import { renderEditor } from "./modules/tablas.js";
 import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl, dimensionarCircuito, instrumentos, sistemaTag, uidc, APPLICATIONS,
   TIPOS_TABLERO, nuevoTablero, tableros, tablerosPotencia, tablerosControl, tableroPorId, esControl, esFuerza, tf, tc, desdeTxt, aplicarTipicos, REGIMENES,
-  calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, calcularTodos } from "./datos.js";
+  calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, calcularTodos, controlInterno } from "./datos.js";
 import { camposHD, camposHDEq } from "./docs.js";
 import { filosofiaDe, filosofiaAuto, guardarTabla, guardarTexto, guardarAreas, filosofiaOps, arquitecturaSVG, TEXTOS_FIL, TIPOS_ALARMA, TIPOS_INTERLOCK } from "./modules/filosofia.js";
 import { EQUIPOS_PROCESO, recomendarInstrumentos } from "./modules/proceso.js";
@@ -18,28 +18,15 @@ import { arregloControl } from "./mecanico/arreglo-control.js";
 import { FAMILIAS, LISTA_FAMILIAS, familiaPorTexto, modeloFamilia, modulosFamilia, infoModulo } from "./control/plc-modulos.js";
 
 export const TITULOS = {
-  criterios:"Criterios de diseño", cargas:"Cargas por tablero", cargasControl:"Cargas de 120 Vac de los tableros de control",
+  criterios:"Criterios de diseño", cargas:"Cargas de los tableros de fuerza", cargasControl:"Cargas de los tableros de control",
   tableros:"Tableros del proyecto", marcas:"Marcas de los equipos", instrumentos:"Listado de instrumentos", io:"Lista de entradas y salidas", tablerocontrol:"Configuración de los tableros de control", circuitos:"Circuitos de los tableros de control",
   memoria:"Criterios de la memoria de cálculo", hd:"Datos por instrumento", hdEq:"Datos por tablero", notas:"Notas del documento", cables:"Cables por carga",
   equiposCfg:"Alcance del listado", proceso:"Proceso y recomendación de instrumentos", filosofia:"Filosofía de control", arreglo:"Planta y ubicación de equipos",
   mecanico:"Arreglo mecánico del tablero",
 };
-export const AYUDA = {
-  criterios:"Valores típicos que usan los cálculos y las memorias. Cámbialos solo si el cliente exige otros.",
-  cargas:"Una fila por carga. Los valores en cursiva son típicos: edítalos solo si tienes el dato de placa.",
-  instrumentos:"Alimenta la lista I/O, los lazos, la arquitectura y las hojas de datos.",
-  io:"Se genera desde instrumentos y cargas. Slot, canal y bornes se asignan solos.",
-  hd:"Valores propuestos desde tu hoja de referencia. Lo que escribas tiene prioridad.",
-  hdEq:"Valores del cálculo del tablero y del sitio. Lo que escribas tiene prioridad.",
-  cables:"Tipo y sección salen del listado de cargas. Completa TAG, longitud y canalización.",
-  tableros:"Las cargas e instrumentos se asignan a estos tableros.",
-  marcas:"Confirma o cambia la marca de cada familia: Ingenia elige los modelos por sus características eléctricas y los actualiza en el unifilar, el multifilar, el mecánico y los listados.",
-  arreglo:"Carga la planta del cliente (DXF) e ingresa X, Y de cada equipo en las mismas unidades del plano.",
-  mecanico:"Ingenia ordena los equipos con criterio de diseño y elige el gabinete con las dimensiones reales de cada componente. Deja en «Automático» lo que no quieras fijar; también puedes pedirle los cambios a Copito.",
-};
 
 export function renderEditores(cont, p, claves, docId, onChange){
-  cont.innerHTML = claves.map(k=>`<section class="card ed-card" data-ed="${k}"><div class="card-head"><div><h2>${esc(TITULOS[k]||k)}</h2>${AYUDA[k]?`<div class="muted" style="font-size:12.5px;margin-top:3px">${esc(AYUDA[k])}</div>`:""}</div></div><div class="card-body" id="ed-${k}"></div></section>`).join("");
+  cont.innerHTML = claves.map(k=>`<section class="card ed-card" data-ed="${k}"><div class="card-head"><h2>${esc(TITULOS[k]||k)}</h2></div><div class="card-body" id="ed-${k}"></div></section>`).join("");
   const cambio = ()=>{ save(); if(onChange) onChange(); };
   for(const k of claves){ const el = $("#ed-"+k, cont); const fn = ED[k]; if(fn) fn(el, p, cambio, docId); }
 }
@@ -103,6 +90,7 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
         // valores centrados (la descripción a la izquierda) y anchos que crecen con el texto más largo de la columna
         const cls = (clase ? (clase(f, c.k)||"") : "") + (c.izq ? " izq" : "");
         if(c.calc) return `<td class="mono muted${c.izq?"":" centro"}">${esc(c.calc(f,i))}</td>`;
+        const ro = c.ro ? c.ro(f) : null; if(ro!=null) return `<td class="mono muted centro" title="Calculado">${esc(ro)}</td>`;
         const ops = typeof c.op==="function" ? c.op(f) : c.op;
         if(ops){ const largo = anchoSel(c);
           return `<td><select data-c="${c.k}" class="${cls}" style="width:calc(${largo}ch + 34px)" ${ops.length===1?"disabled":""}>${ops.map(o=>{ const [v,l] = Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(f[c.k]??"")===String(v)?"selected":""}>${esc(l)}</option>`; }).join("")}</select></td>`; }
@@ -338,20 +326,80 @@ const ED = {
     const nota = `<div class="ws-note mb-2">Sistema: <strong class="mono">${esc(v.tension)} Vac · 3F · ${esc(v.frecuencia)} Hz</strong> · control <strong class="mono">${esc(tensionControlTxt(v))}</strong> <a href="#/proyecto/${p.id}/editar/1" style="font-size:12px">cambiar</a></div>`;
     const wrap = document.createElement("div"); el.innerHTML = nota; el.appendChild(wrap);
     wrap._pie = pie => {
-      pie.innerHTML = `<div class="stat-row mt-2">${pot.map(t=>{ const c = calcularTablero(p, t); if(!c.circuits.length) return ""; return `<div class="stat"><div class="k">${esc(t.tag)} — PI / MD / I<sub>MD</sub></div><div class="v" style="font-size:15px">${r2(c.installedKVA,1)} kVA · ${r2(c.totalKVA,1)} kVA · ${r2(c.demandCurrent,1)} A</div></div>`; }).join("")}</div>`;
+      pie.innerHTML = `<div class="stat-row mt-2">${pot.map(t=>{ const c = calcularTablero(p, t); if(!c.circuits.length) return ""; return `<div class="stat"><div class="k">${esc(t.tag)} — PI / MD / I<sub>MD</sub></div><div class="v" style="font-size:15px">${r2(c.installedKVA,1)} kVA · ${r2(c.totalKVA,1)} kVA · ${r2(c.demandCurrent,1)} A</div></div>`; }).join("")}</div>` + transformadores();
+      enlazarTransformadores(pie);
     };
+    /* transformadores de control de los tableros de fuerza: relación y circuitos que alimenta cada salida */
+    const SERVICIOS = [["ventilacion","Ventiladores"],["calefaccion","Calefacción"],["luminaria","Luminaria"],["tomacorriente","Tomacorriente"]];
+    const v1 = parseFloat(v.tensionControl)||120, t1 = v.tensionControlTipo==="Vdc" ? "Vdc" : "Vac", v2 = parseFloat(v.tensionControl2);
+    const SECUNDARIOS = [...new Set([`${v1}|${t1}`, v2>0 ? `${v2}|Vac` : "", "120|Vac", "220|Vac", "24|Vdc"].filter(Boolean))];
+    const trafosDe = t => {
+      const calc = calcularTablero(p, t), grupos = controlInterno(p, t), disp = grupos.disponibles || [];
+      return { calc, disp, lista: calc.circuits.filter(c=>c.kind==="control").map(c=>({ c, l:c.load, propio: d.cargas.find(x=>x.id===c.load.id), cfgs:(c.load.controlBranches||[]).map(b=>b.cfg).filter(Boolean) })) };
+    };
+    function transformadores(){
+      const bloques = pot.filter(t=>t.tipo==="fuerza" || t.tipo==="fuerzacontrol").map(t=>{
+        const { disp, lista } = trafosDe(t);
+        if(!lista.length) return "";
+        const nombre = k => (disp.find(x=>x.cfg===k)||{}).label || (SERVICIOS.find(x=>x[0]===k)||[,k])[1];
+        const opciones = [...disp.map(x=>x.cfg), ...SERVICIOS.map(x=>x[0]).filter(k=>!disp.some(x=>x.cfg===k))];
+        return lista.map(({ c, l, propio, cfgs }, i)=>{
+          const tr = (c.items||[]).find(it=>/^Transformador|^Fuente de alimentación/.test(it.comp)) || {};
+          const sec = `${c.ctrlV}|${c.ctrlTipo}`;
+          return `<div class="trafo-card" data-t="${t.id}" data-i="${i}">
+            <div class="trafo-cab"><strong>${esc(t.tag)} · ${esc(tr.devtag || (l.nombres||{}).t || "Control")}</strong> <span class="muted">${esc(l.desc || "Transformador de control")}${propio ? "" : " (automático)"}</span><span class="trafo-kva mono">${esc(c.externa ? "Segunda fuente externa" : (tr.val||"").replace(/\s*\(.*$/, ""))}</span></div>
+            <div class="trafo-cuerpo"><span class="muted">Relación</span><span class="mono">${esc(String(parseFloat(v.tension)||""))} Vac /</span>
+              <select data-sec>${SECUNDARIOS.map(o=>{ const [n, ti] = o.split("|"); return `<option value="${o}" ${o===sec?"selected":""}>${n} ${ti}</option>`; }).join("")}</select>
+              <span class="muted" style="margin-left:14px">Alimenta</span>
+              <span class="trafo-circ">${opciones.map(k=>`<label class="checkbox"><input type="checkbox" data-al="${esc(k)}" ${cfgs.includes(k)?"checked":""}> ${esc(nombre(k))}</label>`).join("")}</span></div>
+          </div>`;
+        }).join("");
+      }).join("");
+      return bloques ? `<h3 class="ed-sub mt-2">Transformadores de control</h3>${bloques}` : "";
+    }
+    function enlazarTransformadores(pie){
+      $$(".trafo-card", pie).forEach(card=>{
+        const t = pot.find(x=>x.id===card.dataset.t), { lista } = trafosDe(t), it = lista[+card.dataset.i];
+        // al editar un transformador automático pasa a ser una carga «Transformador de control» del listado
+        const propio = ()=>{
+          if(it.propio){ if(!Array.isArray(it.propio.alimenta)) it.propio.alimenta = it.cfgs.slice(); return it.propio; }
+          const l = Object.assign(nuevaCarga("control", t.id), { desc:`Transformador de control ${it.c.ctrlV} ${it.c.ctrlTipo}`, power:0, powerUnit:"kw", application:"otro", alimenta: it.cfgs.slice(), secundario: it.c.ctrlV, secundarioTipo: it.c.ctrlTipo });
+          d.cargas.push(l); return l;
+        };
+        $("[data-sec]", card).onchange = e=>{ const l = propio(); const [n, ti] = e.target.value.split("|"); l.secundario = +n; l.secundarioTipo = ti; cambio(); wrap._render(); };
+        $$("[data-al]", card).forEach(ch=>ch.onchange = ()=>{
+          const l = propio(), k = ch.dataset.al;
+          if(ch.checked){
+            // un circuito sale de un solo transformador; los servicios que el tablero no tenía se habilitan
+            for(const x of d.cargas) if(x!==l && x.kind==="control" && Array.isArray(x.alimenta)) x.alimenta = x.alimenta.filter(y=>y!==k);
+            if(!l.alimenta.includes(k)) l.alimenta.push(k);
+            if(SERVICIOS.some(x=>x[0]===k)){
+              if(k==="ventilacion" || k==="calefaccion"){ const cfg = cfgMecanico(p, t); cfg[k] = k==="ventilacion" ? "forzada" : "si"; }
+              else { t.accesorios = t.accesorios || {}; t.accesorios[k] = true; }
+            }
+          } else l.alimenta = l.alimenta.filter(y=>y!==k);
+          cambio(); wrap._render();
+        });
+      });
+    }
     tablaEditable(wrap, { filas: d.cargas, onChange: cambio, vacio:"Sin cargas. Agrega la primera fila.",
       nuevo: ()=>nuevaCarga("motor", def.id),
       extraBotones: `<button class="btn-sm" data-tip title="Vuelve a proponer FDP, EFF, FU y FS típicos en todas las cargas">Restablecer valores típicos</button>`,
-      onCell: (f, k)=>{ if(["fp","effPct","fu","fs"].includes(k)){ f.man = f.man||{}; f.man[k] = true; } if(k==="kind" && f.kind==="general"){ f.powerUnit = "kw"; if(!(f.man||{}).fp) f.fp = 0.9; } if(["power","powerUnit","regimen","kind"].includes(k)) aplicarTipicos(f);
+      onCell: (f, k)=>{ if(["fp","effPct","fu","fs"].includes(k)){ f.man = f.man||{}; f.man[k] = true; } if(k==="kind" && (f.kind==="general" || f.kind==="reserva")){ f.powerUnit = "kw"; if(!(f.man||{}).fp) f.fp = 0.9; }
+        if(k==="kind" && f.kind==="reserva" && !f.desc) f.desc = "Reserva";
+        // transformador de control: toma la tensión de control y los circuitos del primer transformador automático del tablero
+        if(k==="kind" && f.kind==="control" && !Array.isArray(f.alimenta)){ const t = pot.find(x=>x.id===f.tablero) || def, g = controlInterno(p, t).find(x=>!x.loadId);
+          f.alimenta = g ? g.ramas.map(r=>r.cfg) : []; f.secundario = g ? g.v : parseFloat(v.tensionControl)||120; f.secundarioTipo = g ? g.tipo : (v.tensionControlTipo==="Vdc" ? "Vdc" : "Vac"); if(!f.desc) f.desc = "Transformador de control"; }
+        if(["power","powerUnit","regimen","kind"].includes(k)) aplicarTipicos(f);
         if(k==="kind" || k==="starter") normalizarArranque(f); },
       clase: (f, k)=>["fp","effPct","fu","fs"].includes(k) && !(f.man||{})[k] ? "tipico" : "",
       columnas:[
         { k:"tablero", t:"Tablero", op: opsT, w:100 },
         { k:"tag", t:"TAG", w:110 }, { k:"desc", t:"Nombre de la carga", w:180, izq:true },
-        { k:"kind", t:"Tipo", op:[["motor","Motor"],["general","Carga general (kW)"],["control","Transformador de control"],["feeder","Alimentador"]], w:120 },
-        { k:"application", t:"Aplicación", op: apps, w:200 },
-        { k:"power", t:"Potencia", n:true, w:70 }, { k:"powerUnit", t:"Unidad", op:[["hp","HP"],["kw","kW"]], w:70 },
+        { k:"kind", t:"Tipo", op:[["motor","Motor"],["general","Carga general (kW)"],["control","Transformador de control"],["feeder","Alimentador"],["reserva","Reserva"]], w:120 },
+        { k:"application", t:"Aplicación", op: f=>f.kind==="control" || f.kind==="reserva" ? [["na","N.A."]] : apps, w:200 },
+        // la potencia del transformador de control resulta de los circuitos que alimenta
+        { k:"power", t:"Potencia", n:true, w:70, ro: f=>f.kind==="control" ? kvaTrafo(f) : null }, { k:"powerUnit", t:"Unidad", op: f=>f.kind==="control" ? [["kva","kVA"]] : [["hp","HP"],["kw","kW"]], w:70 },
         // arranque y filtros solo para motores (y los filtros solo con variador); en las demás cargas: N.A.
         { k:"starter", t:"Arranque", op: f=>f.kind==="motor" ? [["dol","Directo"],["vfd","Variador"],["ss","Arrancador suave"]] : [["na","N.A."]], w:130 },
         { k:"filtroVdf", t:"Filtros del variador", op: f=>f.kind==="motor" && f.starter==="vfd" ? [["ninguno","Sin filtro"],["linea","Solo de línea"],["carga","Solo de carga"],["ambos","Línea y carga"]] : [["na","N.A."]], w:130 },
@@ -360,6 +408,7 @@ const ED = {
         { k:"fases", t:"Fases", op:[["3","3F"],["1","1F"]], w:60 },
         { calc:(f)=>{ const c = corrienteDe(f); return c ? r2(c,2) : "—"; }, k:"_in", t:"In (A) calculada" },
       ] });
+    function kvaTrafo(f){ for(const t of pot){ const c = calcularTablero(p, t).circuits.find(x=>x.load && x.load.id===f.id); if(c) return r2(c.installedKVA, 2); } return "—"; }
     function corrienteDe(f){ for(const t of pot){ const c = calcularTablero(p, t).circuits.find(x=>x.load && x.load.id===f.id); if(c) return c.installedCurrent; } return null; }
     const tip = $("[data-tip]", wrap); if(tip) tip.onclick = ()=>{ d.cargas.forEach(l=>{ l.man = {}; aplicarTipicos(l); }); cambio(); wrap._render(); toast("Valores típicos aplicados"); };
   },
@@ -369,7 +418,7 @@ const ED = {
       const filas = cablesFuerza(p);
       el.innerHTML = `<h3 class="ed-sub">Calidad del cable requerida por el cliente final</h3>
         <div class="grid-2">${Object.entries(CLASES_CABLE).map(([k,c])=>`<label class="deliv ${cfg.clase===k?"selected":""}" style="cursor:pointer;margin:0"><input type="radio" name="clase" value="${k}" ${cfg.clase===k?"checked":""}><div><div class="title">${esc(c.nombre)}</div><div class="desc">${esc(c.uso)}</div><div class="muted" style="font-size:11.5px">${esc(c.norma)} · ${esc(c.ref)}</div></div></label>`).join("")}</div>
-        <div class="grid-3 mt-2">${campo("Canalización por defecto", sel("canalizacion", cfg.canalizacion, CANALIZACIONES))}${campo("Reserva de longitud (%)", inp("reserva", cfg.reserva, "number"), "Se suma a la longitud para compras")}</div>
+        <div class="grid-3 mt-2">${campo("Canalización por defecto", sel("canalizacion", cfg.canalizacion, CANALIZACIONES))}${campo("Reserva de longitud (%)", inp("reserva", cfg.reserva, "number"))}</div>
         <h3 class="ed-sub mt-2">Cables</h3>
         <div class="table-wrap"><table class="ed-table"><thead><tr><th>Desde</th><th>Hasta</th><th>Servicio</th><th>TAG del cable</th><th>Longitud (m)</th><th>Canalización</th><th>Calidad</th><th>Sección (mm²)</th><th>AWG (NEC)</th><th>ΔV (%)</th></tr></thead><tbody>
         ${filas.map((f,i)=>`<tr data-i="${i}"><td class="mono">${esc(f.desde)}</td><td class="mono">${esc(f.hasta)}</td><td>${esc(f.servicio)}</td>
@@ -406,7 +455,7 @@ const ED = {
     $("[data-regen]", el).onclick = ()=>{ if(auto) d.circuitosCtl[t.id] = derivarCircuitosControl(p, t); else delete d.circuitosCtl[t.id]; cambio(); ED.circuitos(el, p, cambio, docId); };
     const box = $("[data-t]", el);
     if(auto){
-      box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Barra</th><th>Circuito</th><th>Descripción</th><th class="num">Potencia (W)</th><th class="num">Protección (A)</th><th>Cable</th></tr></thead><tbody>${filas.map(c=>`<tr><td class="centro">${esc(c.barra)}</td><td class="mono centro">${esc(c.circuito)}</td><td>${esc(c.descripcion)}${c.diferencial?' <span class="chip">ID 30 mA</span>':""}</td><td class="num centro">${c.potencia??""}</td><td class="num centro">${c.proteccion}</td><td class="mono centro">${esc(c.cable)}</td></tr>`).join("")}</tbody></table></div><p class="muted mt-1" style="font-size:12px">Potencias de 120 Vac estimadas (se usan en el listado de cargas estabilizadas); edítalas con los datos del fabricante.</p>`;
+      box.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Barra</th><th>Circuito</th><th>Descripción</th><th class="num">Potencia (W)</th><th class="num">Protección (A)</th><th>ID 30 mA</th><th>Cable</th></tr></thead><tbody>${filas.map(c=>`<tr><td class="centro">${esc(c.barra)}</td><td class="mono centro">${esc(c.circuito)}</td><td>${esc(c.descripcion)}</td><td class="num centro">${c.potencia??""}</td><td class="num centro">${c.proteccion}</td><td class="centro">${c.diferencial ? "Sí" : "—"}</td><td class="mono centro">${esc(c.cable)}</td></tr>`).join("")}</tbody></table></div>`;
       return;
     }
     tablaEditable(box, { filas, onChange: cambio, nuevo: ()=>({ barra:"120 Vac", circuito:"C"+(filas.length+1), descripcion:"", proteccion:6, cable:"2C#14AWG+14AWG(T)", potencia:0 }),

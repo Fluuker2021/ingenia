@@ -64,8 +64,9 @@ function columnas(calc){
       const q = item(c, /^Guardamotor|^ITM/), k = item(c, /^Contactor/);
       return { tipo:"col_mcp", vars: Object.assign(motor, { q:q.devtag, qv:q.val, k:k.devtag, km:sinMarca(k.model), kv:k.val }) };
     }
-    // alimentador o carga general: interruptor, cable y la carga
+    // alimentador o carga general: interruptor, cable y la carga; reserva: solo el interruptor
     const q = item(c, /^ITM/);
+    if(c.esReserva) return { tipo:"col_vfd", mcb: esMcb(q), omitir:["fusible","filtro","vfd","motor"], vars:{ circ:c.tag, q:q.devtag, qv:q.val, cable:"", desc:"RESERVA", tag:"" } };
     return { tipo:"col_vfd", mcb: esMcb(q), omitir:["fusible","filtro","vfd","motor"], vars:{ circ:c.tag, q:q.devtag, qv:q.val, cable, desc, tag: tag ? `${tag} · ${r2(c.installedCurrent,1)} A` : `${r2(c.installedCurrent,1)} A` } };
   });
 }

@@ -72,7 +72,7 @@ export function tablasCargas(p, t){
     const l = c.load;
     if(c.kind==="motor") return { tag:l.tag||("M"+c.tag), descripcion:(l.desc||c.descLabel||""), hp: l.powerUnit==="hp" ? +l.power : "-", kw: r2(c.powerKWelec,3), fp:+c.fp, eff: r2(c.effPct/100,3), fu:c.fu, fs:c.fs, kv: g.voltage/1000, fases:3, _in: r2(c.installedCurrent,2), _si: r2(c.installedKVA,2), _md: r2(c.installedKVA*c.fu*c.fs,2) };
     if(c.kind==="control") return { tag:l.tag||"-", descripcion:l.desc||"Circuito de control", hp:"-", kw: r2(c.installedKVA*0.88,3), fp:0.88, eff:1, fu:c.fu, fs:c.fs, kv: g.voltage/1000, fases:1, _in: r2(c.installedKVA*1000/g.voltage,2), _si: r2(c.installedKVA,3), _md: r2(c.installedKVA*c.fu*c.fs,3) };
-    if(c.esGeneral) return { tag:l.tag||"-", descripcion:l.desc||"Carga general", hp:"-", kw: r2(c.powerKWelec,3), fp:c.fp, eff:1, fu:c.fu, fs:c.fs, kv: g.voltage/1000, fases:c.fases, _in: r2(c.installedCurrent,2), _si: r2(c.installedKVA,3), _md: r2(c.installedKVA*c.fu*c.fs,3) };
+    if(c.esGeneral) return { tag:l.tag||"-", descripcion:l.desc||(c.esReserva ? "Reserva" : "Carga general"), hp:"-", kw: r2(c.powerKWelec,3), fp:c.fp, eff:1, fu:c.fu, fs:c.fs, kv: g.voltage/1000, fases:c.fases, _in: r2(c.installedCurrent,2), _si: r2(c.installedKVA,3), _md: r2(c.installedKVA*c.fu*c.fs,3) };
     return { tag:l.tag||"-", descripcion:l.desc||"Alimentador", hp:"-", kw: r2(c.installedKVA*0.85,2), fp:0.85, eff:1, fu:c.fu, fs:c.fs, kv:g.voltage/1000, fases:3, _in: r2(c.installedCurrent,2), _si: r2(c.installedKVA,2), _md: r2(c.installedKVA*c.fu*c.fs,2) };
   });
   // cargas estabilizadas de 120 Vac: tableros de control alimentados desde este tablero (o el principal si es el primero)
@@ -86,6 +86,18 @@ export function tablasCargas(p, t){
   }
   const cc = [...grupos.values()].map((x,i)=>({ n:i+1, descripcion:x.descripcion, fp:x.fp, fu:1, fs:1, kw: r2(x.w/1000,3) }));
   return { calc, cargas, cargas_control: cc };
+}
+
+/* cargas de un tablero de control agrupadas por barra (24 Vdc, 120 Vac, 220 Vac), con su circuito, protección y cable */
+export function cargasTableroControl(p, t){
+  const circs = circuitosControl(p, t), filas = []; let n = 0;
+  const orden = b => ["24 Vdc","120 Vac","220 Vac"].indexOf(b) + 1 || 9;
+  for(const barra of [...new Set(circs.map(c=>c.barra))].sort((a, b)=>orden(a) - orden(b))){
+    const cs = circs.filter(c=>c.barra===barra);
+    filas.push({ __var:"seccion", texto:`BARRA ${barra} — ${cs.reduce((a, c)=>a + (+c.potencia||0), 0)} W` });
+    for(const c of cs) filas.push({ n: ++n, barra, circuito:c.circuito, descripcion:c.descripcion, potencia: +c.potencia || "", proteccion: c.proteccion, id: c.diferencial ? "Sí" : "-", cable: c.cable });
+  }
+  return filas;
 }
 
 export function tablasIO(p){
@@ -288,7 +300,10 @@ export async function payloadExcel(p, id, org){
       return { nombre: lista.length>1 ? nombreHoja("LISTADO "+t.tag) : "LISTADO", scal:{ tablero_titulo: `${sistemaNombre(p) ? sistemaNombre(p)+" - " : ""}${t.nombre||"Tablero"} ${t.tag||""}`.toUpperCase() }, tablas:{ cargas: tb.cargas, cargas_control: tb.cargas_control, notas } };
     });
     Object.assign(scal, { tension_control: tensionEstabilizada(v), tensiones: v.tensionControlTipo==="Vdc" ? `${v.tension} Vac / ${v.tensionControl} Vdc` : `${v.tension}/${v.tensionControl} Vac`, kv: (+v.tension||460)/1000 });
-    return { scal, tablas:{}, clonar:{ hoja:"LISTADO", instancias } };
+    // tableros de control: sus cargas por barra, como en la tabla de circuitos (alimentan el unifilar del tablero de control)
+    const control = tablerosControl(p).map(t=>({ t, filas: cargasTableroControl(p, t) })).filter(x=>x.filas.length).map(({ t, filas })=>({
+      nombre: nombreHoja("CONTROL "+t.tag), scal:{ tablero_titulo: `${sistemaNombre(p) ? sistemaNombre(p)+" - " : ""}${t.nombre||"Tablero de control"} ${t.tag||""}`.toUpperCase() }, tablas:{ circuitos: filas } }));
+    return { scal, tablas:{}, clonar:[{ hoja:"LISTADO", instancias }, { hoja:"CONTROL", instancias: control, quitarSiVacia:true }] };
   }
   if(base==="ele-cables"){
     const filas = []; let item = 0, last = null;

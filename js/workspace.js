@@ -1,17 +1,17 @@
 /* Ingenia — entorno dedicado de un entregable: solo los datos que usa ese documento, su vista previa,
    el cajetín / historial de revisiones y la plantilla con la que se descarga (por defecto o del cliente). */
-import { entregable, DISCIPLINAS, TIPOS, ESTADOS, requisitos, habilita, docListo, ESTADOS_DOC, sincronizarEstado, claseEstado } from "./catalog.js";
+import { entregable, DISCIPLINAS, TIPOS, ESTADOS, sincronizarEstado } from "./catalog.js";
 import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, dropzone, leerComoArrayBuffer, kb, fmtFecha, spinner } from "./ui.js";
 import * as X from "./export.js";
 import { rellenarExcel, marcadoresExcel } from "./xlsx-engine.js";
 import { formatoWord } from "./formato-doc.js";
-import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, dxfBytes, manifiesto, tablasEstandar, refDoc, tituloDoc, descargable } from "./docs.js";
+import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, cargasTableroControl, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, dxfBytes, manifiesto, tablasEstandar, refDoc, tituloDoc, descargable } from "./docs.js";
 import { renderEditores } from "./editores.js";
 import { esPro, pantallaPro } from "./plan.js";
-import { datos, calcularTablero, calcularTodos, equiposElectricos, instrumentos, r2, sistemaTag, tableros, tf, cablesFuerza, CANALIZACIONES } from "./datos.js";
+import { datos, calcularTablero, calcularTodos, equiposElectricos, instrumentos, r2, tableros, tablerosControl, tf, cablesFuerza, CANALIZACIONES } from "./datos.js";
 import { aciCercano } from "./cad/formato.js";
-import { parseDXF, boundsOf } from "./dxf.js";
+import { parseDXF, boundsOf, colorCapa } from "./dxf.js";
 import { seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { ENTREGABLES } from "./catalog.js";
 import { montarBarraCopito } from "./copito-docs.js";
@@ -37,23 +37,13 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos", href:"#/proyectos"},{label:p.nombre, href:`#/proyecto/${p.id}/documentos`},{label:e.nombre}], title:e.nombre,
     sub:`<span class="mono">Rev. ${esc(di.rev||"A")}</span><span>${esc(DISCIPLINAS[e.disciplina].nombre)} · ${esc(FMT[def.formato])}</span>`,
     actions:`<a class="btn" href="#/proyecto/${p.id}/documentos">${ICON.back} Documentos</a>` }) +
-    `<div class="tabs">${tabs.map(t=>`<button data-wtab="${t[0]}" class="${t[0]===tab?"active":""}">${t[1]}</button>`).join("")}</div>${rutaDoc(p, id)}<div id="ws-body"></div>`;
+    `<div class="tabs">${tabs.map(t=>`<button data-wtab="${t[0]}" class="${t[0]===tab?"active":""}">${t[1]}</button>`).join("")}</div><div id="ws-body"></div>`;
   $$("[data-wtab]").forEach(b=>b.onclick = ()=>location.hash = `#/proyecto/${p.id}/doc/${id}/${b.dataset.wtab}`);
   const body = $("#ws-body");
   if(tab==="datos") return tabDatos(body, p, id, def);
   if(tab==="vista") return Promise.resolve(tabVista(body, state, p, id, def)).then(()=>montarBarraCopito(body, p, id));
   if(tab==="vista3d") return tabVista3D(body, p, id);
   if(tab==="cajetin") return tabCajetin(body, state, p, id, def);
-}
-
-/* ruta de trabajo: de qué documentos toma datos y qué documentos se pueden elaborar al terminarlo */
-function rutaDoc(p, id){
-  const req = requisitos(p, id), sig = habilita(p, id);
-  if(!req.length && !sig.length) return "";
-  const nombre = x => (entregable(x)||{}).nombre || x;
-  const enlace = (x, marca) => `<a class="req-chip ${marca && docListo(p.documentos[x]) ? "ok" : ""}" href="#/proyecto/${p.id}/doc/${x}">${marca ? (docListo(p.documentos[x]) ? ICON.check : "○") + " " : ""}${esc(nombre(x))}</a>`;
-  return `<div class="ws-ruta">${req.length ? `<span class="muted">Usa los datos de:</span> ${req.map(x=>enlace(x, true)).join("")}` : `<span class="muted">Punto de partida del proyecto.</span>`}
-    ${sig.length ? `<span class="muted">Al terminarlo puedes elaborar:</span> ${sig.map(x=>enlace(x, false)).join("")}` : ""}</div>`;
 }
 
 /* ---------------- 1. datos ---------------- */
@@ -103,7 +93,7 @@ function tablaHTML(cols, filas, totales){
 function vistaTabla(body, p, id, titulo, cols, filas, extra){
   body.innerHTML = cabeceraHoja(p, id, titulo) + tablaHTML(cols, filas) + (extra||"") + `</div>` + pieVista(p, id);
 }
-function pieVista(p, id){ return `<div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">Vista de los valores. La descarga incluye carátula, estilos, fórmulas, logos y revisiones del formato.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`; }
+function pieVista(p, id){ return `<div class="row mt-2" style="justify-content:flex-end"><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`; }
 
 function vistaCargas(body, p, id){
   const calcs = calcularTodos(p);
@@ -117,7 +107,13 @@ function vistaCargas(body, p, id){
       tablaHTML([["ÍTEM","#"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["HP","hp"],["kW","kw"],["In (A)","_in"],["FDP","fp"],["EFF","eff"],["FU","fu"],["FS","fs"],["Potencia instalada (kVA)","_si"],["Máxima demanda (kVA)","_md"]], filas, tot) +
       `<div class="stat-row mt-2"><div class="stat"><div class="k">Potencia instalada</div><div class="v">${r2(c.installedKVA,1)} kVA</div></div><div class="stat"><div class="k">Máxima demanda</div><div class="v">${r2(c.totalKVA,1)} kVA</div></div><div class="stat"><div class="k">I máxima demanda</div><div class="v">${r2(c.demandCurrent,1)} A</div></div><div class="stat"><div class="k">Interruptor general</div><div class="v">3x${c.mainBreaker} A</div></div></div>` +
       (tb.cargas_control.length ? `<h3 class="ed-sub mt-2">Lista de cargas estabilizada</h3>` + tablaHTML([["ÍTEM","n"],["DESCRIPCIÓN","descripcion"],["FDP","fp"],["FU","fu"],["FS","fs"],["P (kW)","kw"]], tb.cargas_control) : "") + `</div>`;
-  }).join('<div class="mt-2"></div>') + pieVista(p, id);
+  }).concat(tablerosControl(p).map(t=>({ t, filas: cargasTableroControl(p, t) })).filter(x=>x.filas.length).map(({ t, filas })=>{
+    // tableros de control: cargas por barra (la misma tabla que usa su unifilar)
+    const tot = `<tr class="xl-total"><td colspan="4" style="text-align:right">POTENCIA TOTAL</td><td class="num">${filas.reduce((a, f)=>a + (+f.potencia||0), 0)} W</td><td colspan="3"></td></tr>`;
+    return cabeceraHoja(p, id, "LISTADO DE CARGAS") +
+      `<div class="xl-band">${esc(`${datos(p).sistema.nombre ? datos(p).sistema.nombre+" - " : ""}${t.nombre} ${t.tag}`.toUpperCase())} — CARGAS DEL TABLERO DE CONTROL</div>` +
+      tablaHTML([["ÍTEM","n"],["BARRA","barra"],["DESCRIPCIÓN","descripcion"],["CIRCUITO","circuito"],["POTENCIA (W)","potencia"],["PROTECCIÓN (A)","proteccion"],["ID 30 mA","id"],["CABLE","cable"]], filas.filter(f=>!f.__var), tot) + `</div>`;
+  })).join('<div class="mt-2"></div>') + pieVista(p, id);
 }
 function vistaHDEq(body, p, id){
   const lista = tableros(p); let sel = lista[0].id;
@@ -180,7 +176,7 @@ async function vistaPlano(body, state, p, id){
     ${Array.isArray(r.avisos) ? (r.avisos.length ? `<div class="notice warn mb-2"><strong>Revisión de continuidad y referencias cruzadas:</strong><br>${r.avisos.map(esc).join("<br>")}</div>`
       : `<p class="muted mb-2" style="font-size:12px">✓ Revisión de continuidad: todos los conductores llegan a un borne o a otro conductor, cada flecha tiene su referencia cruzada a la hoja y zona donde continúa, y los equipos del unifilar están en el plano.</p>`) : ""}
     <div class="plano-view"><canvas id="pl-cv"></canvas></div>
-    <div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">DXF R12 · capas ${defDoc(id).vista3d ? "M- (gabinete, placas, canaletas, equipos, cobre, tierra, cableado, cotas)" : "G-, I-, E-"} con sus colores${r.lazos!=null?` · ${r.lazos} lazo(s)`:""}.</p>${defDoc(id).vista3d ? `<a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista3d">Siguiente: vista previa 3D →</a>` : `<a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a>`}</div>`;
+    <div class="row mt-2" style="justify-content:flex-end">${defDoc(id).vista3d ? `<a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista3d">Siguiente: vista previa 3D →</a>` : `<a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a>`}</div>`;
   const cv = $("#pl-cv");
   const view = { hoja:0 };
   const fit = ()=>{ const b = { minX: view.hoja*1000, minY:0, maxX: view.hoja*1000+841, maxY:594 }; view.b = b; view.s = null; dibujar(); };
@@ -192,8 +188,7 @@ async function vistaPlano(body, state, p, id){
     if(view.ox==null){ view.ox = -b.minX*s; view.oy = H + b.minY*s; }
     const X = x=>view.ox + x*s, Y = y=>view.oy - y*s;
     ctx.lineWidth = 1; ctx.strokeStyle = "#1b2a3c"; ctx.fillStyle = "#1b2a3c";
-    const col = l=>({ "I-SE-ANALO":"#1d6fb8","I-PROTOCOL":"#1d6fb8","I-FZA-AC":"#b8336a","E-FZA-BT-PRI":"#b8336a","E-FZA":"#b8336a","I-FZA-DC":"#7a4fbf","I-TIERRA":"#2e8b57","E-TIERRA":"#2e8b57","I-CONTROL":"#c27c0e","E-CONTROL":"#c27c0e",
-      "M-COBRE":"#c0661f","M-TIERRA":"#2e8b57","M-CABLE":"#a23b72","M-COTA":"#1d6fb8","M-ETIQUETA":"#9a6a00","M-SENAL":"#c99a00","M-CANALETA":"#7b8490","M-RIEL":"#8a93a0","M-PLACA":"#7b8490","M-DETALLE":"#5b6573","M-OCULTO":"#9aa3ae" }[l] || "#1b2a3c");
+    const col = colorCapa;
     for(const e of d.entities){
       ctx.strokeStyle = col(e.layer);
       if(e.t==="L"){ ctx.beginPath(); ctx.moveTo(X(e.x1),Y(e.y1)); ctx.lineTo(X(e.x2),Y(e.y2)); ctx.stroke(); }
@@ -251,7 +246,7 @@ async function tabVista3D(body, p, id){
       <div id="v3-cont"></div>
       <div class="v3d-copito-bar mt-2"><div><strong>Cambios con Copito</strong><span class="muted"> · Copito propone el cambio, lo aplicas al confirmar y el 2D, el 3D y la lista de materiales se actualizan.</span></div>
         <div class="v3d-chips"><button class="btn-sm btn-accent" data-cp="">Pedir un cambio a Copito…</button><button class="btn-sm" data-cp="¿Qué puedo hacer en este documento?">¿Qué puedo pedirle?</button></div></div>
-      <div class="row between mt-2" style="flex-wrap:wrap"><p class="muted" style="font-size:12px;margin:0">El 3D usa las mismas dimensiones y posiciones del plano 2D. La descarga del CAD es la del plano 2D.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`;
+      <div class="row mt-2" style="justify-content:flex-end"><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`;
     const ts = $("#v3-t"); if(ts) ts.onchange = ()=>{ body.dataset.t = ts.value; tabVista3D(body, p, id); };
     const pedir = (txt, enviar)=>{ if(window.copito) window.copito.abrir(txt, enviar); else toast("Copito no está disponible", true); };
     $$("[data-cp]", body).forEach(b=>b.onclick = ()=>b.dataset.cp ? pedir(b.dataset.cp, true) : pedir(`En ${t.tag}, `, false));
@@ -269,25 +264,25 @@ function tabCajetin(body, state, p, id, def){
     // el estado sigue a la revisión vigente
     if(sincronizarEstado(d)) S.save();
     body.innerHTML = html`<div class="grid-2">
-      <div class="card"><div class="card-head"><h2>Identificación</h2><span class="muted" style="font-size:12px">Firmas vacías = las de <a href="#/organizacion">tu organización</a></span></div><div class="card-body">
-        <div class="field"><label>Título</label><input type="text" data-f="titulo" value="${esc(d.titulo||"")}">${sistemaTag(p) ? `<span class="hint">Se completa con «- TAG: ${esc(sistemaTag(p))}».</span>` : ""}</div>
+      <div class="card"><div class="card-head"><h2>Identificación</h2></div><div class="card-body">
+        <div class="field"><label>Título</label><input type="text" data-f="titulo" value="${esc(d.titulo||"")}"></div>
         <div class="grid-3">
           <div class="field"><label>Elaboró / diseñó</label><input type="text" data-f="elaboro" value="${esc(d.elaboro||"")}" placeholder="${esc(org.elaboraPor||"")}"></div>
           <div class="field"><label>Revisó</label><input type="text" data-f="reviso" value="${esc(d.reviso||"")}" placeholder="${esc(org.revisaPor||"")}"></div>
           <div class="field"><label>Aprobó</label><input type="text" data-f="aprobo" value="${esc(d.aprobo||"")}" placeholder="${esc(org.apruebaPor||"")}"></div>
         </div>
         ${def.formato==="dxf" ? `<div class="field"><label>Dibujó</label><input type="text" data-f="dibujo" value="${esc(d.dibujo||"")}" placeholder="${esc(org.dibujaPor||org.elaboraPor||"")}"></div>` : ""}
-        <div class="field"><label>Estado</label><select data-f="estado" class="sel-estado ${claseEstado(d.estado)}">${ESTADOS_DOC.map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select><span class="hint">Se actualiza con la revisión vigente («emitido para»).</span></div>
       </div></div>
       <div class="card"><div class="card-head"><h2>Historial de revisiones</h2><button class="btn-sm" id="rv-add">${ICON.plus} Nueva revisión</button></div><div class="card-body">
-        <div class="table-wrap"><table><thead><tr><th>Rev.</th><th>Fecha</th><th>Descripción / emitido para</th><th></th></tr></thead><tbody>
-        ${d.revisiones.map((r,i)=>`<tr data-r="${i}"><td><input type="text" data-rv="rev" value="${esc(r.rev)}" style="width:50px"></td><td><input type="date" data-rv="fecha" value="${esc(r.fecha)}"></td><td><select data-rv="descripcion">${["Emitido para revisión interna","Emitido para revisión del cliente","Emitido para aprobación","Emitido para construcción","Conforme a obra"].concat(r.descripcion && !/^Emitido|^Conforme/.test(r.descripcion)?[r.descripcion]:[]).map(o=>`<option ${r.descripcion===o?"selected":""}>${esc(o)}</option>`).join("")}</select></td><td>${d.revisiones.length>1?`<button class="btn-ghost btn-sm" data-rdel>${ICON.trash}</button>`:""}</td></tr>`).join("")}
-        </tbody></table></div><p class="muted mt-1" style="font-size:12px">La última fila es la vigente. Para emitir varios documentos a la vez usa «Emitir revisión» en Documentos.</p></div></div>
+        <div class="table-wrap"><table class="tb-rev"><thead><tr><th>Rev.</th><th>Fecha</th><th>Descripción / emitido para</th><th></th></tr></thead><tbody>
+        ${d.revisiones.map((r,i)=>`<tr data-r="${i}"><td class="centro"><input type="text" class="centro" data-rv="rev" value="${esc(r.rev)}" style="width:54px"></td><td class="centro"><input type="date" class="centro" data-rv="fecha" value="${esc(r.fecha)}"></td><td><select data-rv="descripcion">${["Emitido para revisión interna","Emitido para revisión del cliente","Emitido para aprobación","Emitido para construcción","Conforme a obra"].concat(r.descripcion && !/^Emitido|^Conforme/.test(r.descripcion)?[r.descripcion]:[]).map(o=>`<option ${r.descripcion===o?"selected":""}>${esc(o)}</option>`).join("")}</select></td><td>${d.revisiones.length>1?`<button class="btn-ghost btn-sm" data-rdel>${ICON.trash}</button>`:""}</td></tr>`).join("")}
+        </tbody></table></div></div></div>
     </div>
     ${def.formato==="dxf" ? `<div class="card mt-2"><div class="card-head"><h2>Planos de referencia (cajetín)</h2><button class="btn-sm" id="rf-auto">Volver a sugerir</button></div><div class="card-body" id="refs"></div></div>` : ""}
-    ${descargable(id) ? `<div class="card mt-2 ws-descarga"><div class="card-body row between" style="flex-wrap:wrap"><div><h2 style="font-size:15px">Descargar el documento</h2><div class="muted" style="font-size:12.5px;margin-top:3px">Con los datos de entrada, la vista previa y el cajetín de esta pantalla, en el formato estándar de Ingenia.</div></div><button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button></div></div>` : ""}`;
+    ${descargable(id) ? `<div class="card mt-2 ws-descarga"><div class="card-body row between" style="flex-wrap:wrap"><h2 style="font-size:15px">Descargar el documento</h2><div class="row"><button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button><button class="btn-primary" id="ws-pdf">${ICON.download} Descargar PDF</button></div></div></div>` : ""}`;
     const wdl = $("#ws-dl", body); if(wdl) wdl.onclick = ()=>descargarDoc(state, p, id, wdl);
-    $$("[data-f]", body).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; S.save(); if(i.dataset.f==="estado") i.className = "sel-estado " + claseEstado(i.value); });
+    const wpdf = $("#ws-pdf", body); if(wpdf) wpdf.onclick = ()=>descargarDoc(state, p, id, wpdf, "pdf");
+    $$("[data-f]", body).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; S.save(); });
     // al elegir para qué se emite la revisión, el documento queda emitido y su estado lo sigue (también en Documentos)
     $$("[data-rv]", body).forEach(i=>i.onchange = ()=>{ d.revisiones[+i.closest("tr").dataset.r][i.dataset.rv] = i.value; if(i.dataset.rv==="descripcion") d.emitida = true; docInfo(p, id); S.save(); render(); });
     $$("[data-rdel]", body).forEach(b=>b.onclick = ()=>{ d.revisiones.splice(+b.closest("tr").dataset.r, 1); docInfo(p, id); S.save(); render(); });
@@ -339,19 +334,16 @@ async function logosPlano(org, p){
 }
 async function logoCliente(p){ if(!p.plantillas || !p.plantillas.logo_cliente) return null; const f = await S.leerArchivo(p.plantillas.logo_cliente); return f ? await logoPNG(await S.blobToDataURL(f.blob)) : null; }
 
-export async function descargarDoc(state, p, id, btn){
+/* archivo nativo del documento: { datos, ext, mime } (DXF, Excel o Word); hojas: láminas del plano */
+async function generarArchivo(state, p, id){
   const def = defDoc(id), e = entregable(id);
-  const lbl = btn ? btn.innerHTML : ""; if(btn){ btn.disabled = true; btn.textContent = "Generando…"; }
-  try{
-    const org = await orgConLogo(state);
-    const di = docInfo(p, id);
-    const nombre = ext => X.nombreSeguro(`${p.nombre||"Proyecto"} - ${e.nombre} - Rev ${di.rev||"A"}`)+"."+ext;
-    const dd = p.documentos[id];
-    const tplCli = null;   // los documentos se descargan siempre en el formato estándar de Ingenia
+  const org = await orgConLogo(state);
+  const di = docInfo(p, id);
+  const tplCli = null;   // los documentos se descargan siempre en el formato estándar de Ingenia
     if(def.formato==="dxf"){
       const r = await generarPlano(p, id, org, await logosPlano(org, p));
-      X.descargar(new Blob([dxfBytes(r.dxf)], { type:"application/dxf" }), nombre("dxf"), "application/dxf");
-    } else if(def.formato==="proceso"){ toast("Este entorno no genera archivo: alimenta el listado de instrumentos."); return;
+      return { datos: dxfBytes(r.dxf), dxf: r.dxf, hojas: r.hojas||1, ext:"dxf", mime:X.MIME.dxf };
+    } else if(def.formato==="proceso"){ return null;
     } else if(def.estandar || (def.texto && !tplCli)){
       // formatos estándar previos (lista de documentos, cables, criterios)
       const ctx = { scal: escalares(p, id, org), logos: { org: await logoPNG(org.logoDataURL), cliente: await logoCliente(p) }, org, proyecto:{ nombre:p.nombre, cliente:p.cliente, unidad:p.unidad, codigo:"", etapaNombre:"" }, doc:{ codigo:"", titulo:tituloDoc(p,id), rev:di.rev, fecha:di.fecha, disciplina:DISCIPLINAS[e.disciplina].nombre, emitidoPara:di.emitido, referencia:p.pidRef||"" }, revisiones: di.revisiones.map(r=>Object.assign({ elaboro:di.elaboro||org.elaboraPor, reviso:di.reviso||org.revisaPor, aprobo:di.aprobo||org.apruebaPor }, r)), tablas:{}, campos:{} };
@@ -359,10 +351,10 @@ export async function descargarDoc(state, p, id, btn){
       } else if(id==="gen-registro"){
         const filas = p.entregables.map(entregable).filter(Boolean).map((x,i)=>{ const d=p.documentos[x.id]||{}; return { item:i+1, titulo:x.nombre, disciplina:DISCIPLINAS[x.disciplina].nombre, tipo:TIPOS[x.tipo], rev:d.rev, fecha:d.fecha, emitido:d.emitido||"", estado:d.estado }; });
         ctx.tablas = { "Lista de documentos": { titulo:"Lista de documentos / entregables", columnas:[{key:"item",titulo:"Ítem",ancho:6,num:true},{key:"titulo",titulo:"Documento",ancho:56},{key:"disciplina",titulo:"Disciplina",ancho:22},{key:"tipo",titulo:"Tipo",ancho:18},{key:"rev",titulo:"Rev.",ancho:6,center:true},{key:"fecha",titulo:"Fecha",ancho:12},{key:"emitido",titulo:"Emitido para",ancho:26},{key:"estado",titulo:"Estado",ancho:14}], filas } };
-        X.descargar(await X.excelEstandar(ctx), nombre("xlsx"), X.MIME.xlsx);
+        return { datos: await X.excelEstandar(ctx), ext:"xlsx", mime:X.MIME.xlsx };
       } else {
         ctx.tablas = tablasEstandar(p, id);
-        X.descargar(await X.excelEstandar(ctx), nombre("xlsx"), X.MIME.xlsx);
+        return { datos: await X.excelEstandar(ctx), ext:"xlsx", mime:X.MIME.xlsx };
       }
     } else if(def.formato==="xlsx"){
       const pay = await payloadExcel(p, id, org);
@@ -370,7 +362,7 @@ export async function descargarDoc(state, p, id, btn){
       const man = tplCli ? {} : ((await manifiesto())[def.man] || {});
       const logos = { org: await logoPNG(org.logoDataURL), cliente: await logoCliente(p) };
       const out = await rellenarExcel(window.ExcelJS, buf, Object.assign({}, pay, { manifiesto: man, logos, estandar: !tplCli }));
-      X.descargar(out, nombre("xlsx"), X.MIME.xlsx);
+      return { datos: out, ext:"xlsx", mime:X.MIME.xlsx };
     } else if(def.formato==="docx"){
       const base = def.aliasDe || id;
       const extra = (base==="ele-mc" || base==="ele-md") ? datosMemoria(p) : def.datos ? def.datos(p) : def.secciones ? { secciones: def.secciones(p) } : {};
@@ -384,8 +376,25 @@ export async function descargarDoc(state, p, id, btn){
       doc.render(data);
       // formato estándar (igual al de los Excel): carátula con logo, cuadro de revisiones al pie, encabezado y pie de página
       if(!tplCli) formatoWord(doc.getZip(), scal, { org: await logoPNG(org.logoDataURL), cliente: await logoCliente(p) });
-      X.descargar(doc.getZip().generate({ type:"arraybuffer", compression:"DEFLATE", mimeType:X.MIME.docx }), nombre("docx"), X.MIME.docx);
+      return { datos: doc.getZip().generate({ type:"arraybuffer", compression:"DEFLATE", mimeType:X.MIME.docx }), ext:"docx", mime:X.MIME.docx };
     }
+  return null;
+}
+
+/* descarga del documento: «nativo» (DXF, Excel o Word) o «pdf» (el mismo archivo convertido a PDF) */
+export async function descargarDoc(state, p, id, btn, tipo="nativo"){
+  const e = entregable(id);
+  const lbl = btn ? btn.innerHTML : ""; if(btn){ btn.disabled = true; btn.textContent = "Generando…"; }
+  try{
+    const di = docInfo(p, id), dd = p.documentos[id];
+    const nombre = ext => X.nombreSeguro(`${p.nombre||"Proyecto"} - ${e.nombre} - Rev ${di.rev||"A"}`)+"."+ext;
+    const a = await generarArchivo(state, p, id);
+    if(!a){ toast("Este entorno no genera archivo: alimenta el listado de instrumentos."); return; }
+    if(tipo==="pdf"){
+      const P = await import("./pdf.js");
+      const pdf = a.ext==="dxf" ? await P.pdfPlano(a.dxf, a.hojas) : a.ext==="xlsx" ? await P.pdfExcel(a.datos) : await P.pdfWord(a.datos);
+      X.descargar(pdf, nombre("pdf"), "application/pdf");
+    } else X.descargar(a.datos instanceof Uint8Array || a.datos instanceof ArrayBuffer ? new Blob([a.datos], { type:a.mime }) : a.datos, nombre(a.ext), a.mime);
     if(dd.estado==="Por elaborar"){ dd.estado = "En elaboración"; S.save(); }
     toast("Documento generado: "+e.nombre);
   }catch(err){

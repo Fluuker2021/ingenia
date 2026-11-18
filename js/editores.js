@@ -244,6 +244,7 @@ const ED = {
     const d = datos(p);
     // equipos del proyecto por familia, con el modelo que resulta de la marca elegida
     const FAM_COMP = [["interruptores", /^ITM|^Interruptor/], ["maniobra", /^Guardamotor|^Contactor|^Relé de sobrecarga/], ["variadores", /^Variador/], ["arrancadores", /^Arrancador suave/]];
+    const abiertos = new Set();
     const render = ()=>{
       const mr = marcasProyecto(p), equipos = {};
       for(const f of FAMILIAS_MARCA) equipos[f.k] = [];
@@ -255,13 +256,16 @@ const ED = {
         if(a.spd) equipos.spd.push(`SPD1 (${t.tag}) — ${modeloCorto(modeloEnMarca("OVR T1-T2 3L 12.5-440s P QS", "", mr))}`);
         if(a.releFase) equipos.reles.push(`RF (${t.tag}) — ${modeloCorto(modeloEnMarca("CM-MPS.41S", "", mr))}`); }
       for(const t of d.tableros) equipos.gabinetes.push(`${t.tag} — ${mr.gabinetes}`);
-      const lista = eq => eq.length ? eq.slice(0, 8).map(esc).join("<br>") + (eq.length > 8 ? `<br><span class="muted">y ${eq.length - 8} más</span>` : "") : `<span class="muted">Sin equipos de esta familia en el proyecto</span>`;
-      el.innerHTML = `<div class="table-wrap"><table class="ed-table"><thead><tr><th>Familia de equipos</th><th>Sugerida</th><th>Marca</th><th>Equipos y modelos seleccionados</th></tr></thead><tbody>
-        ${FAMILIAS_MARCA.map(f=>`<tr><td>${esc(f.nombre)}</td><td class="centro">${esc(f.def)}</td>
+      // solo las familias con equipos en el proyecto; las listas largas se despliegan con «y N más»
+      const lista = (k, eq) => { const ab = abiertos.has(k) || eq.length <= 8;
+        return (ab ? eq : eq.slice(0, 8)).map(esc).join("<br>") + (eq.length > 8 ? `<br><button type="button" class="link-btn" data-mas="${k}">${ab ? "Ver menos" : `y ${eq.length - 8} más`}</button>` : ""); };
+      const fams = FAMILIAS_MARCA.filter(f=>equipos[f.k].length);
+      el.innerHTML = fams.length ? `<div class="table-wrap"><table class="ed-table"><thead><tr><th>Familia de equipos</th><th>Sugerida</th><th>Marca</th><th>Equipos y modelos seleccionados</th></tr></thead><tbody>
+        ${fams.map(f=>`<tr><td>${esc(f.nombre)}</td><td class="centro">${esc(f.def)}</td>
           <td class="centro"><select data-marca="${f.k}" style="width:calc(${Math.max(...f.opciones.map(o=>o.length))}ch + 34px)">${f.opciones.map(o=>`<option ${mr[f.k]===o?"selected":""}>${esc(o)}</option>`).join("")}</select></td>
-          <td class="izq" style="font-size:12.5px">${lista(equipos[f.k])}</td></tr>`).join("")}
-        </tbody></table></div>
-        <p class="muted mt-1" style="font-size:12px">Las equivalencias son de selección preliminar (misma corriente, polos y tipo); verifica el código final con el catálogo del fabricante elegido. Las dimensiones del arreglo mecánico son las de los equipos de referencia.</p>`;
+          <td class="izq" style="font-size:12.5px">${lista(f.k, equipos[f.k])}</td></tr>`).join("")}
+        </tbody></table></div>` : `<div class="empty">El proyecto aún no tiene equipos: agrega las cargas de los tableros.</div>`;
+      $$("[data-mas]", el).forEach(b=>b.onclick = ()=>{ const k = b.dataset.mas; abiertos.has(k) ? abiertos.delete(k) : abiertos.add(k); render(); });
       $$("[data-marca]", el).forEach(sl=>sl.onchange = ()=>{ d.marcas = Object.assign({}, d.marcas||{}, { [sl.dataset.marca]: sl.value }); cambio(); render(); });
     };
     render();

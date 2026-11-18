@@ -1,5 +1,5 @@
 /* Ingenia — aplicación (enrutador por hash y pantallas) */
-import { ENTREGABLES, CATALOGO, DISCIPLINAS, ETAPAS, ESTADOS, TIPOS, entregable, ETAPAS_TRABAJO, ordenTrabajo, etapaDe, docListo, requisitos, habilita, siguienteDoc } from "./catalog.js";
+import { ENTREGABLES, CATALOGO, DISCIPLINAS, ETAPAS, ESTADOS, TIPOS, entregable, ETAPAS_TRABAJO, ordenTrabajo, etapaDe, docListo, requisitos, habilita, ESTADOS_DOC, sincronizarEstado, claseEstado } from "./catalog.js";
 import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, confirmar, dropzone, leerComoArrayBuffer, leerComoTexto, leerComoDataURL, fmtFecha, hoy, kb } from "./ui.js";
 import * as X from "./export.js";
@@ -25,7 +25,6 @@ const PTABS = [
   ["resumen","Resumen",0,'<svg class="icon" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v10h-7zM4 13h7v7H4z"/></svg>'],
   ["diseno","Datos generales",1],
   ["documentos","Documentos",2],
-  ["plantillas","Formatos del cliente",0,'<svg class="icon" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"/><path d="M14 3v4h4"/></svg>'],
 ];
 function route(){
   const h = location.hash.replace(/^#\/?/, "");
@@ -129,8 +128,8 @@ function screenProyectos(){
         <div class="row between"><span class="muted" style="font-size:12px">${esc(p.disciplinas.map(d=>(DISCIPLINAS[d]||{}).corto||d).join(" · "))}</span><span class="badge badge-neutral">${esc(etapaNombre(p.etapa))}</span></div>
         <h3 style="margin:12px 0 4px">${esc(p.nombre)}</h3>
         <div class="muted" style="font-size:12.5px">${esc(p.cliente||"—")}${p.unidad?" · "+esc(p.unidad):""}</div>
-        <div class="row between mt-2" style="font-size:12px"><span class="muted">${n} documentos</span><span class="mono">${emit}/${n} emitidos</span></div>
-        <div class="progress mt-1"><span style="width:${n?Math.round(100*emit/n):0}%"></span></div>
+        <div class="card-pie"><div class="row between" style="font-size:12px"><span class="muted">${n} documentos</span><span class="mono">${emit}/${n} emitidos</span></div>
+        <div class="progress mt-1"><span style="width:${n?Math.round(100*emit/n):0}%"></span></div></div>
       </div></div>`; }).join("")}</div>`
     : `<div class="empty"><p><strong>Aún no hay proyectos.</strong></p><p>Ingresa los datos del proyecto, el sistema eléctrico, los tableros y los documentos a elaborar; luego trabajas cada documento.</p><button class="btn-accent" id="nuevo2">${ICON.plus} Nuevo proyecto</button></div>`);
   $$("#nuevo,#nuevo2").forEach(b=>b.onclick = ()=>modalProyecto());
@@ -307,7 +306,7 @@ function screenProyecto(id, tab){
   $("#borrar").onclick = async ()=>{ if(await confirmar("Eliminar proyecto", `Se eliminará «${p.nombre}» con todos sus datos.`, "Eliminar")){ S.eliminarProyecto(p.id); location.hash="#/proyectos"; } };
   $$("[data-tab]").forEach(b=>b.onclick = ()=>location.hash = `#/proyecto/${p.id}/${b.dataset.tab}`);
   const body = $("#tab-body");
-  ({ resumen: tabResumen, diseno: tabDiseno, documentos: tabDocumentos, plantillas: tabPlantillas }[tab] || tabResumen)(body, p);
+  ({ resumen: tabResumen, diseno: tabDiseno, documentos: tabDocumentos }[tab] || tabResumen)(body, p);
 }
 
 function tabResumen(body, p){
@@ -330,7 +329,7 @@ function tabResumen(body, p){
         ${paso(!!(d.sistema.nombre && tbs.length), "1. Datos generales", `${esc(v.tension)} Vac · ${esc(v.frecuencia)} Hz · control ${esc(tensionControlTxt(v))} · ${tbs.length} tablero(s)`, `#/proyecto/${p.id}/diseno`, "Revisar")}
         ${paso(d.cargas.length>0 || nInst>0, "2. Datos por documento", `${sel.length} documentos · ${d.cargas.length} cargas · ${nInst} instrumentos`, `#/proyecto/${p.id}/documentos`, "Abrir")}
         ${paso(sel.length>0 && emit===sel.length, "3. Emisión", `${emit} de ${sel.length} documentos emitidos`, `#/proyecto/${p.id}/documentos`, "Emitir")}
-        ${paso(logo, "Logo y formatos del cliente", logo ? "Logo cargado" : "Sin logo del cliente", `#/proyecto/${p.id}/plantillas`, logo?"Ver":"Cargar")}
+        ${paso(logo, "Logo del cliente", logo ? "Logo cargado" : "Sin logo del cliente", `#/proyecto/${p.id}/editar/0`, logo?"Ver":"Cargar")}
       </ul></div></div>
       <div class="card"><div class="card-head"><h2>Datos del proyecto</h2><button class="btn-sm" id="r-editar">${ICON.edit} Editar</button></div><div class="card-body"><dl class="kv">
         <dt>Cliente</dt><dd>${esc(p.cliente||"—")}</dd><dt>Unidad Minera / Planta</dt><dd>${esc(p.unidad||"—")}</dd>
@@ -363,31 +362,23 @@ function tabDocumentos(body, p){
   // documentos en el orden de la ruta de trabajo (punto de partida → cálculos → diagramas → detalle → cierre)
   const sel = p.entregables.map(entregable).filter(Boolean).sort((a, b)=>ordenTrabajo(a.id) - ordenTrabajo(b.id));
   const marcados = new Set(sel.map(e=>e.id));
-  const sig = siguienteDoc(p), eSig = sig ? entregable(sig) : null;
-  const listos = sel.filter(e=>docListo(p.documentos[e.id])).length;
+  // el estado sigue a la revisión vigente (lo emitido en «Cajetín y descarga» o en «Emitir revisión»)
+  if(sel.reduce((n, e)=>n + (sincronizarEstado(p.documentos[e.id]) ? 1 : 0), 0)) S.save();
   const nombre = id => (entregable(id)||{}).nombre || id;
   const chip = id => { const ok = docListo(p.documentos[id]); return `<a class="req-chip ${ok ? "ok" : ""}" href="#/proyecto/${p.id}/doc/${id}" title="${ok ? "Listo" : "Pendiente"}">${ok ? ICON.check : "○"} ${esc(nombre(id))}</a>`; };
   const fila = e=>{ const d = p.documentos[e.id]; const rv = (d.revisiones && d.revisiones.length) ? d.revisiones[d.revisiones.length-1] : { rev:d.rev, fecha:d.fecha, descripcion:d.emitido };
     const req = requisitos(p, e.id);
-    return `<tr data-id="${e.id}" class="${e.id===sig ? "doc-sig" : docListo(d) ? "doc-listo" : ""}">
+    return `<tr data-id="${e.id}" class="${docListo(d) ? "doc-listo" : ""}">
         <td><input type="checkbox" data-chk checked></td>
-        <td><div style="font-weight:500">${generable(e.id)?`<a href="#/proyecto/${p.id}/doc/${e.id}">${esc(e.nombre)}</a>`:esc(e.nombre)} ${e.id===sig ? `<span class="badge badge-accent">${listos ? "Siguiente paso" : "Empieza aquí"}</span>` : ""}</div><div class="muted" style="font-size:12px">${esc(DISCIPLINAS[e.disciplina].corto)} ${etiquetaDoc(e, state)}</div></td>
-        <td class="doc-req">${req.length ? req.map(chip).join("") : `<span class="muted" style="font-size:12px">Punto de partida</span>`}</td>
+        <td><div style="font-weight:500">${generable(e.id)?`<a href="#/proyecto/${p.id}/doc/${e.id}">${esc(e.nombre)}</a>`:esc(e.nombre)}</div><div class="muted" style="font-size:12px">${esc(DISCIPLINAS[e.disciplina].corto)} ${etiquetaDoc(e, state)}</div></td>
+        <td class="doc-req">${req.length ? req.map(chip).join("") : `<span class="req-inicio">Punto de partida</span>`}</td>
         <td style="white-space:nowrap"><span class="mono">Rev. ${esc(rv.rev||"A")}</span> · <span class="mono">${esc(fmtFecha(rv.fecha))}</span><div class="muted" style="font-size:12px">${esc(String(rv.descripcion||"").replace(/^Emitido para /,"Para ")||"—")}</div></td>
-        <td><select data-f="estado" style="min-width:130px">${["Por elaborar","En elaboración","Para revisión","Aprobado","Emitido"].map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select></td>
+        <td><select data-f="estado" class="sel-estado ${claseEstado(d.estado)}" style="min-width:130px">${ESTADOS_DOC.map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select></td>
         <td style="white-space:nowrap">${accionesDoc(e, p)}</td></tr>`; };
   const grupos = ETAPAS_TRABAJO.map(et=>({ et, docs: sel.filter(e=>et.docs.includes(e.id)) })).filter(g=>g.docs.length);
   const sueltos = sel.filter(e=>!etapaDe(e.id));
   body.innerHTML = html`
     ${!state.org.nombre ? `<div class="notice accent mb-2">Completa <a href="#/organizacion">tu organización</a> (nombre, logo y firmas) una sola vez: se usa en todas las carátulas y cajetines.</div>` : ""}
-    ${sel.length ? `<div class="ruta-card mb-2">
-      <div class="ruta-sig">${eSig ? `<div class="muted" style="font-size:12px">${listos ? "Siguiente paso recomendado" : "Empieza aquí"} · etapa ${etapaDe(sig).n}: ${esc(etapaDe(sig).titulo)}</div>
-        <div class="ruta-doc">${esc(eSig.nombre)}</div>
-        <div class="muted" style="font-size:12.5px">${requisitos(p, sig).length ? `Usa los datos de: ${requisitos(p, sig).map(x=>esc(nombre(x))).join(", ")}.` : "Es el punto de partida del proyecto."}</div>`
-        : `<div class="ruta-doc">${ICON.check} Todos los documentos están listos</div><div class="muted" style="font-size:12.5px">Emite la revisión para el cliente o agrega más documentos.</div>`}</div>
-      <div class="ruta-prog"><div class="muted" style="font-size:12px">${listos} de ${sel.length} listos</div><div class="barra"><span style="width:${Math.round(100*listos/sel.length)}%"></span></div>
-        ${eSig && generable(sig) ? `<a class="btn btn-primary btn-sm" href="#/proyecto/${p.id}/doc/${sig}">Abrir ${ICON.next||"→"}</a>` : ""}</div>
-    </div>` : ""}
     <div class="row between mb-2">
       <div class="row"><button class="btn-accent btn-sm" id="emitir">${ICON.check} Emitir revisión</button><span class="muted" id="n-sel" style="font-size:12.5px"></span></div>
       <div class="row"><button class="btn-sm" id="docs-sel">${ICON.edit} Agregar o quitar documentos</button><button class="btn-sm" id="dl-registro">${ICON.open} Lista de documentos</button></div>
@@ -400,7 +391,7 @@ function tabDocumentos(body, p){
   $$("[data-chk]", body).forEach(c=>c.onchange = ()=>{ const id = c.closest("tr").dataset.id; c.checked ? marcados.add(id) : marcados.delete(id); const all = $("#chk-all"); if(all) all.checked = marcados.size===sel.length; cuenta(); });
   const all = $("#chk-all"); if(all) all.onchange = ()=>{ $$("[data-chk]", body).forEach(c=>{ c.checked = all.checked; const id = c.closest("tr").dataset.id; all.checked ? marcados.add(id) : marcados.delete(id); }); cuenta(); };
   cuenta();
-  // al cambiar el estado se actualiza la ruta (siguiente paso y requisitos listos)
+  // al cambiar el estado se actualizan los requisitos listos
   $$("tr[data-id] [data-f]", body).forEach(el=>el.onchange = ()=>{ const d = p.documentos[el.closest("tr").dataset.id]; d[el.dataset.f] = el.value; S.save(); tabDocumentos(body, p); });
   $("#emitir").onclick = ()=>modalEmitir(p, [...marcados], ()=>tabDocumentos(body, p));
   $$("#docs-sel,#docs-sel2").forEach(b=>b.onclick = ()=>modalProyecto(p, 3));
@@ -429,7 +420,7 @@ function modalEmitir(p, ids, onDone){
         // la revisión inicial (A, aún no emitida) se completa en lugar de crear otra
         if((!d.emitida && d.revisiones.length===1 && !rev) || (rev && rev===String(last.rev).toUpperCase())) Object.assign(last, fila);
         else { if(!rev) fila.rev = nextRev(last.rev); d.revisiones.push(fila); }
-        d.emitida = true; d.estado = /interna/.test(descripcion) ? "Para revisión" : "Emitido";
+        d.emitida = true; d.estadoDe = null; sincronizarEstado(d);
         docInfo(p, id);
       }
       S.save(); close(); toast(`Revisión emitida en ${ids.length} documento(s)`); onDone();

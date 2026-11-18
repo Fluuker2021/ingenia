@@ -9,7 +9,7 @@ import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
 import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, accesoriosTablero, fusiblesAcometida } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
-import { cargarKit, usarKit, pieza, envolver, cajaAcometida } from "./kit.js";
+import { cargarKit, usarKit, pieza, envolver, cajaAcometida, encajar } from "./kit.js";
 
 // geometría del plano de referencia (mm, espacio modelo)
 const BUS = 517.4, EJE0 = 71.8, ANCHO_COL = 58.2, PASO_RAMA = 45, SUB = 415.3 - BUS;
@@ -317,5 +317,12 @@ function leyenda(doc, kit, x, y, usados){
       ents.push(["T", "G-TEX", null, null, 90.97, yC, 2.5, 0, def.desc, 1, 2, 1]);
     }
   });
-  pieza(doc, { piezas:{ _ley:{ e:ents } } }, "_ley", x, y);
+  // descripciones: dentro de su celda (líneas y altura según el ancho de la columna)
+  const anchoDesc = LEY_COL[3] - LEY_COL[2] - 4;
+  const ajust = ents.map(e=>{
+    if(e[0]!=="T" || e[1]!=="G-TEX" || Math.abs(e[4] - 90.97) > 0.5 || e[5] > LEY_Y0) return e;
+    const r = encajar(e[8], anchoDesc, LEY_FILA - 2, e[6], { wf: e[11] || 1 });
+    const e2 = e.slice(); e2[8] = r.texto; e2[6] = r.h; return e2;
+  });
+  pieza(doc, { piezas:{ _ley:{ e:ajust } } }, "_ley", x, y);
 }

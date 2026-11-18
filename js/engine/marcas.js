@@ -41,16 +41,29 @@ function mcb(m, a, p){
   return null;
 }
 // --- maniobra
+/* rangos de ajuste de guardamotores [mín, máx, código] y contactores [Ie AC-3, código] (catálogos de los fabricantes) */
+const GV2ME = [[0.1,0.16,"GV2ME01"],[0.16,0.25,"GV2ME02"],[0.25,0.4,"GV2ME03"],[0.4,0.63,"GV2ME04"],[0.63,1,"GV2ME05"],[1,1.6,"GV2ME06"],[1.6,2.5,"GV2ME07"],
+  [2.5,4,"GV2ME08"],[4,6.3,"GV2ME10"],[6,10,"GV2ME14"],[9,14,"GV2ME16"],[13,18,"GV2ME20"],[17,23,"GV2ME21"],[20,25,"GV2ME22"],[24,32,"GV2ME32"]];
+const GV3P = [[30,40,"GV3P40"],[37,50,"GV3P50"],[48,65,"GV3P65"],[62,73,"GV3P73"],[70,80,"GV3P80"]];
+const SIE_3RV = [[0.11,0.16,"3RV2011-0AA10"],[0.14,0.2,"3RV2011-0BA10"],[0.18,0.25,"3RV2011-0CA10"],[0.22,0.32,"3RV2011-0DA10"],[0.28,0.4,"3RV2011-0EA10"],
+  [0.35,0.5,"3RV2011-0FA10"],[0.45,0.63,"3RV2011-0GA10"],[0.55,0.8,"3RV2011-0HA10"],[0.7,1,"3RV2011-0JA10"],[0.9,1.25,"3RV2011-0KA10"],[1.1,1.6,"3RV2011-1AA10"],
+  [1.4,2,"3RV2011-1BA10"],[1.8,2.5,"3RV2011-1CA10"],[2.2,3.2,"3RV2011-1DA10"],[2.8,4,"3RV2011-1EA10"],[3.5,5,"3RV2011-1FA10"],[4.5,6.3,"3RV2011-1GA10"],
+  [5.5,8,"3RV2011-1HA10"],[7,10,"3RV2011-1JA10"],[9,12.5,"3RV2011-1KA10"],[10,16,"3RV2011-4AA10"],[13,20,"3RV2021-4BA10"],[17,22,"3RV2021-4CA10"],
+  [20,25,"3RV2021-4DA10"],[23,28,"3RV2021-4NA10"],[27,32,"3RV2021-4EA10"]];
+const SIE_3RT = [[7,"3RT2015"],[9,"3RT2016"],[12,"3RT2017"],[16,"3RT2018"],[25,"3RT2026"],[32,"3RT2027"],[38,"3RT2028"],[50,"3RT2036"],[65,"3RT2037"],[80,"3RT2038"],
+  [95,"3RT2046"],[110,"3RT2047"]];
+/* rango cuyo máximo cubre la corriente de ajuste (el de menor máximo) */
+const rango = (lista, a) => lista.find(r=>a <= r[1] + 1e-9 && a >= r[0] - 1e-9) || lista.find(r=>a <= r[1] + 1e-9) || null;
 function contactor(m, a){
   if(m==="Schneider Electric") return `Schneider TeSys D LC1D${dos(escalon(a, [9, 12, 18, 25, 32, 38, 40, 50, 65, 80, 95, 115, 150]))}`;
-  if(m==="Siemens") return `Siemens SIRIUS 3RT20 (${a} A, AC-3)`;
+  if(m==="Siemens"){ const r = SIE_3RT.find(([i])=>i >= a - 1e-9) || SIE_3RT[SIE_3RT.length-1]; return `Siemens SIRIUS ${r[1]} (${r[0]} A, AC-3)`; }
   if(m==="Eaton") return `Eaton DILM${escalon(a, [7, 9, 12, 15, 17, 25, 32, 38, 40, 50, 65, 72, 80, 95, 115, 150])}`;
   if(m==="Allen-Bradley") return `Allen-Bradley 100-C${dos(escalon(a, [9, 12, 16, 23, 30, 37, 43, 60, 72, 85, 97]))}`;
   return null;
 }
 function guardamotor(m, a){
-  if(m==="Schneider Electric") return a <= 32 ? `Schneider TeSys GV2ME (${a} A)` : a <= 80 ? `Schneider TeSys GV3P (${a} A)` : `Schneider TeSys GV4P (${a} A)`;
-  if(m==="Siemens") return `Siemens SIRIUS 3RV20 (${a} A)`;
+  if(m==="Schneider Electric"){ const r = rango(GV2ME, a) || rango(GV3P, a); return r ? `Schneider TeSys ${r[2]} (${r[0]}-${r[1]} A)` : `Schneider TeSys GV4P115 (${a} A)`; }
+  if(m==="Siemens"){ const r = rango(SIE_3RV, a); return r ? `Siemens SIRIUS ${r[2]} (${r[0]}-${r[1]} A)` : `Siemens SIRIUS ${a <= 80 ? "3RV2031" : "3RV2041"} (${a} A)`; }
   if(m==="Eaton") return a <= 32 ? `Eaton PKZM0-${a}` : a <= 65 ? `Eaton PKZM4-${a}` : `Eaton PKE65 (${a} A)`;
   if(m==="Allen-Bradley") return `Allen-Bradley 140MT (${a} A)`;
   return null;
@@ -102,7 +115,7 @@ export function modeloEnMarca(texto, val, mr){
   if(/\bTmax\b|\bEmax\b/.test(t)) r = mccb(mr.interruptores, a);
   else if(/\bS20[1-4]\b|S20[1-4]-C|System pro M/.test(t)) r = mcb(mr.interruptores, a, /System pro M compact \((\d)P\)/.test(t) ? +RegExp.$1 : p);
   else if(/\bAF\d+\b/.test(t)) r = contactor(mr.maniobra, a);
-  else if(/\bMS(116|132|165|495|5\d\d)\b/.test(t)) r = guardamotor(mr.maniobra, a);
+  else if(/\bMS(116|132|165|450|495|5\d\d)\b/.test(t)) r = guardamotor(mr.maniobra, a);
   else if(/\bEF\d+\b/.test(t)) r = sobrecarga(mr.maniobra);
   else if(/\bACS\d{3}\b/.test(t)) r = variador(mr.variadores, a);
   else if(/\bPS(R|E|TX)\d*/.test(t)) r = arrancador(mr.arrancadores, a);

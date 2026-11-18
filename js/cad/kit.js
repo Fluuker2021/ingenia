@@ -38,6 +38,51 @@ export function envolver(s, n){
   return out;
 }
 
+/* acomoda un texto en una celda de ancho × alto (mm): lo divide en líneas y, si aun así no entra, reduce la altura.
+   El ancho por carácter se toma holgado (k × altura; las fuentes de AutoCAD y de los visores DXF ocupan ~0,9-1,0 ×
+   altura en mayúsculas con factor de ancho 1) para que el texto nunca salga de su recuadro.
+   Devuelve { texto (líneas separadas por "\n"), h }. */
+export function encajar(txt, ancho, alto, h, { k=1, wf=1, maxLineas=3, hMin=1.4 }={}){
+  const plano = String(txt||"").replace(/\s*\n\s*/g, " ").trim();
+  let hh = h;
+  for(;;){
+    const n = Math.max(4, Math.floor(ancho/(k*wf*hh)));
+    const ls = envolver(plano, n);
+    const caben = Math.max(1, Math.min(maxLineas, Math.floor((alto - hh)/(hh*1.6667)) + 1));
+    if((ls.length <= caben && ls.every(l=>l.length <= n)) || hh <= hMin) return { texto: ls.join("\n"), h: hh };
+    hh = Math.max(hMin, hh*0.92);
+  }
+}
+
+/* celdas de las tablas de una pieza (leyendas): segmentos verticales de sus líneas y polilíneas, para que ningún
+   texto fijo salga de su recuadro aunque la fuente del visor sea más ancha que la del plano de referencia */
+const _verticales = new WeakMap();
+function verticales(pz){
+  let V = _verticales.get(pz); if(V) return V;
+  V = [];
+  for(const e of pz.e){
+    if(e[0]==="L" && Math.abs(e[4] - e[6]) < 0.01) V.push([e[4], Math.min(e[5], e[7]), Math.max(e[5], e[7])]);
+    if(e[0]==="P"){ const p = e[5], n = p.length/2;
+      for(let i=0; i<n; i++){ const j = (i + 1)%n; if(!e[4] && j===0) continue;
+        if(Math.abs(p[2*i] - p[2*j]) < 0.01) V.push([p[2*i], Math.min(p[2*i+1], p[2*j+1]), Math.max(p[2*i+1], p[2*j+1])]); } }
+  }
+  _verticales.set(pz, V); return V;
+}
+/* altura con la que un texto fijo entra entre las paredes de su celda (null si no está en una celda o ya entra) */
+function alturaEnCelda(pz, e, txt){
+  if(e[7]) return null;                                   // textos girados: se dejan como en la referencia
+  const V = verticales(pz), x = e[4], y = e[5];
+  const izq = V.filter(v=>v[0] < x - 0.3 && v[1] <= y && v[2] >= y).map(v=>v[0]);
+  const der = V.filter(v=>v[0] > x + 0.3 && v[1] <= y && v[2] >= y).map(v=>v[0]);
+  if(!izq.length || !der.length) return null;
+  const L = Math.max(...izq), R = Math.min(...der), ha = e[9]||0;
+  const disp = ha===1 ? 2*Math.min(x - L, R - x) - 1 : ha===2 ? x - L - 0.5 : R - x - 0.5;
+  const largo = Math.max(...String(txt).split("\n").map(l=>l.length));
+  const ancho = largo*e[6]*(e[11]||0.8)*0.95;
+  if(disp <= 0 || ancho <= disp) return null;
+  return Math.max(e[6]*0.6, e[6]*disp/ancho);
+}
+
 /* dibuja la pieza `nombre` con su ancla en (x, y), escala s.
    vars: valores de los marcadores; omitir: rectángulos (coordenadas de la pieza) cuyas primitivas no se dibujan;
    lineas: { clave: n } divide el valor en líneas de n caracteres (el valor también puede traer "\n") */
@@ -66,7 +111,9 @@ export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas=
       if(!txt.trim()) continue;
       let filas = txt.split("\n");
       if(clave && lineas[clave]) filas = filas.flatMap(f=>envolver(f, lineas[clave]));
-      const h = e[6]*s, rot = e[7]||0, r = rot*Math.PI/180, paso = h*1.6667;
+      // leyendas: el texto se reduce si no entra en su celda
+      const hc = /leyenda/.test(nombre) ? alturaEnCelda(pz, e, txt) : null;
+      const h = (hc || e[6])*s, rot = e[7]||0, r = rot*Math.PI/180, paso = h*1.6667;
       // centrado vertical (73 = 2): el bloque de líneas queda centrado en el punto, no solo la primera línea
       const ini = (e[10]===2 && filas.length>1) ? -(filas.length-1)/2 : 0;
       filas.forEach((f, i)=>{

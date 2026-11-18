@@ -1,6 +1,6 @@
 /* Ingenia — entorno dedicado de un entregable: solo los datos que usa ese documento, su vista previa,
    el cajetín / historial de revisiones y la plantilla con la que se descarga (por defecto o del cliente). */
-import { entregable, DISCIPLINAS, TIPOS, ESTADOS, requisitos, habilita, docListo } from "./catalog.js";
+import { entregable, DISCIPLINAS, TIPOS, ESTADOS, requisitos, habilita, docListo, ESTADOS_DOC, sincronizarEstado, claseEstado } from "./catalog.js";
 import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, dropzone, leerComoArrayBuffer, kb, fmtFecha, spinner } from "./ui.js";
 import * as X from "./export.js";
@@ -266,6 +266,8 @@ function tabCajetin(body, state, p, id, def){
   const d = p.documentos[id]; docInfo(p, id);
   const org = state.org;
   const render = ()=>{
+    // el estado sigue a la revisión vigente
+    if(sincronizarEstado(d)) S.save();
     body.innerHTML = html`<div class="grid-2">
       <div class="card"><div class="card-head"><h2>Identificación</h2><span class="muted" style="font-size:12px">Firmas vacías = las de <a href="#/organizacion">tu organización</a></span></div><div class="card-body">
         <div class="field"><label>Título</label><input type="text" data-f="titulo" value="${esc(d.titulo||"")}">${sistemaTag(p) ? `<span class="hint">Se completa con «- TAG: ${esc(sistemaTag(p))}».</span>` : ""}</div>
@@ -275,7 +277,7 @@ function tabCajetin(body, state, p, id, def){
           <div class="field"><label>Aprobó</label><input type="text" data-f="aprobo" value="${esc(d.aprobo||"")}" placeholder="${esc(org.apruebaPor||"")}"></div>
         </div>
         ${def.formato==="dxf" ? `<div class="field"><label>Dibujó</label><input type="text" data-f="dibujo" value="${esc(d.dibujo||"")}" placeholder="${esc(org.dibujaPor||org.elaboraPor||"")}"></div>` : ""}
-        <div class="field"><label>Estado</label><select data-f="estado">${["Por elaborar","En elaboración","Para revisión","Aprobado","Emitido"].map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select></div>
+        <div class="field"><label>Estado</label><select data-f="estado" class="sel-estado ${claseEstado(d.estado)}">${ESTADOS_DOC.map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select><span class="hint">Se actualiza con la revisión vigente («emitido para»).</span></div>
       </div></div>
       <div class="card"><div class="card-head"><h2>Historial de revisiones</h2><button class="btn-sm" id="rv-add">${ICON.plus} Nueva revisión</button></div><div class="card-body">
         <div class="table-wrap"><table><thead><tr><th>Rev.</th><th>Fecha</th><th>Descripción / emitido para</th><th></th></tr></thead><tbody>
@@ -285,10 +287,11 @@ function tabCajetin(body, state, p, id, def){
     ${def.formato==="dxf" ? `<div class="card mt-2"><div class="card-head"><h2>Planos de referencia (cajetín)</h2><button class="btn-sm" id="rf-auto">Volver a sugerir</button></div><div class="card-body" id="refs"></div></div>` : ""}
     ${descargable(id) ? `<div class="card mt-2 ws-descarga"><div class="card-body row between" style="flex-wrap:wrap"><div><h2 style="font-size:15px">Descargar el documento</h2><div class="muted" style="font-size:12.5px;margin-top:3px">Con los datos de entrada, la vista previa y el cajetín de esta pantalla, en el formato estándar de Ingenia.</div></div><button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button></div></div>` : ""}`;
     const wdl = $("#ws-dl", body); if(wdl) wdl.onclick = ()=>descargarDoc(state, p, id, wdl);
-    $$("[data-f]", body).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; S.save(); });
-    $$("[data-rv]", body).forEach(i=>i.onchange = ()=>{ d.revisiones[+i.closest("tr").dataset.r][i.dataset.rv] = i.value; S.save(); });
-    $$("[data-rdel]", body).forEach(b=>b.onclick = ()=>{ d.revisiones.splice(+b.closest("tr").dataset.r, 1); S.save(); render(); });
-    $("#rv-add").onclick = ()=>{ const last = d.revisiones[d.revisiones.length-1]; const sig = nextRev(last.rev); d.revisiones.push({ rev:sig, fecha:new Date().toISOString().slice(0,10), descripcion: /^\d+$/.test(sig) ? "Emitido para construcción" : "Emitido para revisión del cliente" }); S.save(); render(); };
+    $$("[data-f]", body).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; S.save(); if(i.dataset.f==="estado") i.className = "sel-estado " + claseEstado(i.value); });
+    // al elegir para qué se emite la revisión, el documento queda emitido y su estado lo sigue (también en Documentos)
+    $$("[data-rv]", body).forEach(i=>i.onchange = ()=>{ d.revisiones[+i.closest("tr").dataset.r][i.dataset.rv] = i.value; if(i.dataset.rv==="descripcion") d.emitida = true; docInfo(p, id); S.save(); render(); });
+    $$("[data-rdel]", body).forEach(b=>b.onclick = ()=>{ d.revisiones.splice(+b.closest("tr").dataset.r, 1); docInfo(p, id); S.save(); render(); });
+    $("#rv-add").onclick = ()=>{ const last = d.revisiones[d.revisiones.length-1]; const sig = nextRev(last.rev); d.revisiones.push({ rev:sig, fecha:new Date().toISOString().slice(0,10), descripcion: /^\d+$/.test(sig) ? "Emitido para construcción" : "Emitido para revisión del cliente" }); d.emitida = true; docInfo(p, id); S.save(); render(); };
     if(def.formato==="dxf"){
       const rf = $("#refs");
       const draw = ()=>{ rf.innerHTML = `${d.referencias.map((r,i)=>`<div class="row mb-1" data-i="${i}"><input type="text" data-rf="titulo" value="${esc(r.titulo)}" style="flex:1" placeholder="Título del plano o documento de referencia"><button class="btn-ghost btn-sm" data-rfdel>${ICON.trash}</button></div>`).join("")}<button class="btn-sm" id="rf-add">${ICON.plus} Agregar</button>`;

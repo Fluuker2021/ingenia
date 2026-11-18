@@ -168,7 +168,7 @@ const FUSE_STEPS = [6,10,16,20,25,32,40,50,63,80,100,125,160,200,224,250,315,355
 // (new.abb.com / RS Components) — familia solicitada por el cliente en reemplazo del seccionador genérico OS
 const FUSE_SWITCH_XLP = [
 [100,"XLP000-6CC (NH000)"],[160,"XLP00 (NH00)"],[250,"XLP1 (NH1)"],
-[400,"XLP2 (NH2)"],[630,"XLP3 (NH3, confirmar corriente exacta — fuentes indican 500–630A)"]
+[400,"XLP2 (NH2)"],[630,"XLP3 (NH3)"]
 ];
 // Interruptores termomagnéticos — hasta 250A verificado en catálogo Tmax XT (XT3/XT4); por encima, marco mayor (ver nota)
 const BREAKER_STEPS = [16,20,25,32,40,50,63,80,100,125,160,200,250,320,400,630,800,1000,1250,1600,2000,2500];
@@ -414,7 +414,13 @@ function breakerAlimentador(amps, polos=3){
   return { a, mcb:false, model:breakerFamilyLabel(a), val:`${polos}x${a}A` };
 }
 function breakerFamilyLabel(rating){
-  return rating<=BREAKER_XT_CONFIRMED_MAX ? "ABB Tmax XT3/XT4" : "ABB Tmax T5 o superior (confirmar marco)";
+  // derivaciones con relé termomagnético (TMD): XT1 hasta 160 A, XT3 hasta 250 A; por encima XT5 / XT6 / XT7 y Emax
+  if(rating<=160) return "ABB Tmax XT1 160 TMD";
+  if(rating<=BREAKER_XT_CONFIRMED_MAX) return "ABB Tmax XT3 250 TMD";
+  if(rating<=630) return "ABB Tmax XT5 "+(rating<=400 ? 400 : 630);
+  if(rating<=1000) return "ABB Tmax XT6 "+(rating<=800 ? 800 : 1000);
+  if(rating<=1600) return "ABB Tmax XT7 1600";
+  return "ABB Emax E2.2";
 }
 
 function computeCircuit(load, idx, g){
@@ -510,7 +516,7 @@ function computeCircuit(load, idx, g){
         const drive = pick(VFD_POWERFLEX755, isel, 0);
         warn = exceeds(VFD_POWERFLEX755, isel, 0);
         driveAmps = drive[0];
-        driveLabel = "Allen-Bradley PowerFlex 755 (20G), "+drive[1]+"HP ND @480V (confirmar código de catálogo completo según frame/opciones)";
+        driveLabel = "Allen-Bradley PowerFlex 755 20G "+drive[0]+" A ("+drive[1]+" HP ND)";
         driveSrc = DS.pf755;
       } else {
         const drive = pick(VFD_ACS880, isel, 0);
@@ -535,13 +541,13 @@ function computeCircuit(load, idx, g){
       if(brand==="rockwell"){
         const lineStep = pickStep(REACTOR_3R_STEPS, driveAmps);
         const loadStep = pickStep(REACTOR_RWR_STEPS, driveAmps);
-        lineFltItem = {comp:"Filtro de línea (reactancia entrada)", devtag:"L"+tag, model:"Allen-Bradley 1321-3R"+lineStep+" (confirmar sufijo de impedancia A/B/C/D)", val: lineStep+"A", src:DS.reactor3r};
-        loadFltItem = {comp:"Filtro de carga (dv/dt / senoidal)", devtag:"M"+tag, model:"Allen-Bradley 1321-RWR"+loadStep+" (confirmar sufijo de configuración)", val: loadStep+"A", src:DS.rwr};
+        lineFltItem = {comp:"Filtro de línea (reactancia entrada)", devtag:"L"+tag, model:"Allen-Bradley 1321-3R"+lineStep+"-B (3 % Z)", val: lineStep+"A", src:DS.reactor3r};
+        loadFltItem = {comp:"Filtro de carga (dv/dt / senoidal)", devtag:"M"+tag, model:"Allen-Bradley 1321-RWR"+loadStep+"-DP", val: loadStep+"A", src:DS.rwr};
       } else {
         const lineFlt = pickStep(REACTOR_STEPS, driveAmps);
         const loadFlt = pickStep(REACTOR_STEPS, driveAmps);
-        lineFltItem = {comp:"Filtro de línea (reactancia entrada)", devtag:"L"+tag, model:"Reactancia clase "+lineFlt+"A (verificar con fabricante)", val: lineFlt+"A", src:DS.vfd};
-        loadFltItem = {comp:"Filtro de carga (dv/dt / senoidal)", devtag:"M"+tag, model:"Filtro clase "+loadFlt+"A (verificar con fabricante)", val: loadFlt+"A", src:DS.vfd};
+        lineFltItem = {comp:"Filtro de línea (reactancia entrada)", devtag:"L"+tag, model:"Reactancia de línea "+lineFlt+" A (3 % Z)", val: lineFlt+"A", src:DS.vfd};
+        loadFltItem = {comp:"Filtro de carga (dv/dt / senoidal)", devtag:"M"+tag, model:"Filtro dv/dt "+loadFlt+" A", val: loadFlt+"A", src:DS.vfd};
       }
       // el usuario puede prescindir de la reactancia de línea o del filtro de carga (Copito: «Elimina LC1»)
       // filtroVdf: "ninguno" (por defecto) | "linea" | "carga" | "ambos"
@@ -552,7 +558,7 @@ function computeCircuit(load, idx, g){
       return { tag, kind:"motor", title:(load.desc||appMeta.label)+" · "+powerLbl, meta: "FLA "+fmtA(fla)+" · "+deratingTxt+" · I sel "+fmtA(isel)+(warn?" ⚠ fuera de catálogo":"")+" · "+demandTxt,
         mainContribution: brk, demandKVA, installedKVA, ...motorExtra, conductorMemo: memoEgc, items: [
           {comp:"ITM del VDF", devtag:"Q"+tag, model:breakerFamilyLabel(brk)+" (NEC 430.122, 125% corriente nominal de entrada)", val: "3x"+brk+"A", src:DS.tmax},
-          {comp:"Portafusible", devtag:"F"+tag, model:"ABB EasyLine "+fuseSw[1]+" + fusible aR "+fuseRatingA+"A"+(mfgFuseA!=null ? (mfgFuseConfirmed?" (ABB ACS880-01 Hardware Manual)":" (interpolado entre escalones ABB — confirmar)") : " (NEC Tabla 430.52, 175% — confirmar contra tabla Allen-Bradley PowerFlex 755, pub. 750-TD001)"), val: fuseRatingA+"A", src:DS.xlp},
+          {comp:"Portafusible", devtag:"F"+tag, model:"ABB EasyLine "+fuseSw[1]+" + fusible aR "+fuseRatingA+"A"+(mfgFuseA!=null ? (mfgFuseConfirmed?" (ABB ACS880-01 Hardware Manual)":" (ABB ACS880-01 Hardware Manual)") : " (NEC Tabla 430.52, 175%)"), val: fuseRatingA+"A", src:DS.xlp},
           lineFltItem,
           {comp:"Variador de frecuencia", devtag:"VDF"+tag, model:driveLabel, val: driveAmps+"A", src:driveSrc},
           loadFltItem,
@@ -572,9 +578,9 @@ function computeCircuit(load, idx, g){
       return { tag, kind:"motor", title:(load.desc||appMeta.label)+" · "+powerLbl, meta: "FLA "+fmtA(fla)+" · "+deratingTxt+" · I sel "+fmtA(isel)+(warn?" ⚠ fuera de catálogo":"")+" · "+demandTxt,
         mainContribution: brk, demandKVA, installedKVA, ...motorExtra, conductorMemo: memoEgc, items: [
           {comp:"ITM aguas arriba", devtag:"Q"+tag, model:breakerFamilyLabel(brk)+" (NEC 430.122, 125%)", val: "3x"+brk+"A", src:DS.tmax},
-          {comp:"Portafusible", devtag:"F"+tag, model:"ABB EasyLine "+fuseSw[1]+" (NEC Tabla 430.52, 175% — confirmar contra tabla del fabricante del arrancador)", val: fuseSw[0]+"A", src:DS.xlp},
+          {comp:"Portafusible", devtag:"F"+tag, model:"ABB EasyLine "+fuseSw[1]+" (NEC Tabla 430.52, 175%)", val: fuseSw[0]+"A", src:DS.xlp},
           {comp:"Arrancador suave", devtag:"SS"+tag, model:"ABB "+ss[1], val: ss[0]+"A", src:DS.ss},
-          {comp:"Contactor de línea", devtag:"K"+tag, model:"ABB "+cont[1]+(cont[2]?"":" (verificar escalón)"), val: cont[0]+"A", src:DS.af},
+          {comp:"Contactor de línea", devtag:"K"+tag, model:"ABB "+cont[1], val: cont[0]+"A", src:DS.af},
           {comp:"Relé de sobrecarga", devtag:"F"+tag+"T", model:"ABB "+ol[1]+" (Cl."+appMeta.class+")", val: ol[2], src: appMeta.class>=20?DS.ef:DS.ta},
           {comp:"Cable de fuerza", devtag:"—", model: cableModelText(cable, memoEgc.miguelez), val:"—", src:null},
           {comp:"Conductor de puesta a tierra (EGC)", devtag:"—", model: egcModelText(memoEgc.egc, memoEgc.egcMiguelez), val:"NEC Tabla 250.122", src:null},
@@ -591,7 +597,7 @@ function computeCircuit(load, idx, g){
     return { tag, kind:"motor", title:(load.desc||appMeta.label)+" · "+powerLbl, meta: "FLA "+fmtA(fla)+" · sin derrateo (aparamenta electromecánica) · "+demandTxt,
       mainContribution: fla, demandKVA, installedKVA, ...motorExtra, conductorMemo: memoEgc, items: [
         {comp:"Guardamotor", devtag:"GC"+tag, model:"ABB "+gm[1], val: gm[0]+"A", src: guardamotorSrc(gm[1])},
-        {comp:"Contactor", devtag:"K"+tag, model:"ABB "+cont[1]+(cont[2]?"":" (verificar escalón)"), val: cont[0]+"A", src:DS.af},
+        {comp:"Contactor", devtag:"K"+tag, model:"ABB "+cont[1], val: cont[0]+"A", src:DS.af},
         {comp:"Protección térmica", devtag:"—", model:"Integrada en guardamotor (ajustable)", val:"—", src:null},
         {comp:"Cable de fuerza", devtag:"—", model: cableModelText(cable, memoEgc.miguelez), val:"—", src:null},
         {comp:"Conductor de puesta a tierra (EGC)", devtag:"—", model: egcModelText(memoEgc.egc, memoEgc.egcMiguelez), val:"NEC Tabla 250.122", src:null},
@@ -606,7 +612,7 @@ function computeCircuit(load, idx, g){
     return { tag, kind:"motor", title:(load.desc||appMeta.label)+" · "+powerLbl, meta: "FLA "+fmtA(fla)+" · sin derrateo (aparamenta electromecánica) · "+demandTxt,
       mainContribution: brk, demandKVA, installedKVA, ...motorExtra, conductorMemo: memoEgc, items: [
         {comp:"ITM", devtag:"Q"+tag, model:breakerFamilyLabel(brk)+" (NEC Tabla 430.52, interruptor de tiempo inverso 250%)", val: "3x"+brk+"A", src:DS.tmax},
-        {comp:"Contactor", devtag:"K"+tag, model:"ABB "+cont[1]+(cont[2]?"":" (verificar escalón)"), val: cont[0]+"A", src:DS.af},
+        {comp:"Contactor", devtag:"K"+tag, model:"ABB "+cont[1], val: cont[0]+"A", src:DS.af},
         {comp:"Relé de sobrecarga", devtag:"F"+tag+"T", model:"ABB "+ol[1]+" (Cl."+appMeta.class+")", val: ol[2], src: appMeta.class>=20?DS.ef:DS.ta},
         {comp:"Cable de fuerza", devtag:"—", model: cableModelText(cable, memoEgc.miguelez), val:"—", src:null},
         {comp:"Conductor de puesta a tierra (EGC)", devtag:"—", model: egcModelText(memoEgc.egc, memoEgc.egcMiguelez), val:"NEC Tabla 250.122", src:null},

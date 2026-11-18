@@ -164,6 +164,28 @@ export const REQUIERE = {
 const ORDEN_TRABAJO = ETAPAS_TRABAJO.flatMap(e=>e.docs);
 export const ordenTrabajo = id => { const i = ORDEN_TRABAJO.indexOf(id); return i < 0 ? 999 : i; };
 export const etapaDe = id => ETAPAS_TRABAJO.find(e=>e.docs.includes(id)) || null;
+/* estados de un documento y el que corresponde a cada «emitido para» de su revisión vigente */
+export const ESTADOS_DOC = ["Por elaborar","En elaboración","Para revisión","Aprobado","Emitido"];
+export const claseEstado = e => ({ "Por elaborar":"est-por", "En elaboración":"est-elab", "Para revisión":"est-rev", "Aprobado":"est-apr", "Emitido":"est-emi" }[e] || "est-por");
+export function estadoPorRevision(descripcion){
+  const t = String(descripcion||"");
+  if(/revisi[oó]n|aprobaci[oó]n/i.test(t)) return "Para revisión";      // revisión interna, del cliente o para aprobación
+  if(/construcci[oó]n|conforme a obra/i.test(t)) return "Emitido";
+  return null;
+}
+/* el estado sigue a la revisión vigente: cuando cambia la revisión emitida (o su «emitido para») el estado se actualiza;
+   un cambio manual del estado se respeta mientras la revisión siga siendo la misma. Devuelve true si cambió. */
+export function sincronizarEstado(d){
+  if(!d || !Array.isArray(d.revisiones) || !d.revisiones.length) return false;
+  const emitida = d.emitida || d.revisiones.length > 1;
+  if(!emitida) return false;
+  const last = d.revisiones[d.revisiones.length-1], clave = `${last.rev}|${last.descripcion||""}`;
+  if(d.estadoDe===clave) return false;
+  const est = estadoPorRevision(last.descripcion);
+  d.estadoDe = clave;
+  if(est && d.estado!==est){ d.estado = est; return true; }
+  return true;
+}
 /* documento terminado: emitido o enviado a revisión / aprobado */
 export const docListo = d => !!d && (["Para revisión","Aprobado","Emitido"].includes(d.estado) || !!d.emitida);
 /* requisitos entre los documentos seleccionados del proyecto: si un requisito no se elabora en el proyecto, se toman los
@@ -178,9 +200,3 @@ export function requisitos(p, id, _vistos){
 }
 /* documentos seleccionados que toman datos de este */
 export function habilita(p, id){ return (p.entregables||[]).filter(x=>REQUIERE[x] && requisitos(p, x).includes(id)).sort((a, b)=>ordenTrabajo(a) - ordenTrabajo(b)); }
-/* siguiente paso recomendado: el primer documento (en el orden de la ruta) sin terminar cuyos requisitos están listos */
-export function siguienteDoc(p){
-  const sel = (p.entregables||[]).filter(id=>REQUIERE[id]).sort((a, b)=>ordenTrabajo(a) - ordenTrabajo(b));
-  const listo = id => docListo((p.documentos||{})[id]);
-  return sel.find(id=>!listo(id) && requisitos(p, id).every(listo)) || sel.find(id=>!listo(id)) || null;
-}

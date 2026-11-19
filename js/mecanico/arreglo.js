@@ -18,6 +18,8 @@
 import { calcularTablero, datos, ipRecomendado, tablerosPotencia, desdeTxt, accesoriosTablero, fusiblesAcometida } from "../datos.js";
 import { valoresDiseno, tempDiseno } from "../modules/criterios.js";
 import * as C from "./componentes.js";
+import { equiposControl } from "../control/equipos.js";
+import { construir as construirControl } from "./arreglo-control.js";
 import { marcasProyecto, modeloEnMarca } from "../engine/marcas.js";
 
 export const CFG_DEF = () => ({ montaje:"auto", ancho:"", alto:"", fondo:"", entrada:"inferior", reserva:"", ventilacion:"auto", mandos:"auto", calefaccion:"auto", tInterior:"",
@@ -243,6 +245,26 @@ export function arregloTablero(p, t, calc){
     filasCtrl.push({ nombre:"Contactores", columnas:E.dol.map(d=>({ circ:d.circ, ancho:Math.max(d.gm.w, d.k.w)+6, comp:d.k })) });
   }
   for(const gc of E.ctrl) filasCtrl.push({ nombre:`Distribución de control ${gc.circ.tag}`, grupos: agruparCtrl(gc.partes) });
+  // tablero de fuerza y control: su etapa de control (fuente de 24 Vdc, distribución de 120 Vac, PLC, red y relés de
+  // interfaz, con los TAG de su unifilar y su multifilar) va en una sección propia del mismo gabinete, con sus borneras
+  const filasEtapa = [], bornesEtapa = [];
+  const eqEtapa = tfc ? equiposControl(p, t) : null;
+  if(tfc){
+    const { filas } = construirControl(eqEtapa, false, false);
+    for(const f of filas){
+      const grupos = [];
+      for(const g of f.grupos){
+        const its = [];
+        for(const x of g.items){
+          if(x.tipo==="bornera") bornesEtapa.push({ grupo:x.b.grupo, desc:x.b.desc, bornes:x.b.bornes.map(b=>({ n:b.n, modelo:b.modelo, pe:!!b.pe, fun:b.fun, ref:b.ref })) });
+          else its.push(Object.assign(x, { etapa:true }));
+        }
+        if(its.length) grupos.push(its);
+      }
+      if(grupos.length) filasEtapa.push({ nombre:`Etapa de control: ${f.nombre}`, grupos });
+    }
+    if(filasEtapa.length) criterios.push("Tablero de fuerza y control: la etapa de control (PLC, fuente de 24 Vdc, distribución de control, red y relés de interfaz) va en una sección propia del mismo gabinete, junto a la parte de fuerza.");
+  }
   const ordenB = b => /^TB(\d+)/.test(b.grupo) ? +b.grupo.slice(2) : 1000;
   const bornesCtrl = E.bornes.filter(b=>b.sec!=="pot").sort((a, b)=>ordenB(a) - ordenB(b));
   const bornesPot = E.bornes.filter(b=>b.sec==="pot");
@@ -327,6 +349,10 @@ export function arregloTablero(p, t, calc){
     return filas.filter(f=>f.length);
   };
   const altoBornes = fs => fs.reduce((a, f)=>a + Math.max(...f.flatMap(b=>b.bornes.map(x=>C.borne(x.modelo).h)), 50) + 2*DUCT_GAP + ductH.w, 0);
+  const altoEtapa = util => { const fs = filasEtapa.flatMap(f=>repartirFilas(f.grupos, util, reserva).map((gs, i, a)=>({ nombre:f.nombre + (a.length>1 ? ` (${i+1})` : ""), grupos:gs })));
+    return { filas:fs, alto: MARGEN + ductH.w + fs.reduce((a, r)=>a + altoFila(r) + ductH.w, 0) + altoBornes(filaBornes(bornesEtapa, util)) + 90 }; };
+  /* sección de la etapa de control (tablero de fuerza y control): el menor ancho en que quepa con el alto Hc */
+  const seccionEtapa = Hc => { if(!filasEtapa.length) return []; for(const We of (montaje==="mural" ? GAB.anchos : [600, 800, 1000, 1200])){ const pl = C.placaDe(montaje, We, Hc), u = utilDe(pl.w), a = altoEtapa(u); if(a.alto <= pl.h) return [{ rol:"etapa", W:We, etapa:{ util:u, filas:a.filas } }]; } return null; };
   const altoCtrl = util => { const fs = filasDe(util); return { filas:fs, alto: MARGEN + ductH.w + fs.reduce((a, r)=>a + altoFila(r) + ductH.w, 0) + altoBornes(filaBornes(bornesCtrl, util)) + 90 }; };
 
   // columnas de la placa de fuerza
@@ -350,7 +376,8 @@ export function arregloTablero(p, t, calc){
     for(const Hc of (fijoH ? [fijoH] : GAB.altos)){
       const pH = C.placaDe(montaje, 800, Hc).h;
       // control: ancho menor en que quepa (altura ≤ placa; si la sección es única, comparte con la zona superior)
-      const anchosCtrl = montaje==="mural" ? GAB.anchos : [600, 800, 1000];
+      // (tablero de fuerza y control: la etapa de control comparte la sección, que puede llegar a 1200 mm)
+      const anchosCtrl = montaje==="mural" ? GAB.anchos : tfc ? [600, 800, 1000, 1200] : [600, 800, 1000];
       let sc = null;
       for(const Wc of anchosCtrl){
         const pl = C.placaDe(montaje, Wc, Hc), u = utilDe(pl.w) - (conPot ? 0 : CANAL_MIX), a = altoCtrl(u);
@@ -358,7 +385,8 @@ export function arregloTablero(p, t, calc){
         if(a.alto <= disp){ sc = { W:Wc, util:u, filas:a.filas, alto:a.alto }; break; }
       }
       if(!sc) continue;
-      if(!conPot) return { H:Hc, secs:[{ rol:"mixta", W:sc.W, ctrl:sc }] };
+      const se = seccionEtapa(Hc); if(!se) continue;
+      if(!conPot) return { H:Hc, secs:[...se, { rol:"mixta", W:sc.W, ctrl:sc }] };
       // fuerza: columnas repartidas en secciones de 600…1200
       const pots = []; let resto = colsPot.slice();
       const dispPot = pH - zonaSupPot;
@@ -374,7 +402,7 @@ export function arregloTablero(p, t, calc){
         // el interruptor general debe caber en la primera sección de fuerza
         pots.push(ok); resto = resto.slice(ok.cols.length);
       }
-      return { H:Hc, secs:[{ rol:"control", W:sc.W, ctrl:sc }, ...pots.map(x=>({ rol:"potencia", W:x.W, pot:x }))] };
+      return { H:Hc, secs:[...se, { rol:"control", W:sc.W, ctrl:sc }, ...pots.map(x=>({ rol:"potencia", W:x.W, pot:x }))] };
     }
     return null;
   };
@@ -384,10 +412,11 @@ export function arregloTablero(p, t, calc){
     // último recurso: alto máximo y avisar
     avisos.push("Los equipos no entran en los gabinetes normalizados: revisa la distribución o divide el tablero.");
     const Hc = GAB.altos[GAB.altos.length-1], pl = C.placaDe(montaje, 800, Hc), u = utilDe(pl.w), a = altoCtrl(u);
-    sel = { H:Hc, secs: conPot ? [{ rol:"control", W:800, ctrl:{ W:800, util:u, filas:a.filas, alto:a.alto } }, { rol:"potencia", W:1200, pot:{ W:1200, cols:colsPot, util:1200-100-2*(MARGEN+ductV.w)-20 } }] : [{ rol:"mixta", W:800, ctrl:{ W:800, util:u, filas:a.filas, alto:a.alto } }] };
+    const ue = utilDe(C.placaDe(montaje, 1200, Hc).w), se = filasEtapa.length ? [{ rol:"etapa", W:1200, etapa:{ util:ue, filas:altoEtapa(ue).filas } }] : [];
+    sel = { H:Hc, secs: conPot ? [...se, { rol:"control", W:800, ctrl:{ W:800, util:u, filas:a.filas, alto:a.alto } }, { rol:"potencia", W:1200, pot:{ W:1200, cols:colsPot, util:1200-100-2*(MARGEN+ductV.w)-20 } }] : [...se, { rol:"mixta", W:800, ctrl:{ W:800, util:u, filas:a.filas, alto:a.alto } }] };
   }
   H = sel.H; secs = sel.secs;
-  if(cfg.ladoControl==="der" && secs.length > 1){ const sc = secs.find(x=>x.rol!=="potencia"); secs = secs.filter(x=>x!==sc).concat([sc]); }
+  if(cfg.ladoControl==="der" && secs.length > 1){ const sc = secs.filter(x=>x.rol!=="potencia"); secs = secs.filter(x=>!sc.includes(x)).concat(sc); }
   let W = secs.reduce((a, s)=>a + s.W, 0);
   if(fijoW && fijoW > W){ const extra = fijoW - W; secs[secs.length-1].W += extra; W = fijoW; }
   else if(fijoW && fijoW < W) avisos.push(`El ancho pedido (${fijoW} mm) no alcanza: se usa ${W} mm.`);
@@ -411,7 +440,7 @@ export function arregloTablero(p, t, calc){
   const ductos = (s, x, y, w, h, orient, d) => canaletas.push({ placa:s.placa.id, x, y, w, h, orient, nombre:d.nombre, prof:d.h });
 
   // --- sección de control (o mixta) ---
-  const sCtrl = secs.find(s=>s.rol!=="potencia");
+  const sCtrl = secs.find(s=>s.rol!=="potencia" && s.rol!=="etapa");
   const sPot = secs.filter(s=>s.rol==="potencia");
   const pc = sCtrl.placa;
   const canal = conPot ? 0 : CANAL_MIX;
@@ -487,6 +516,30 @@ export function arregloTablero(p, t, calc){
   const peW = Math.min(pc.w - 80, Math.max(200, nPE*28 + 60));
   barras.push({ tag:"PE", fase:"PE", nombre:pe.nombre, x:pc.x + (pc.w - peW)/2, y:peY - pe.ancho/2, w:peW, h:pe.ancho, orient:"h", placa:pc.id, seccion:sCtrl.id, perforaciones: Math.round(peW/25) });
   if(y < pc.y + 70) avisos.push("La placa de control quedó justa: revisa la reserva o aumenta el alto del gabinete.");
+
+  // --- sección de la etapa de control (tablero de fuerza y control) ---
+  const sEt = secs.find(s=>s.rol==="etapa");
+  if(sEt){
+    const pe2 = sEt.placa, xi2 = pe2.x + MARGEN + ductV.w + 15, xf2 = pe2.x + pe2.w - MARGEN - ductV.w - 15, anchoDH2 = pe2.w - 2*(MARGEN + ductV.w);
+    const ytop2 = pe2.y + pe2.h - MARGEN, yInf2 = pe2.y + 70;
+    ductos(sEt, pe2.x + MARGEN, yInf2, ductV.w, ytop2 - yInf2, "v", ductV);
+    ductos(sEt, pe2.x + pe2.w - MARGEN - ductV.w, yInf2, ductV.w, ytop2 - yInf2, "v", ductV);
+    ductos(sEt, pe2.x + MARGEN + ductV.w, ytop2 - ductH.w, anchoDH2, ductH.w, "h", ductH);
+    let y2 = ytop2 - ductH.w;
+    for(const r of sEt.etapa.filas){
+      const h = altoFila(r), yc = y2 - h/2;
+      rieles.push({ placa:pe2.id, x:xi2 - 10, y:yc, w:(xf2 - xi2) + 20, nombre:r.nombre });
+      let x = xi2;
+      for(const gq of r.grupos){ for(const cp of gq){ cp.x = x; cp.y = yc - cp.h/2; cp.placa = pe2.id; cp.seccion = sEt.id; cp.fila = r.nombre; add(cp); x += cp.w; } x += 10; }
+      y2 -= h;
+      ductos(sEt, pe2.x + MARGEN + ductV.w, y2 - ductH.w, anchoDH2, ductH.w, "h", ductH);
+      y2 -= ductH.w;
+    }
+    y2 = ponerBornes(sEt, bornesEtapa, xi2, xf2, y2, 0);
+    const peW2 = Math.min(pe2.w - 80, Math.max(200, (bornesEtapa.length + 4)*28 + 60));
+    barras.push({ tag:"PE2", fase:"PE", nombre:pe.nombre, x:pe2.x + (pe2.w - peW2)/2, y:pe2.y + 30 - pe.ancho/2, w:peW2, h:pe.ancho, orient:"h", placa:pe2.id, seccion:sEt.id, perforaciones: Math.round(peW2/25) });
+    if(y2 < pe2.y + 70) avisos.push("La placa de la etapa de control quedó justa: revisa la reserva o aumenta el alto del gabinete.");
+  }
 
   // --- secciones de fuerza ---
   let filaQ = null;
@@ -595,6 +648,10 @@ export function arregloTablero(p, t, calc){
   const cands = (dobleP ? [0.25, 0.75, 0.2, 0.8] : [0.5, 0.3, 0.7, 0.25, 0.75]).map(f=>sPanel.x0 + sPanel.W*f);
   const pcx2 = cands.find(libre) ?? cands[0];
   filasOp.forEach((fila, r)=>fila.forEach((o, k)=>puerta.push(Object.assign({ x:pcx2 + (k - (fila.length-1)/2)*pasoX, y:panelY0 + panelH - 45 - r*pasoY, seccion:sPanel.id, diam:30, desc:descOp(o) }, o))));
+  // pantalla HMI de la etapa de control en la puerta de su sección
+  const hmiEt = sEt && eqEtapa && eqEtapa.red.find(r=>r.tipo==="hmi");
+  if(hmiEt){ const hm = C.hmi(hmiEt.modelo), yH = Math.min(H - 300, 1400 - (montaje==="mural" ? 0 : C.GAB_PISO.zocalo)/2);
+    puerta.push({ tag:hmiEt.tag, tipo:"hmi", desc:`${hmiEt.desc} — recorte ${hm.recorteW} x ${hm.recorteH} mm`, modelo:hmiEt.modelo, x:sEt.x0 + sEt.W/2, y:yH, w:hm.w, h:hm.h, recorteW:hm.recorteW, recorteH:hm.recorteH, prof:hm.prof, seccion:sEt.id, fuente:hm.fuente }); }
   puerta.push({ tag:"EPB1", tipo:"seta", desc:"Parada de emergencia (actúa sobre la bobina de mínima tensión de Q1)", modelo:C.PUERTA.seta.modelo, leyenda:"PARADA DE EMERGENCIA", x:pcx2, y:panelY0 - 75, diam:40, anillo:60, seccion:sPanel.id, fueraPanel:true });
   const panel = { x:pcx2 - panelW/2, y:panelY0, w:panelW, h:panelH, seccion:sPanel.id };
   // teclados de los variadores en la puerta de su sección, alineados con el variador
@@ -697,7 +754,7 @@ export function arregloTablero(p, t, calc){
 
   // ===== 9) criterios de diseño aplicados =====
   criterios.unshift(
-    `Gabinete ${montaje==="mural" ? "mural" : "autosoportado"} ${W}x${H}x${D} mm (ancho x alto x fondo)${zocalo ? ` con zócalo de ${zocalo} mm` : ""}, ${ipRecomendado(v)}, ${secs.length} sección(es): ${secs.map(s=>`${s.W} mm ${s.rol==="potencia" ? "de fuerza" : s.rol==="control" ? "de control" : "fuerza y control"}`).join(", ")}.`,
+    `Gabinete ${montaje==="mural" ? "mural" : "autosoportado"} ${W}x${H}x${D} mm (ancho x alto x fondo)${zocalo ? ` con zócalo de ${zocalo} mm` : ""}, ${ipRecomendado(v)}, ${secs.length} sección(es): ${secs.map(s=>`${s.W} mm ${s.rol==="potencia" ? "de fuerza" : s.rol==="control" ? "de control" : s.rol==="etapa" ? "de la etapa de control" : "fuerza y control"}`).join(", ")}.`,
     `Flujo de energía de arriba hacia abajo: interruptor general Q1 (${q1.modelo}) arriba, barras de cobre ${fase.nombre} mm (L1-L2-L3 a ${fase.paso} mm entre centros, aisladores cada 400 mm) y derivaciones colgadas de las barras; borneras de salida abajo, junto a la entrada ${entrada} de cables.`,
     conPot ? "Fuerza y control en placas separadas: variadores, arrancadores, interruptores en caja moldeada y reactancias en la placa de fuerza; protecciones modulares, guardamotores, contactores y borneras en la placa de control (riel DIN)." : "Una sola placa: zona de fuerza (Q1 y barras) arriba y filas de riel DIN debajo.",
   );

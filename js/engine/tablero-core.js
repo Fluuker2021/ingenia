@@ -831,6 +831,16 @@ class DXFDoc{
     return quitar.size;
   }
   /* textos cortos dentro de un símbolo (VFD en su recuadro, RST en su círculo, AS, PS…): centrados en el símbolo */
+  /* agrega las entidades de otro documento (p. ej. las hojas de la etapa de control de un tablero de fuerza y control,
+     dibujadas con su propio kit a continuación de las de fuerza) con sus capas, bloques y tipos de línea */
+  absorber(otro){
+    if(!otro) return this;
+    this.entities.push(...otro.entities);
+    for(const l of otro.layersUsed) this.layersUsed.add(l);
+    for(const b of otro.blocksUsed) this.blocksUsed.add(b);
+    Object.assign(this.capas, otro.capas); Object.assign(this.tiposLinea, otro.tiposLinea);
+    return this;
+  }
   centrarEnSimbolos(){
     const num = (e, c) => { const m = e.match(new RegExp("\\n"+c+"\\n(-?[\\d.eE+-]+)")); return m ? +m[1] : NaN; };
     const H = [], V = [], C = [];

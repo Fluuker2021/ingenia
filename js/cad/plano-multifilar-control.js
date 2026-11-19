@@ -50,7 +50,7 @@ const trozos = (arr, n) => { const out = []; for(let i=0;i<arr.length;i+=n) out.
 /* lámina actual, colocación de piezas y registro de flechas para las referencias cruzadas */
 class Plano {
   constructor(doc, kit, reg, valsDe, cliente, total, dxs){ Object.assign(this, { doc, kit, reg, valsDe, cliente, total, k:-1, nuevo:new Map(), dy:0, ox:0, revisar:false, sinDestino:[], dxs, dxNuevo:[], ini:null, aux:new Set(), fijo:new Set() }); }
-  hoja(titulo2, dy=0){ this.cerrar(); this.k++; this.dy = dy; this.ox = this.k*PASO_HOJAS; dibujarLamina(this.doc, this.ox, 0, this.valsDe(this.k, this.total, { TITULO2: titulo2 }), this.cliente); this.ini = this.doc.entities.length; }
+  hoja(titulo2, dy=0){ this.cerrar(); this.k++; this.dy = dy; this.ox = ((this.k0||0) + this.k)*PASO_HOJAS; dibujarLamina(this.doc, this.ox, 0, this.valsDe(this.k, this.total, { TITULO2: titulo2 }), this.cliente); this.ini = this.doc.entities.length; }
   /* cierra la hoja: su dibujo se centra en el marco. En la primera pasada se calcula el desplazamiento y se corrigen las
      flechas registradas (las referencias cruzadas apuntan a la posición final); en la segunda se aplica el mismo. */
   cerrar(){
@@ -63,8 +63,8 @@ class Plano {
     if(dx){
       const movidos = moverX(mov, dx); let m = 0;
       this.doc.entities.splice(this.ini, ents.length, ...ents.map((e, i)=>this.fijo.has(i) ? e : movidos[m++]));
-      for(const v of this.nuevo.values()) if(v.hoja===this.k+1 && !v.movido){ v.X += dx; v.movido = true; }
-      for(const f of this.sinDestino) if(f.hoja===this.k+1 && !f.movido){ f.zona = zona(f.X + dx, f.Y); f.movido = true; }
+      for(const v of this.nuevo.values()) if(v.hoja===this.nHoja() && !v.movido){ v.X += dx; v.movido = true; }
+      for(const f of this.sinDestino) if(f.hoja===this.nHoja() && !f.movido){ f.zona = zona(f.X + dx, f.Y); f.movido = true; }
     }
     this.ini = null; this.aux = new Set(); this.fijo = new Set();
   }
@@ -82,7 +82,7 @@ class Plano {
   refEt(x, y, etq, clave, dir){
     const r = this.ref(clave);
     // flecha sin la otra punta: el conductor no llega a ninguna hoja (se informa en la revisión del plano)
-    if(!r){ if(this.revisar && etq) this.sinDestino.push({ hoja:this.k+1, X:DX+x, Y:DY+this.dy+y, zona:zona(DX+x, DY+this.dy+y), etq }); return; }
+    if(!r){ if(this.revisar && etq) this.sinDestino.push({ hoja:this.nHoja(), X:DX+x, Y:DY+this.dy+y, zona:zona(DX+x, DY+this.dy+y), etq }); return; }
     const L = String(etq||"").length*4.52*0.72 + 1.5, o = { capa:"EPLAN442", c:73, va:2 };
     // largo de la referencia y límites del marco en coordenadas de la hoja de referencia (nunca fuera del marco)
     const W = (r.length + 2)*3.25*0.64, X0 = 27 - DX, Y0 = 48 - DY - this.dy, Y1 = 577 - DY - this.dy;
@@ -92,7 +92,9 @@ class Plano {
     else if(x+L+r.length*2.4 > 804) this.texto(x, y-5.5, 3.25, "/"+r, Object.assign(o, { ha:0 }));
     else this.texto(x+L, y, 3.25, "/ "+r, Object.assign(o, { ha:0 }));
   }
-  marca(clave, x, y){ if(!this.nuevo.has(clave)) this.nuevo.set(clave, { hoja:this.k+1, X:DX+x, Y:DY+this.dy+y }); }
+  /* número de la hoja actual en el documento (con k0 hojas antes: etapa de control dentro del multifilar de fuerza) */
+  nHoja(){ return (this.k0||0) + this.k + 1; }
+  marca(clave, x, y){ if(!this.nuevo.has(clave)) this.nuevo.set(clave, { hoja:this.nHoja(), X:DX+x, Y:DY+this.dy+y }); }
   ref(clave){ const r = this.reg.get(clave); return r ? `${r.hoja}.${zona(r.X, r.Y)}` : ""; }
   linea(x1, y1, x2, y2, [capa, c, lt]){ if(Math.abs(x1-x2)<0.01 && Math.abs(y1-y2)<0.01) return; this.doc.line(this.ox+DX+x1, DY+this.dy+y1, this.ox+DX+x2, DY+this.dy+y2, capa, { c, lt }); }
   arco(x, y, r, a1, a2, [capa, c]){ this.doc.arc(this.ox+DX+x, DY+this.dy+y, r, a1, a2, capa, { c }); }
@@ -101,21 +103,24 @@ class Plano {
   textoN(x, y, h, s, n, o={}){ String(s||"").split("\n").flatMap(l=>envolver(l, n)).forEach((l, i)=>this.texto(x, y - i*h*1.6667, h, l, Object.assign({ va:3 }, o))); }
 }
 
-export async function multifilarControlKit({ p, valsDe, cliente, id }){
+/* tableros: los de control independientes (los de fuerza y control se detallan en el multifilar de fuerza, que llama a
+   este generador con tableros = [TFC], k0 = hojas de fuerza antes y etapa = true para agregar su etapa de control) */
+export async function multifilarControlKit({ p, valsDe, cliente, id, tableros:lista0, k0=0, etapa=false }){
   const kit = await cargarKit("multifilar_control");
-  const lista = tablerosControl(p).length ? tablerosControl(p) : [tc(p)];
+  const puros = tablerosControl(p).filter(t=>t.tipo==="control");
+  const lista = lista0 || (puros.length ? puros : tablerosControl(p).length ? tablerosControl(p) : [tc(p)]);
   const eqs = lista.map(t=>equiposControl(p, t));
   // dos pasadas: la primera ubica cada flecha (hoja y zona); la segunda dibuja con las referencias cruzadas resueltas
   let reg = new Map(), total = 0, dxs = null;
   for(let pasada=0; pasada<2; pasada++){
     const doc = new DXFDoc(); usarKit(doc, kit);
-    const P = new Plano(doc, kit, reg, valsDe, cliente, total, dxs); P.docId = id || "ins-multifilar-tc"; P.revisar = pasada===1;
+    const P = new Plano(doc, kit, reg, valsDe, cliente, total, dxs); P.docId = id || "ins-multifilar-tc"; P.revisar = pasada===1; P.k0 = k0; P.etapa = etapa;
     for(const eq of eqs) tableroControl(P, p, eq);
     P.cerrar();
     if(pasada){
       doc.limpiarUniones(); quitarDiagonalesSueltas(doc);
       const dxf = doc.toDXF();
-      return { dxf, hojas: P.k+1, avisos: revisionPlano(dxf, P.sinDestino, eqs), centrado: P.dxNuevo };
+      return { dxf, doc, hojas: P.k+1, avisos: revisionPlano(dxf, P.sinDestino, eqs), centrado: P.dxNuevo };
     }
     reg = P.nuevo; total = P.k+1; dxs = P.dxNuevo;
   }
@@ -143,7 +148,7 @@ function revisionPlano(dxf, sinDestino, eqs){
 function tableroControl(P, p, eq){
   const t = eq.tablero, v = eq.v, pre = (t.tag||"TC")+"|";
   const K = s => pre+s;                                         // claves de flechas del tablero
-  const nombre = `${up(t.nombre||"Tablero de control")} ${t.tag||""}`.trim();
+  const nombre = `${up(t.nombre||"Tablero de control")} ${t.tag||""}`.trim() + (P.etapa ? " - ETAPA DE CONTROL" : "");
   const est = eq.acometidas.find(a=>a.id==="est"), aux = eq.acometidas.find(a=>a.id==="aux");
   const c24 = eq.circuitos.filter(c=>c.barra==="24 Vdc"), c120 = eq.circuitos.filter(c=>c.barra==="120 Vac"), c220 = eq.circuitos.filter(c=>c.barra!=="24 Vdc" && c.barra!=="120 Vac");
   const cbDI = c120.find(c=>/entradas digitales/i.test(c.descripcion||"")), cbDO = c120.find(c=>/salidas digitales/i.test(c.descripcion||""));
@@ -247,12 +252,12 @@ function hAcometidas(c){
     P.linea(xs+50, 632.85, xs+66, 632.85, BUS.pe); P.texto(xs+66, 630.2, 3.25, "PE", { capa:"EPLAN420", c:7, ha:1, va:3 });
   }
   P.pz("leyenda", 18);
-  const notas = ["NOTAS:", `1. LA ACOMETIDA DE ${up(est.tension)} (${est.fases}, ${v.frecuencia} HZ) PARA EL ${nombre} ES SUMINISTRADA POR EL CLIENTE.`,
+  const notas = ["NOTAS:", P.etapa ? `1. LA ETAPA DE CONTROL (${up(est.tension)}, ${est.fases}, ${v.frecuencia} HZ) SE ALIMENTA DESDE EL CONTROL INTERNO DEL MISMO TABLERO${est.circuito ? ", CIRCUITO "+up(est.circuito) : ""}.` : `1. LA ACOMETIDA DE ${up(est.tension)} (${est.fases}, ${v.frecuencia} HZ) PARA EL ${nombre} ES SUMINISTRADA POR EL CLIENTE.`,
     aux && `2. LA ACOMETIDA DE ${up(aux.tension)} (${aux.fases}, ${v.frecuencia} HZ) ES SUMINISTRADA DESDE EL ${up(aux.desde)}.`,
     `${aux ? 3 : 2}. LA BARRA DE TIERRA DEL TABLERO DE CONTROL SERÁ AISLADA (INSTRUMENTACIÓN) Y DE PROTECCIÓN.`,
     `${aux ? 4 : 3}. LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A ${v.altitud} m.s.n.m.`].filter(Boolean);
   // las notas del usuario (Copito / editor) reemplazan a las del formato
-  const notasU = datos(c.p).notas[P.docId] || [];
+  const notasU = P.etapa ? [] : datos(c.p).notas[P.docId] || [];   // en la etapa de control, las del usuario ya van en la hoja de acometida de fuerza
   const txt = notasU.length ? ["NOTAS:"].concat(notasU.map((n, i)=>`${i+1}. ${n}`)) : notas;
   P.pz("notas", 15, { lineas:{ notas:150 }, vars:{ notas: txt.join("\n") } });
 }

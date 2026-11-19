@@ -56,12 +56,16 @@ export const ESQUEMAS = {
 // Asigna ítem, slot y canal (I/O) automáticamente. Devuelve copia de filas con los campos calculados.
 // Con el proyecto (p) se usa la configuración de cada tablero de control: canales por módulo, primer slot
 // (el slot 0 es la CPU) y numeración de borneras (TB = slot + desplazamiento, dos bornes por canal).
+/* desplazamiento adicional de las borneras de E/S (tablero de fuerza y control: después de las de fuerza); lo registra
+   js/control/equipos.js para no importar aquí el cálculo de los tableros */
+let despTB = () => 0;
+export function registrarDesplazamientoTB(fn){ despTB = fn; }
 const cfgCtl = (p, tag) => { const t = ((p && p.datos && p.datos.tableros)||[]).find(x=>x.tag===tag && (x.tipo==="control"||x.tipo==="fuerzacontrol")); return t || null; };
 export function procesarFilas(id, filas, p){
   const esq = ESQUEMAS[id];
   const out = filas.map((f,i)=>Object.assign({}, f, { item: String(i+1).padStart(3,"0") }));
   if(id==="ins-io"){
-    const est = {};
+    const est = {}; const cacheTB = {};
     for(const f of out){
       const t = f.tipo||"DI";
       const ct = cfgCtl(p, f.tablero);
@@ -73,7 +77,7 @@ export function procesarFilas(id, filas, p){
       const s = e.porTipo[t];
       if(s.used>=per){ e.slot++; s.slot = e.slot; s.used = 0; }
       f.slot = s.slot; f.ch = s.used; s.used++;
-      const tb = "TB"+(f.slot + (ct ? (+ct.tbOffset||0) : 0));
+      const tb = "TB"+(f.slot + (ct ? (+ct.tbOffset||0) + (ct.tipo==="fuerzacontrol" ? (cacheTB[ct.id] ??= (+despTB(p, ct)||0)) : 0) : 0));
       if(!f.terminales) f.terminales = `${tb}:${2*f.ch+1} / ${tb}:${2*f.ch+2}`;
     }
   }

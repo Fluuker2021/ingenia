@@ -10,6 +10,7 @@ import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
 import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, accesoriosTablero, fusiblesAcometida } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza, envolver, cajaAcometida, encajar } from "./kit.js";
+import { unifilarControlKit } from "./plano-unifilar-control.js";
 
 // geometría del plano de referencia (mm, espacio modelo)
 const BUS = 517.4, EJE0 = 71.8, ANCHO_COL = 58.2, PASO_RAMA = 45, SUB = 415.3 - BUS;
@@ -105,7 +106,12 @@ export async function unifilarKit({ p, valsDe, cliente, id }){
   const doc = new DXFDoc(); usarKit(doc, kit);
   // el control interno con segunda fuente no cuelga de la barra principal: va al final, a la derecha
   const planes = lista.map(calc=>{ const cols = columnas(calc); return { calc, hojas: repartir([...cols.filter(c=>!c.externa), ...cols.filter(c=>c.externa)]) }; });
-  const total = planes.reduce((a,x)=>a+x.hojas.length, 0);
+  const totalFuerza = planes.reduce((a,x)=>a+x.hojas.length, 0);
+  // tablero de fuerza y control: un solo unifilar; su etapa de control sigue a las hojas de fuerza
+  const tfcs = lista.map(c=>c.tablero).filter(t=>t && t.tipo==="fuerzacontrol");
+  const ctl = tfcs.length ? await unifilarControlKit({ p, cliente, id, tableros:tfcs, k0:totalFuerza, etapa:true,
+    valsDe:(i, tot, o)=>valsDe(totalFuerza + i, totalFuerza + tot, o) }) : null;
+  const total = totalFuerza + (ctl ? ctl.hojas : 0);
   let k = 0;
   for(const { calc, hojas } of planes){
     const t = calc.tablero, g = calc.g;
@@ -118,7 +124,8 @@ export async function unifilarKit({ p, valsDe, cliente, id }){
       k++;
     });
   }
-  doc.limpiarUniones(); doc.centrarEnSimbolos(); return { dxf: doc.toDXF(), hojas: total, calc: lista[0] };
+  doc.limpiarUniones(); doc.centrarEnSimbolos(); if(ctl) doc.absorber(ctl.doc);
+  return { dxf: doc.toDXF(), hojas: total, calc: lista[0] };
 }
 
 /* descripción de la carga bajo el motor o la flecha: texto vertical que termina en yIni y baja hacia el pie de

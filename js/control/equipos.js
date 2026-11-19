@@ -10,9 +10,11 @@
    · servicios del tablero en 220 Vac (ventilación, luminaria y tomacorriente con diferencial de 30 mA);
    · PLC con su CPU en el slot 0 y los módulos de E/S por tipo (AI, AO, DO, DI), relés de interfaz CRn para las
      salidas digitales y una bornera por módulo (TB = slot + desplazamiento, como el listado I/O). */
-import { datos, tablerosControl, tablerosPotencia, tableroPorId, circuitosControl, desdeTxt, esFuerza, tc as tcPrincipal, instrumentos, expandirTag, circuitoHaciaControl } from "../datos.js";
+import { datos, tablerosControl, tablerosPotencia, tableroPorId, circuitosControl, desdeTxt, esFuerza, tc as tcPrincipal, instrumentos, expandirTag, circuitoHaciaControl, tagsPotenciaTFC } from "../datos.js";
 import { valoresDiseno, tensionEstabilizada } from "../modules/criterios.js";
-import { procesarFilas } from "../modules/tablas.js";
+import { procesarFilas, registrarDesplazamientoTB } from "../modules/tablas.js";
+// borneras de los módulos del PLC en un tablero de fuerza y control: siguen a las de la parte de fuerza (listado I/O igual)
+registrarDesplazamientoTB((p, t)=>tagsPotenciaTFC(p, t).tb);
 import { FAMILIAS, familiaPorTexto, modeloFamilia, infoModulo, terminalesCanal } from "./plc-modulos.js";
 
 /* ---------- familias de PLC (js/control/plc-modulos.js: modelos, bornes y reglas de bastidor de cada fabricante) ---------- */
@@ -42,6 +44,8 @@ export function equiposControl(p, t){
   const fam = familiaPlc(t);
   const vEst = tensionEstabilizada(v);                       // 120 Vac (barra estabilizada)
   const circs = circuitosControl(p, t).map(c=>Object.assign({}, c));
+  // tablero de fuerza y control: la etapa de control sigue la numeración de la parte de fuerza (CB, F, TB, SPD)
+  const off = tagsPotenciaTFC(p, t), TB = n => "TB" + (off.tb + n), tfc = t.tipo==="fuerzacontrol";
   const c24 = circs.filter(c=>c.barra==="24 Vdc"), c120 = circs.filter(c=>c.barra==="120 Vac"), c220 = circs.filter(c=>c.barra==="220 Vac");
   const fuenteC = c120.find(c=>/fuente/i.test(c.descripcion||""));
   const dist120 = c120.filter(c=>c!==fuenteC);
@@ -53,11 +57,11 @@ export function equiposControl(p, t){
   const w220 = c220.reduce((a, c)=>a + (+c.potencia||0), 0);
   const conAux = c220.length > 0 && t.alimAux!=="no";
   const acometidas = [{
-    id:"est", tb:"TB1", tension:vEst, fases:"1F+N+T", desde: t.desde120 || (t.desdeTexto && !up ? t.desdeTexto : desdeTxt(p, t)), circuito: t.circuito120 || circuitoHaciaControl(p, t, "est"),
+    id:"est", tb:TB(1), tension:vEst, fases:"1F+N+T", desde: tfc ? `Control interno del ${t.nombre||"tablero"} ${t.tag}` : t.desde120 || (t.desdeTexto && !up ? t.desdeTexto : desdeTxt(p, t)), circuito: t.circuito120 || circuitoHaciaControl(p, t, "est"),
     q:{ tag:"MCB1", tipo:"mcb", polos:2, in:itmPara(w120, 120, 16), desc:`Interruptor general de ${vEst}` }, cable:"2C#12AWG+12AWG(T)",
   }];
   if(conAux) acometidas.push({
-    id:"aux", tb:"TB2", tension:"220 Vac", fases:"2F+T", desde: fuerza ? `${fuerza.nombre||"Tablero de fuerza"} ${fuerza.tag}` : "Tablero de fuerza", circuito: t.circuito220 || circuitoHaciaControl(p, t, "aux"),
+    id:"aux", tb:TB(2), tension:"220 Vac", fases:"2F+T", desde: fuerza ? `${fuerza.nombre||"Tablero de fuerza"} ${fuerza.tag}` : "Tablero de fuerza", circuito: t.circuito220 || circuitoHaciaControl(p, t, "aux"),
     q:{ tag:"MCB2", tipo:"mcb", polos:2, in:itmPara(w220, 220, 10), desc:"Interruptor general de 220 Vac (servicios del tablero)" }, cable:"2C#12AWG+12AWG(T)",
   });
   acometidas.forEach(a=>{ a.q.modelo = mcbModelo(2, a.q.in); a.q.val = `2x${a.q.in}A`; });
@@ -66,7 +70,7 @@ export function equiposControl(p, t){
   // consumo típico por derivación de 24 Vdc (W) y 50 % de margen para elegir la fuente
   const w24 = c24.reduce((a, c)=>a + (+c.potencia || W24.find(([re])=>re.test(c.descripcion||""))?.[1] || 0), 0);
   const fu = FUENTES.find(f=>f[0] >= Math.max(60, w24*1.5)) || FUENTES[FUENTES.length-1];
-  let nCB = 0; const cbTag = () => "CB" + (++nCB);
+  let nCB = off.cb; const cbTag = () => "CB" + (++nCB);
   const fuente = c24.length || fuenteC ? {
     cb:{ tag:cbTag(), tipo:"mcb", polos:2, in: fuenteC ? (+fuenteC.proteccion||10) : 10, desc:"Interruptor de la fuente de 24 Vdc" },
     ps:{ tag:"PS1", tipo:"fuente", modelo:fu[1], w:fu[0], a:fu[2], desc:`Fuente de alimentación ${vEst} / 24 Vdc, ${fu[2]} A` },
@@ -79,13 +83,13 @@ export function equiposControl(p, t){
 
   // --- circuitos derivados (en el orden del unifilar): 24 Vdc con fusible-borne, 120 Vac y 220 Vac con ITM 2P
   const circuitos = [];
-  c24.forEach((c, i)=>circuitos.push({ barra:"24 Vdc", circuito:"C"+(i+1), tag:"F"+(i+1), tipo:"fusible", polos:1, in:+c.proteccion||1, val:`${+c.proteccion||1}A`, cfg:c.cfg,
+  c24.forEach((c, i)=>circuitos.push({ barra:"24 Vdc", circuito:"C"+(i+1), tag:"F"+(off.f+i+1), tipo:"fusible", polos:1, in:+c.proteccion||1, val:`${+c.proteccion||1}A`, cfg:c.cfg,
     modelo:"UT 4-HESI (5x20) + fusible 5x20", borne:`XF1.${i+1}`, descripcion:c.descripcion, cable:"2C#14AWG+14AWG(T)", potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") }));
   dist120.forEach((c, i)=>{ const a = +c.proteccion||2; circuitos.push({ barra:"120 Vac", circuito:"C"+(i+1), tag:cbTag(), tipo:"mcb", polos:2, in:a, val:`2x${a}A`, modelo:mcbModelo(2, a),
-    borne:`TB3.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||""), cfg:c.cfg }); });
+    borne:`${TB(3)}.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||""), cfg:c.cfg }); });
   let nID = 0;
   c220.filter(c=>conAux || c.cfg!=="luz220").forEach((c, i)=>{ const a = +c.proteccion||4; const o = { cfg:c.cfg, barra: conAux ? "220 Vac" : vEst, circuito:"C"+(i+1), tag:cbTag(), tipo:"mcb", polos:2, in:a, val:`2x${a}A`, modelo:mcbModelo(2, a),
-    borne:`TB4.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") };
+    borne:`${TB(4)}.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") };
     if(c.diferencial){ o.id = { tag:"ID"+(++nID), tipo:"diferencial", polos:2, in:25, sens:"30mA", modelo:"FH202 AC-25/0.03", val:"2x25A 30mA" }; }
     if(/ventila/i.test(c.descripcion||"")) o.extra = { termostato:"TH1", ventiladores:["V1","V2"] };
     if(/luminaria/i.test(c.descripcion||"")) o.extra = { interruptorPuerta:"SQ1", luminaria:"LM1" };
@@ -96,7 +100,7 @@ export function equiposControl(p, t){
   const INTERNA = /plc|cpu|hmi|router|switch|entradas|salidas|fuente|ventilaci|luminaria|tomacorriente|m[oó]dulo/i;
   for(const c of circuitos) c.campo = !c.reserva && !INTERNA.test(c.descripcion||"");
   // supresor de sobretensiones de la acometida auxiliar (o de la estabilizada si no hay auxiliar)
-  const spd = { cb:{ tag:cbTag(), tipo:"mcb", polos:2, in:20, modelo:mcbModelo(2, 20), val:"2x20A", desc:"Interruptor del supresor de sobretensiones" }, tags:["SPD1","SPD2"], modelo:"OVR T2 40-275 P QS", tipo:"TIPO 2", acometida: conAux ? "aux" : "est" };
+  const spd = { cb:{ tag:cbTag(), tipo:"mcb", polos:2, in:20, modelo:mcbModelo(2, 20), val:"2x20A", desc:"Interruptor del supresor de sobretensiones" }, tags:["SPD"+(off.spd+1),"SPD"+(off.spd+2)], modelo:"OVR T2 40-275 P QS", tipo:"TIPO 2", acometida: conAux ? "aux" : "est" };
 
   // --- PLC: módulos por slot desde el listado I/O (mismos slot, canal y bornes)
   const io = procesarFilas("ins-io", d["ins-io"]||[], p);
@@ -107,7 +111,7 @@ export function equiposControl(p, t){
   const modulos = [...porSlot.entries()].sort((a, b)=>a[0]-b[0]).map(([slot, filas])=>{
     const tipo = filas[0].tipo, canales = (t.canales||{})[tipo] || 16;
     const tag = tipo + (++cont[tipo]);
-    const tb = "TB" + (slot + (+t.tbOffset||0));
+    const tb = "TB" + (slot + (+t.tbOffset||0) + off.tb);
     return { tag, tipo, slot, canales, modelo: modeloModulo(fam, tipo, canales, t.ioDiscreto), desc:`${NOMBRE_MOD[tipo]||"Módulo"} ${canales} canales`, tb,
       senales: Array.from({ length:canales }, (_, ch)=>filas.find(f=>+f.ch===ch) || { tag:"-", senal:tipo+"_RESERVA", descripcion:"Reserva", tipo, ch, slot, origen:"reserva", terminales:`${tb}:${2*ch+1} / ${tb}:${2*ch+2}` }) };
   });
@@ -154,8 +158,8 @@ export function equiposControl(p, t){
   const borneras = [];
   for(const a of acometidas) borneras.push({ tag:a.tb, desc:`Acometida ${a.tension}`, bornes:[{ n:"1", fun:"L", modelo:"UT 16" }, { n:"2", fun:"N", modelo:"UT 16" }, { n:"PE", fun:"PE", modelo:"UT 16-PE", pe:true }] });
   const b120 = circuitos.filter(c=>c.barra==="120 Vac"), b220 = circuitos.filter(c=>c.barra!=="120 Vac" && c.barra!=="24 Vdc");
-  if(b120.length) borneras.push({ tag:"TB3", desc:`Salidas de ${vEst}`, bornes: b120.flatMap((c, i)=>[{ n:String(2*i+1), fun:"L", modelo:"UT 4", ref:c.tag }, { n:String(2*i+2), fun:"N", modelo:"UT 4", ref:c.tag }]).concat([{ n:"PE", fun:"PE", modelo:"UT 4-PE", pe:true }]) });
-  if(b220.length) borneras.push({ tag:"TB4", desc:"Salidas de servicios del tablero (220 Vac)", bornes: b220.flatMap((c, i)=>[{ n:String(2*i+1), fun:"L", modelo:"UT 4", ref:c.tag }, { n:String(2*i+2), fun:"N", modelo:"UT 4", ref:c.tag }]).concat([{ n:"PE", fun:"PE", modelo:"UT 4-PE", pe:true }]) });
+  if(b120.length) borneras.push({ tag:TB(3), desc:`Salidas de ${vEst}`, bornes: b120.flatMap((c, i)=>[{ n:String(2*i+1), fun:"L", modelo:"UT 4", ref:c.tag }, { n:String(2*i+2), fun:"N", modelo:"UT 4", ref:c.tag }]).concat([{ n:"PE", fun:"PE", modelo:"UT 4-PE", pe:true }]) });
+  if(b220.length) borneras.push({ tag:TB(4), desc:"Salidas de servicios del tablero (220 Vac)", bornes: b220.flatMap((c, i)=>[{ n:String(2*i+1), fun:"L", modelo:"UT 4", ref:c.tag }, { n:String(2*i+2), fun:"N", modelo:"UT 4", ref:c.tag }]).concat([{ n:"PE", fun:"PE", modelo:"UT 4-PE", pe:true }]) });
   const f24 = circuitos.filter(c=>c.barra==="24 Vdc");
   if(f24.length) borneras.push({ tag:"XF1", desc:"Fusibles-borne de 24 Vdc", bornes: f24.map((c, i)=>({ n:String(i+1), fun:"+24V", modelo:"UT 4-HESI", ref:c.tag })).concat([{ n:"0V", fun:"0V", modelo:"UT 4" }]) });
   const xf2 = modulos.flatMap(m=>m.senales.filter(x=>x.fusible).map(x=>({ n:x.fusible.tag.split(".")[1], fun:"+24V", modelo:"UT 4-HESI (5x20) 0,5 A", ref:x.tag })));

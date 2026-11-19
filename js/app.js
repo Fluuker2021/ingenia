@@ -1,5 +1,5 @@
 /* Ingenia — aplicación (enrutador por hash y pantallas) */
-import { ENTREGABLES, CATALOGO, DISCIPLINAS, ETAPAS, ESTADOS, TIPOS, entregable, ETAPAS_TRABAJO, ordenTrabajo, etapaDe, docListo, requisitos, habilita, ESTADOS_DOC, sincronizarEstado, claseEstado } from "./catalog.js";
+import { ENTREGABLES, CATALOGO, DISCIPLINAS, ETAPAS, ESTADOS, TIPOS, entregable, aplicaEntregable, ETAPAS_TRABAJO, ordenTrabajo, etapaDe, docListo, requisitos, habilita, ESTADOS_DOC, sincronizarEstado, claseEstado } from "./catalog.js";
 import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, confirmar, dropzone, leerComoArrayBuffer, leerComoTexto, leerComoDataURL, fmtFecha, hoy, kb } from "./ui.js";
 import * as X from "./export.js";
@@ -248,7 +248,7 @@ function modalProyecto(p, pasoIni=0){
       const seleccion = ()=> sel || new Set(entregablesPorDefecto(discSel(), $("#f-etapa",root).value));
       function renderDocs(){
         const disc = discSel(), etapa = $("#f-etapa",root).value, s = seleccion();
-        const lista = CATALOGO.filter(e=>disc.includes(e.disciplina) && (e.etapas.includes(etapa) || s.has(e.id)));
+        const lista = CATALOGO.filter(e=>disc.includes(e.disciplina) && (e.etapas.includes(etapa) || s.has(e.id)) && aplicaEntregable(e.id, tbs));
         const n = lista.filter(e=>s.has(e.id)).length;
         docsBox.innerHTML = `<div class="notice accent mb-2 wz-guia"><strong>Marca los documentos que se elaborarán en este proyecto</strong> y luego presiona «${okTxt}». Después trabajarás cada uno desde <strong>Documentos</strong>.</div>
           <div class="row between mb-1"><span class="muted" style="font-size:12.5px">${n} seleccionado(s) · ${esc(etapaNombre(etapa))}</span><div class="row"><button class="btn-sm" data-dsel="todos">Marcar todos</button><button class="btn-sm" data-dsel="none">Quitar todos</button></div></div>
@@ -265,7 +265,7 @@ function modalProyecto(p, pasoIni=0){
         const data = { nombre:$("#f-nombre",root).value.trim(), cliente:$("#f-cliente",root).value.trim(), unidad:$("#f-unidad",root).value.trim(), etapa:$("#f-etapa",root).value,
           disciplinas:[ $("#f-ele",root).checked?"ELE":null, $("#f-ins",root).checked?"INS":null ].filter(Boolean) };
         if(!data.disciplinas.length){ paso = 0; ver(); toast("Marca al menos una disciplina", true); return; }
-        const ents = ordenCatalogo([...seleccion()].filter(id=>{ const e = entregable(id); return e && !e.interno && data.disciplinas.includes(e.disciplina); }));
+        const ents = ordenCatalogo([...seleccion()].filter(id=>{ const e = entregable(id); return e && !e.interno && data.disciplinas.includes(e.disciplina) && aplicaEntregable(id, tbs); }));
         if(!ents.length){ paso = ULT; ver(); toast("Marca al menos un documento", true); return; }
         const target = isNew ? S.nuevoProyecto(data) : Object.assign(p, data);
         target.diseno = Object.assign(target.diseno||{}, dis);
@@ -296,7 +296,9 @@ function modalProyecto(p, pasoIni=0){
 function screenProyecto(id, tab){
   const p = S.proyecto(id); if(!p){ location.hash="#/proyectos"; return; }
   p.etapaNombre = etapaNombre(p.etapa);
-  const antes = p.entregables.length; p.entregables = p.entregables.filter(x=>{ const e = entregable(x); return e && !e.interno; }); if(p.entregables.length!==antes) S.sincronizarDocumentos(p, ENTREGABLES);
+  // sin tableros de control independientes no hay unifilar, multifilar ni mecánico del tablero de control
+  const tbsP = datos(p).tableros;
+  const antes = p.entregables.length; p.entregables = p.entregables.filter(x=>{ const e = entregable(x); return e && !e.interno && aplicaEntregable(x, tbsP); }); if(p.entregables.length!==antes) S.sincronizarDocumentos(p, ENTREGABLES);
   const sec = (PTABS.find(t=>t[0]===tab)||PTABS[0])[1];
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos", href:"#/proyectos"},{label:p.nombre, href:`#/proyecto/${p.id}/resumen`},{label:sec}], title:p.nombre,
     sub:`<span>${esc(p.cliente||"—")}${p.unidad?" · "+esc(p.unidad):""}</span><span class="badge badge-neutral">${esc(etapaNombre(p.etapa))}</span>`,

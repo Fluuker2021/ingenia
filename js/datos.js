@@ -164,9 +164,10 @@ export function nuevaCarga(kind="motor", tablero=""){
    Cada fila de d.cargasTrafo es una carga alimentada por el secundario de un transformador del listado de cargas
    (trafo = id de esa carga). Se suman a las derivaciones del transformador (con su ITM y su cable) y definen su potencia. */
 export const TIPOS_CARGA_TRAFO = [["motor","Motor"],["general","Carga general"],["tablero","Tablero externo"],["control","Control interno"],["plc","PLC"],["instrumentacion","Instrumentación"],["reserva","Reserva"]];
+/* aplicación por tipo de carga: la carga general toma los servicios del tablero; el control interno (mando de los
+   arranques del tablero) y los demás tipos no llevan aplicación (N.A.) */
 export const APLIC_CARGA_TRAFO = {
-  control: [["ventiladores","Ventiladores"],["calefaccion","Calefacción"],["luminaria","Luminaria"],["tomacorriente","Tomacorriente"],["otro","Otro"]],
-  general: [["iluminacion","Iluminación"],["tomacorrientes","Tomacorrientes"],["calefaccion","Calefacción"],["otro","Otro"]],
+  general: [["ventiladores","Ventiladores"],["calefaccion","Calefacción"],["luminaria","Luminaria"],["tomacorriente","Tomacorriente"],["otro","Otro"]],
 };
 export const UNIDADES_CARGA_TRAFO = r => r.tipo==="motor" ? [["hp","HP"],["kw","kW"],["w","W"]] : [["va","VA"],["w","W"],["kva","kVA"],["kw","kW"]];
 export function nuevaCargaTrafo(trafo=""){ return { id: uidc("LT"), trafo, desc:"", tipo:"control", application:"otro", power:100, powerUnit:"va" }; }
@@ -209,6 +210,8 @@ export function controlInterno(p, t){
   const w = (x, barra) => circuitosControl(p, x).filter(c=>c.barra===barra).reduce((a, c)=>a + (+c.potencia||0), 0);
   // circuitos que puede alimentar el control interno (cada uno con su tensión por defecto y el divisor de su cálculo)
   const disp = [];
+  // tablero de fuerza y control: su etapa de control (barra estabilizada y 24 Vdc) sale de su propio control interno
+  if(t.tipo==="fuerzacontrol") disp.push({ label:"Etapa de control (PLC e instrumentación)", destino:"ETAPA DE CONTROL", va:Math.round(w(t, "120 Vac") + w(t, "24 Vdc")*1.5), min:16, sobre:true, div:120, cfg:"tc:"+t.id });
   for(const x of est){
     // el interruptor del circuito es un escalón mayor que el general de la acometida del tablero de control (MCB1)
     disp.push({ label:`Hacia el tablero de control ${x.tag}`, destino:`HACIA EL ${(x.nombre||"tablero de control").toUpperCase()} ${x.tag}`, va:Math.round(w(x, "120 Vac") + w(x, "24 Vdc")*1.5), min:16, sobre:true, div:120, cfg:"tc:"+x.id, externo:true });
@@ -233,7 +236,7 @@ export function controlInterno(p, t){
     // cargas que el usuario asignó al transformador (cuadro «Cargas de los transformadores»)
     for(const r of cargasDeTrafo(p, l)){
       const nom = r.desc || (TIPOS_CARGA_TRAFO.find(x=>x[0]===r.tipo)||[,"Carga"])[1];
-      ramas.push(rama({ label:nom, destino:nom.toUpperCase(), va:vaCargaTrafo(r), min:2, cfg:"lt:"+r.id, externo: r.tipo==="tablero" || r.tipo==="motor" || r.tipo==="instrumentacion", id: r.tipo==="general" && r.application==="tomacorrientes" }, vs, false));
+      ramas.push(rama({ label:nom, destino:nom.toUpperCase(), va:vaCargaTrafo(r), min:2, cfg:"lt:"+r.id, externo: r.tipo==="tablero" || r.tipo==="motor" || r.tipo==="instrumentacion", id: r.tipo==="general" && r.application==="tomacorriente" }, vs, false));
     }
     grupos.push({ v:vs, tipo: dc ? "Vdc" : "Vac", ramas, fuente:"trafo", desde:"", loadId:l.id });
   }
@@ -255,6 +258,21 @@ export function controlInterno(p, t){
     g.ramas.forEach(r=>{ r.cb = "CB"+(++nCB); if(r.id) r.idTag = "ID"+(++nID); const a = r.breaker; r.cable = `2C#${awgCtrl(a, !r.externo)}AWG+${awgCtrl(a, !r.externo)}AWG(T)`; });
   });
   return grupos;
+}
+/* tablero de fuerza y control: últimos números de TAG de la parte de fuerza (interruptores CB, fusibles F, borneras TB y
+   supresores SPD), para que su etapa de control siga la numeración y no repita equipos en el mismo tablero. 0 en los demás. */
+export function tagsPotenciaTFC(p, t){
+  const r = { cb:0, f:0, tb:0, spd:0 };
+  if(!t || t.tipo!=="fuerzacontrol") return r;
+  const calc = calcularTablero(p, t), acc = accesoriosTablero(p, t), fa = fusiblesAcometida(acc);
+  const ver = s => { const m = String(s||"").match(/^(CB|F|TB|SPD)(\d+)$/); if(m){ const k = m[1].toLowerCase(); r[k] = Math.max(r[k], +m[2]); } };
+  [...fa.luces, ...fa.rf, ...fa.uvr].forEach(ver); ver("CB1"); ver("TB1");
+  if(acc.spd) r.spd = 3;
+  for(const c of calc.circuits){
+    ver("TB" + ((parseInt(String(c.tag||"").replace(/\D/g, ""), 10) || 0) + 1));
+    for(const it of c.items||[]){ ver(it.devtag); (it.devtags||[]).forEach(ver); }
+  }
+  return r;
 }
 /* circuito del tablero de fuerza que alimenta a un tablero de control («CB2»): barra estabilizada (est) o servicios (aux) */
 export function circuitoHaciaControl(p, x, cual="est"){
@@ -563,11 +581,14 @@ export function derivarCircuitosControl(p, t){
   }
   if(t.controladorLimpieza) c120.push({ descripcion:"Alimentación al controlador de limpieza", proteccion:2, potencia:30, cfg:"limpieza" });
   c120.push({ descripcion:"Reserva", proteccion:2 }, { descripcion:"Reserva", proteccion:2 });
-  c220.push({ descripcion:"Ventilación interna", proteccion:4, potencia:200, cfg:"ventilacion" });
-  c220.push({ descripcion:"Luminaria interna", proteccion:6, potencia:60, cfg:"luminaria" });
-  c220.push({ descripcion:"Alimentación al tomacorriente", proteccion:4, diferencial:true, cfg:"tomacorriente" });
-  if(calefaccionTablero(p, t)) c220.push({ descripcion:"Calefacción anticondensación", proteccion:6, potencia:100, cfg:"calefaccion" });
-  if(luces && !omL.includes("220")) c220.push({ descripcion:"Luz piloto de presencia de tensión 220 Vac", proteccion:2, potencia:1, cfg:"luz220" });
+  // tablero de fuerza y control: los servicios (ventilación, luminaria, tomacorriente, calefacción) son los del propio
+  // tablero y salen de su control interno; la etapa de control no los repite
+  const servicios = t.tipo!=="fuerzacontrol";
+  if(servicios) c220.push({ descripcion:"Ventilación interna", proteccion:4, potencia:200, cfg:"ventilacion" });
+  if(servicios) c220.push({ descripcion:"Luminaria interna", proteccion:6, potencia:60, cfg:"luminaria" });
+  if(servicios) c220.push({ descripcion:"Alimentación al tomacorriente", proteccion:4, diferencial:true, cfg:"tomacorriente" });
+  if(servicios && calefaccionTablero(p, t)) c220.push({ descripcion:"Calefacción anticondensación", proteccion:6, potencia:100, cfg:"calefaccion" });
+  if(servicios && luces && !omL.includes("220")) c220.push({ descripcion:"Luz piloto de presencia de tensión 220 Vac", proteccion:2, potencia:1, cfg:"luz220" });
   const add = (arr, barra, cable)=>arr.map((c,i)=>dimensionarCircuito(Object.assign({ barra, circuito:"C"+(i+1), cable }, c)));
   return [
     ...add(c24, "24 Vdc", "2C#14AWG+14AWG(T)"),

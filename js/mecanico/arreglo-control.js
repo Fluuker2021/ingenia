@@ -63,7 +63,7 @@ function rango(tags){
 const mayus = s => String(s||"").toUpperCase();
 
 /* ---------- equipos del tablero (con los TAG de equipos.js), en filas lógicas de arriba hacia abajo ---------- */
-function construir(eq, calef, sup){
+export function construir(eq, calef, sup){
   let n = 0;
   const mk = (o, dim) => Object.assign({ id:"c"+(++n), cant:1, x:0, y:0, z:ZPLACA, etqJusta:true }, dim||{}, o);
   // los interruptores modulares trabajan muy por debajo de su In: pérdidas a ~45 % de In

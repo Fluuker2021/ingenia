@@ -141,6 +141,10 @@ export function entregablesPor(disciplina, etapa){
   return CATALOGO.filter(e => (!disciplina || e.disciplina===disciplina) && (!etapa || e.etapas.includes(etapa)));
 }
 export function entregable(id){ return ENTREGABLES.find(e=>e.id===id); }
+/* documentos propios de un tablero de control independiente: en un tablero de fuerza y control la etapa de control
+   está dentro del mismo tablero y se detalla en su unifilar, su multifilar y su plano mecánico (no hay documentos aparte) */
+export const SOLO_TABLERO_CONTROL = ["ins-unifilar-tc","ins-multifilar-tc","ins-mecanico-tc"];
+export const aplicaEntregable = (id, tableros) => !SOLO_TABLERO_CONTROL.includes(id) || (tableros||[]).some(t=>t.tipo==="control");
 
 /* ---------------- ruta de trabajo de los documentos ----------------
    Orden de desarrollo recomendado: se parte del proceso (P&ID) y de las cargas, siguen los cálculos y listados que

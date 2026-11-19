@@ -16,6 +16,7 @@ import { cargarKit, usarKit, pieza } from "./kit.js";
 import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/componentes.js";
 import { repartirEquilibrado } from "./plano-unifilar.js";
 import { extremosSueltos } from "./revision.js";
+import { multifilarControlKit } from "./plano-multifilar-control.js";
 
 const DX = 25, DY = -108;                        // hoja del plano de referencia → área útil de la lámina A1
 // barras a la altura de las derivaciones y de las flechas de las piezas (y = …,85): con …,51 quedaban 0,34 mm abiertas
@@ -99,7 +100,13 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
     const sec = cols.filter(c=>c.pieza==="b_trafo").flatMap(c=>(c.ramas.length ? repartirEquilibrado(c.ramas, r=>ANCHO[r.pieza], X_COL - 70) : []).map(rs=>({ trafo:c, ramas:rs })));
     return { calc, fuerza, sec, n: 1 + fuerza.length + sec.length };
   });
-  const total = planes.reduce((a,x)=>a+x.n, 0);
+  const totalFuerza = planes.reduce((a,x)=>a+x.n, 0);
+  // tablero de fuerza y control: un solo multifilar; su etapa de control (acometida interna, 24 Vdc, 120 Vac, PLC y E/S)
+  // sigue a las hojas de fuerza con la numeración del mismo documento
+  const tfcs = lista.map(c=>c.tablero).filter(t=>t && t.tipo==="fuerzacontrol");
+  const ctl = tfcs.length ? await multifilarControlKit({ p, cliente, id, tableros:tfcs, k0:totalFuerza, etapa:true,
+    valsDe:(i, tot, o)=>valsDe(totalFuerza + i, totalFuerza + tot, o) }) : null;
+  const total = totalFuerza + (ctl ? ctl.hojas : 0);
   let k = 0;
   for(const { calc, fuerza, sec, n } of planes){
     const t = calc.tablero, g = calc.g, base = k;   // base: índice de la hoja de acometida del tablero
@@ -205,10 +212,13 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
   }
   doc.limpiarUniones(); doc.centrarEnSimbolos();
   // revisión de continuidad: conductores de fuerza, control y tierra que no llegan a ningún borne ni conductor
-  const dxf = doc.toDXF();
-  const avisos = extremosSueltos(dxf, { capas:/^(E-FZA-BT-PRI|E-FZA-BT-SEC|E-TIERRA|E-CONTROL|EPLAN54\d|EPLAN311)$/ })
+  const dxfF = doc.toDXF();
+  const avisos = extremosSueltos(dxfF, { capas:/^(E-FZA-BT-PRI|E-FZA-BT-SEC|E-TIERRA|E-CONTROL|EPLAN54\d|EPLAN311)$/ })
     .map(e=>`Hoja ${e.hoja} (${e.zona}): conductor abierto, su extremo no llega a ningún borne ni conductor.`);
-  return { dxf, hojas: total, avisos };
+  if(!ctl) return { dxf: dxfF, hojas: total, avisos };
+  // hojas de la etapa de control (ya revisadas por su generador) a continuación de las de fuerza
+  doc.absorber(ctl.doc);
+  return { dxf: doc.toDXF(), hojas: total, avisos: avisos.concat(ctl.avisos||[]) };
 }
 
 /* barras L1, L2, L3 (línea de centro) y PE de la hoja de fuerza */

@@ -71,24 +71,27 @@ function anchoSeg(sg){
   return sg.bus==="220" && sg.alim ? Math.max(w, PASO["220"]/2 + RET_SPD + 6) : w;
 }
 
-export async function unifilarControlKit({ p, valsDe, cliente, id }){
+/* tableros: los de control independientes; el unifilar de fuerza lo llama con tableros = [TFC], k0 = hojas antes y
+   etapa = true para agregar la etapa de control de un tablero de fuerza y control */
+export async function unifilarControlKit({ p, valsDe, cliente, id, tableros:lista0, k0:kIni=0, etapa=false }){
   const kit = await cargarKit("unifilar_control");
   const doc = new DXFDoc(); usarKit(doc, kit);
-  const lista = tablerosControl(p).length ? tablerosControl(p) : [tcPrincipal(p)];
+  const puros = tablerosControl(p).filter(t=>t.tipo==="control");
+  const lista = lista0 || (puros.length ? puros : tablerosControl(p).length ? tablerosControl(p) : [tcPrincipal(p)]);
   const planes = lista.map(t=>{ const eq = equiposControl(p, t); return { t, eq, hojas: planLaminas(columnas(eq)) }; });
   const total = planes.reduce((a, x)=>a + x.hojas.length, 0);
   let k = 0;
   for(const { t, eq, hojas } of planes){
     const k0 = k;
     hojas.forEach((segs, ih)=>{
-      const ox = k*PASO_HOJAS;
-      dibujarLamina(doc, ox, 0, valsDe(k, total, { TITULO2: `${may(t.nombre||"Tablero de control")} ${t.tag}${hojas.length>1 ? ` (${ih+1} DE ${hojas.length})` : ""}` }), cliente);
-      dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh: hojas.length, hojaDe: i => k0 + i + 1 });
-      if(k===0) notasLamina(doc, ox, 0, datos(p).notas[id || "ins-unifilar-tc"], { y1: 296 });
+      const ox = (kIni + k)*PASO_HOJAS;
+      dibujarLamina(doc, ox, 0, valsDe(k, total, { TITULO2: `${may(t.nombre||"Tablero de control")} ${t.tag}${etapa ? " - ETAPA DE CONTROL" : ""}${hojas.length>1 ? ` (${ih+1} DE ${hojas.length})` : ""}` }), cliente);
+      dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh: hojas.length, hojaDe: i => kIni + k0 + i + 1 });
+      if(k===0 && !etapa) notasLamina(doc, ox, 0, datos(p).notas[id || "ins-unifilar-tc"], { y1: 296 });
       k++;
     });
   }
-  doc.limpiarUniones(); doc.centrarEnSimbolos(); return { dxf: doc.toDXF(), hojas: total };
+  doc.limpiarUniones(); doc.centrarEnSimbolos(); return { dxf: doc.toDXF(), doc, hojas: total };
 }
 
 /* rótulo de una barra: a la izquierda de su alimentación si hay espacio, si no a la derecha */

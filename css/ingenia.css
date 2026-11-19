@@ -388,6 +388,7 @@ canvas.preview{width:100%; border:1px solid var(--border); border-radius:var(--r
 .ed-table input[type=text], .ed-table input[type=number], .ed-table select{text-align:center; text-align-last:center;}
 .ed-table input.izq, .ed-table select.izq{text-align:left; text-align-last:left;}
 .ed-table td.centro{text-align:center;}
+.ed-centrada .ed-table td, .ed-centrada .ed-table th{text-align:center;}
 .ed-table th{white-space:normal; vertical-align:middle;}
 .sec-row td{background:var(--gris-50); font-weight:600; font-size:12px; color:var(--grafito);}
 /* vista previa de documentos con los colores de INGENIA: grafito (negro) y amarillo eléctrico */

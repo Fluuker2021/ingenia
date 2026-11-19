@@ -325,7 +325,7 @@ export async function visor3D(cont, modelo, opciones){
       piv.position.set(xp*k, 0, D*k); raiz.add(piv);
       const pg = new THREE.Group(); piv.add(pg); pg.position.set(-xp*k, 0, -D*k);
       const hoja = caja(x0, 3, D, x1 - x0, H - 6, 20, mat(RAL7035, { roughness:0.5 }), pg);
-      hoja.userData.info = { tag:s.id, desc:`Puerta de la sección ${s.id.slice(1)} (${s.rol==="potencia" ? "fuerza" : s.rol==="control" ? "control" : "fuerza y control"})`, modelo:"Plancha de acero, RAL 7035", dim:`${r1(x1 - x0)} × ${r1(H - 6)} mm` };
+      hoja.userData.info = { tag:s.id, desc:`Puerta de la sección ${s.id.slice(1)} (${s.rol==="potencia" ? "fuerza" : s.rol==="control" || s.rol==="etapa" ? "control" : "fuerza y control"})`, modelo:"Plancha de acero, RAL 7035", dim:`${r1(x1 - x0)} × ${r1(H - 6)} mm` };
       const xm = bis==="izq" ? x1 - 45 : x0 + 25; caja(xm, m.manijaY ?? 900, D + 20, 20, 160, 30, mat(0x2b2f36), pg);
       hojas.push({ piv, bis, x0, x1, abierto:0, objetivo:0, grupo:pg });
     }

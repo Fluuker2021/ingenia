@@ -48,6 +48,7 @@ export function datos(p){
   d.tableros.forEach(t=>{ if(t.tipo!=="control" && !t.accesorios) t.accesorios = ACC_DEF(); });
   d.tableros.forEach(t=>{ if(t.tipo==="control" || t.tipo==="fuerzacontrol"){ const def = IO_DEF(); for(const k in def) if(!(k in t)) t[k] = def[k]; } });
   d.cargas = d.cargas || [];
+  d.cargasTrafo = Array.isArray(d.cargasTrafo) ? d.cargasTrafo : [];
   d["ins-instrumentos"] = d["ins-instrumentos"] || [];
   d["ins-io"] = d["ins-io"] || [];
   if(Array.isArray(d.circuitosControl)){ d.circuitosCtl = d.circuitosCtl || {}; const t0 = d.tableros.find(esControl); if(t0 && d.circuitosControl.length) d.circuitosCtl[t0.id] = d.circuitosControl; }
@@ -159,6 +160,23 @@ export function nuevaCarga(kind="motor", tablero=""){
     fp:0.85, effPct:90, fu:1, fs:1, cableLength:30, feederAmps:30, cableTag:"", canalizacion:"",
     controlBranches:[{label:"Control (PLC / instrumentación)", breaker:10, va:150},{label:"Ventiladores internos", breaker:6, va:200},{label:"Calefacción interna", breaker:6, va:300},{label:"Luminaria interna", breaker:4, va:60}] });
 }
+/* ---------------- cargas de los transformadores ----------------
+   Cada fila de d.cargasTrafo es una carga alimentada por el secundario de un transformador del listado de cargas
+   (trafo = id de esa carga). Se suman a las derivaciones del transformador (con su ITM y su cable) y definen su potencia. */
+export const TIPOS_CARGA_TRAFO = [["motor","Motor"],["general","Carga general"],["tablero","Tablero externo"],["control","Control interno"],["plc","PLC"],["instrumentacion","Instrumentación"],["reserva","Reserva"]];
+export const APLIC_CARGA_TRAFO = {
+  control: [["ventiladores","Ventiladores"],["calefaccion","Calefacción"],["luminaria","Luminaria"],["tomacorriente","Tomacorriente"],["otro","Otro"]],
+  general: [["iluminacion","Iluminación"],["tomacorrientes","Tomacorrientes"],["calefaccion","Calefacción"],["otro","Otro"]],
+};
+export const UNIDADES_CARGA_TRAFO = r => r.tipo==="motor" ? [["hp","HP"],["kw","kW"],["w","W"]] : [["va","VA"],["w","W"],["kva","kVA"],["kw","kW"]];
+export function nuevaCargaTrafo(trafo=""){ return { id: uidc("LT"), trafo, desc:"", tipo:"control", application:"otro", power:100, powerUnit:"va" }; }
+/* potencia aparente (VA) de una carga de transformador: motores con η·FDP ≈ 0,85·0,80; el resto con FDP 0,9 */
+export function vaCargaTrafo(r){
+  const x = +r.power || 0, u = r.powerUnit, k = r.tipo==="motor" ? 0.85*0.8 : 0.9;
+  const va = u==="hp" ? x*746/k : u==="kw" ? x*1000/k : u==="w" ? x/k : u==="kva" ? x*1000 : x;
+  return Math.max(0, Math.round(va));
+}
+export const cargasDeTrafo = (p, l) => datos(p).cargasTrafo.filter(r=>r.trafo===l.id);
 /* cargas asignadas a un tablero (las que no tienen tablero válido van al tablero de fuerza principal) */
 export function cargasPropias(p, t){
   const d = datos(p), ids = new Set(tableros(p).map(x=>x.id)), def = tf(p);
@@ -208,10 +226,15 @@ export function controlInterno(p, t){
   };
   // transformadores de control que el usuario definió en el listado de cargas: su relación y los circuitos que alimenta
   const grupos = [], tomados = new Set();
-  const propios = cargasPropias(p, t).filter(l=>l.kind==="control" && Array.isArray(l.alimenta));
+  const propios = cargasPropias(p, t).filter(l=>l.kind==="control" && (Array.isArray(l.alimenta) || cargasDeTrafo(p, l).length));
   for(const l of propios){
     const vs = parseFloat(l.secundario) || v1, dc = l.secundarioTipo ? l.secundarioTipo==="Vdc" : (vs===v1 && dc1);
-    const ramas = l.alimenta.map(k=>disp.find(d=>d.cfg===k)).filter(d=>d && !tomados.has(d.cfg)).map(d=>{ tomados.add(d.cfg); return rama(d, vs, false); });
+    const ramas = (l.alimenta||[]).map(k=>disp.find(d=>d.cfg===k)).filter(d=>d && !tomados.has(d.cfg)).map(d=>{ tomados.add(d.cfg); return rama(d, vs, false); });
+    // cargas que el usuario asignó al transformador (cuadro «Cargas de los transformadores»)
+    for(const r of cargasDeTrafo(p, l)){
+      const nom = r.desc || (TIPOS_CARGA_TRAFO.find(x=>x[0]===r.tipo)||[,"Carga"])[1];
+      ramas.push(rama({ label:nom, destino:nom.toUpperCase(), va:vaCargaTrafo(r), min:2, cfg:"lt:"+r.id, externo: r.tipo==="tablero" || r.tipo==="motor" || r.tipo==="instrumentacion", id: r.tipo==="general" && r.application==="tomacorrientes" }, vs, false));
+    }
     grupos.push({ v:vs, tipo: dc ? "Vdc" : "Vac", ramas, fuente:"trafo", desde:"", loadId:l.id });
   }
   // el resto, como siempre: un transformador por tensión de control

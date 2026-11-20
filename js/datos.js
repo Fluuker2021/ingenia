@@ -288,7 +288,8 @@ export function controlInterno(p, t){
   const resto = disp.filter(d=>!tomados.has(d.cfg));
   const ramasCtl = resto.filter(enV1).map(d=>rama(d, v1, true));
   const ramasSrv = v2 ? resto.filter(d=>!enV1(d)).map(d=>rama(d, v2, true)) : [];
-  const fuente = t.fuenteServicios==="externa" ? "externa" : "trafo";
+  // el control interno se define en el listado de cargas (transformadores y sus cargas): ya no se elige una segunda fuente
+  const fuente = "trafo";
   // con transformadores definidos por el usuario en el listado de cargas, el control interno sale solo de ellos (y de las
   // cargas que les asignó): no se agrega el control interno automático
   if(!propios.length){

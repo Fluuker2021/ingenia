@@ -226,11 +226,10 @@ const ED = {
       el.innerHTML = `<div class="table-wrap"><table class="ed-table tb-tableros"><thead><tr><th>Tipo</th><th>TAG</th><th>Nombre</th><th>Alimentado desde</th><th>Controlado desde</th><th>Protección</th><th></th></tr></thead><tbody>
         ${d.tableros.map((t,i)=>{
           const conAcc = t.tipo!=="control", acc = conAcc ? accesoriosTablero(p, t) : {};
-          const ctlInt = t.tipo==="fuerza" || t.tipo==="fuerzacontrol";
           return `<tr data-i="${i}"><td class="centro">${esc(TIPOS_TABLERO[t.tipo].nombre)}</td>
           <td><input type="text" class="mono" data-c="tag" value="${esc(t.tag)}" style="${ancho(t.tag, 9)}"></td><td><input type="text" data-c="nombre" value="${esc(t.nombre)}" style="${ancho(t.nombre, 18)}"></td>
           <td><div class="acc-lista"><select data-c="desde"><option value="">Externo / existente</option>${pot.filter(x=>x!==t).map(x=>`<option value="${x.id}" ${t.desde===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>${t.desde?"":`<input type="text" data-c="desdeTexto" value="${esc(t.desdeTexto||"")}" placeholder="Ej: SE-01" style="${ancho(t.desdeTexto, 14)}">`}
-            ${ctlInt ? `<label class="muted" style="font-size:11.5px;margin-top:4px">Control interno</label><select data-c="fuenteServicios" title="Alimentación del control interno (ventilación, luminaria, tomacorriente y tableros de control)"><option value="trafo" ${t.fuenteServicios!=="externa"?"selected":""}>Transformador propio</option><option value="externa" ${t.fuenteServicios==="externa"?"selected":""}>Segunda fuente externa</option></select>${t.fuenteServicios==="externa" ? `<input type="text" data-c="fuenteServiciosDesde" value="${esc(t.fuenteServiciosDesde||"")}" placeholder="Viene de… (ej: TD-02)" style="${ancho(t.fuenteServiciosDesde, 16)}">` : ""}` : ""}</div></td>
+            </div></td>
           <td class="centro">${esFuerza(t) && t.tipo!=="fuerzacontrol" ? `<select data-c="control"><option value="">${ctl[0] ? esc(ctl[0].tag)+" (por defecto)" : "—"}</option>${ctl.map(x=>`<option value="${x.id}" ${t.control===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>` : `<span class="muted">—</span>`}</td>
           <td class="centro">${conAcc ? proteccion(acc) : '<span class="muted">—</span>'}</td>
           <td><button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button></td></tr>`; }).join("")}

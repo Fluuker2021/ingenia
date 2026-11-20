@@ -82,7 +82,7 @@ function columnas(calc, p){
       }
       if(l.starter==="ss"){
         const q = item(c, /^ITM/), f = item(c, /^Portafusible/), a = item(c, /^Arrancador suave/);
-        return { tipo:"col_vfd", mcb: esMcb(q), omitir:["filtro"], vars: Object.assign(motor, { q:q.devtag, qv:q.val, f:f.devtag, fv: f.val ? "3x"+f.val : "", vfd:a.devtag, vfdtxt:"AS", vfdv:a.val }) };
+        return { tipo:"col_vfd", mcb: esMcb(q), omitir:["filtro"], vars: Object.assign(motor, { q:q.devtag, qv:q.val, f:f.devtag, fv: f.val ? "3x"+f.val : "", vfd:a.devtag, vfdtxt:"SS", vfdv:a.val }) };
       }
       const q = item(c, /^Guardamotor|^ITM/), k = item(c, /^Contactor/);
       return { tipo:"col_mcp", vars: Object.assign(motor, { q:q.devtag, qv:q.val, k:k.devtag, km:sinMarca(k.model), kv:k.val }) };
@@ -374,6 +374,7 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
         const xr = FX(c.ramasX[i]);
         if(r.reserva){ pieza(doc, kit, r.tipo, xr, SY(SUB), { s, vars:Object.assign({}, r.vars, { cable:"" }), omitir:[[-12, -200, 30, -28.1]] }); descripcion(doc, xr, SY(SUB - 33), ["RESERVA"], s, P); return; }
         pieza(doc, kit, r.tipo, xr, SY(SUB), { s, vars:Object.assign({}, r.vars, { cable:"" }), texto: tx => /^ID1\n/.test(tx) ? `${r.vars.id}\n${r.vars.idv}\n${r.vars.idm}` : tx });
+        if(r.tablero) usados.add("tablero");
         fin(xr, r.vars.cable, r.vars.desc, null, SY(-271), r.tablero, SY(SUB - 164.6), null);
       });
     } else {
@@ -381,7 +382,7 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
       usados.add(c.mcb ? "mcb3" : c.tipo==="col_mcp" ? "gm" : "mccb3");
       if(c.dif) usados.add("rd");
       if(c.tipo==="col_mcp") usados.add("contactor").add("motor");
-      else { for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) usados.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="AS" ? "as" : "vfd", motor:"motor" }[k]); }
+      else { for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) usados.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="SS" ? "as" : "vfd", motor:"motor" }[k]); }
       if(c.reserva){ pieza(doc, kit, c.tipo, x, y, { s, vars:Object.assign({}, c.vars, { cable:"" }), omitir:[[-25, -300, 25, -29.5]] }); descripcion(doc, x, SY(-34), ["RESERVA"], s, P); continue; }
       // protección diferencial de la carga: interruptor diferencial (contactos con disparo desde el toroide) en serie bajo el
       // interruptor; en la columna del variador / arrancador el resto de los equipos baja para darle lugar
@@ -398,6 +399,7 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
         doc.line(x, interruptorDif(doc, kit, x, SY(yI), s, c.dif), x, SY(yS), "E-FZA-BT-PRI");
         if(c.tipo!=="col_mcp") doc.line(x, SY(-133.77 - D), x, SY(-205.92), "E-FZA-BT-PRI");
       }
+      if(c.tablero) usados.add("tablero");
       fin(x, c.vars.cable, c.vars.desc, c.tablero ? null : c.vars.tag, SY(om.includes("motor") ? -271 : -287), c.tablero, SY(-267.7), c.tablero ? "E-FZA-BT-PRI" : null);
     }
   }
@@ -426,12 +428,13 @@ function usadosDe(cols, acc, primera){
   if(primera) u.add("mccb3");
   if(acc.luces) u.add("fus3").add("luz"); if(acc.spd) u.add("fus3").add("spd"); if(acc.releFase) u.add("fus3").add("rf");
   for(const c of cols){
-    if(c.tipo==="trafo"){ u.add("itm2"); if(!c.externa) u.add("fus1").add("trafo"); if(c.ramas.some(r=>r.tipo==="rama_id")) u.add("id"); continue; }
+    if(c.tipo==="trafo"){ u.add("itm2"); if(!c.externa) u.add("fus1").add("trafo"); if(c.ramas.some(r=>r.tipo==="rama_id")) u.add("id"); if(c.ramas.some(r=>r.tablero)) u.add("tablero"); continue; }
+    if(c.tablero) u.add("tablero");
     const om = c.omitir||[];
     u.add(c.mcb ? "mcb3" : c.tipo==="col_mcp" ? "gm" : "mccb3");
     if(c.dif) u.add("rd");
     if(c.tipo==="col_mcp") u.add("contactor").add("motor");
-    else for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) u.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="AS" ? "as" : "vfd", motor:"motor" }[k]);
+    else for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) u.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="SS" ? "as" : "vfd", motor:"motor" }[k]);
   }
   return u;
 }
@@ -522,7 +525,7 @@ const LEY_ORDEN = [
   ["gm", { pieza:"col_mcp", y:[-37.4, -21.1], capa:/^I-SIM$/, desc:"GUARDAMOTOR (INTERRUPTOR DE PROTECCIÓN DE MOTOR)" }],
   ["contactor", { pieza:"col_mcp", y:[-93.9, -81.7], capa:/^E-SIM$/, desc:"CONTACTOR TRIPOLAR" }],
   ["id", { fila:3 }], ["rd", { pieza:"rama_id", y:[-66.7, -37.0], capa:/^E-SIM$/, desc:"INTERRUPTOR / RELÉ DIFERENCIAL TRIFÁSICO 30 mA (CON TOROIDE)" }], ["fus1", { fila:4 }], ["fus3", { fila:5 }], ["luz", { fila:6 }], ["spd", { fila:7 }], ["rf", { fila:8 }],
-  ["vfd", { fila:9 }], ["as", { fila:9, desc:"ARRANCADOR SUAVE", sim:{ VFD:"AS" } }], ["filtro", { fila:11 }], ["motor", { fila:10 }],
+  ["vfd", { fila:9 }], ["as", { fila:9, desc:"ARRANCADOR SUAVE", sim:{ VFD:"SS" } }], ["tablero", { tablero:true, desc:"TABLERO (ALIMENTACIÓN A OTRO TABLERO)" }], ["filtro", { fila:11 }], ["motor", { fila:10 }],
   ["trafo", { fila:12 }], ["tierra", { fila:13 }],
 ];
 function cajaE(e){
@@ -567,6 +570,11 @@ function leyenda(doc, kit, x, y, usados, k=1){
         if(e[0]==="T" && def.sim && def.sim[String(e[8])]){ e2 = e2.slice(); e2[8] = def.sim[String(e[8])]; }
         ents.push(e2);
       }
+    } else if(def.tablero){
+      // símbolo de tablero (el mismo de las cargas «hacia el tablero …»): rectángulo con su mitad rellena
+      const w = 18, h = 8.8, xl = 27.84 - w/2, yt = yC + h/2;
+      ents.push(["P", "E-SIM", null, null, 1, [xl, yt, xl + w, yt, xl + w, yt - h, xl, yt - h]], ["S", "E-SIM", null, null, xl, yt, xl + w, yt, xl, yt - h, xl, yt - h]);
+      ents.push(["T", "G-TEX", null, null, 90.97, yC, 2.5, 0, def.desc, 1, 2, 1]);
     } else if(def.pieza){
       // símbolo tomado de otra pieza: centrado en la celda del símbolo, reducido si no entra en la fila
       const src = kit.piezas[def.pieza]; if(!src) return;

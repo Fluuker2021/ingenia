@@ -64,7 +64,8 @@ export function escalares(p, id, org){
 // prefijo del TAG del sistema en listados (p. ej. «SISTEMA-PIT-001»)
 export function prefijoTag(p){ const d = datos(p); const st = sistemaTag(p); return st && d.sistema.prefijo!==false ? st.replace(/-/g,"")+"-" : ""; }
 const conPref = (pre, v) => (!pre || !v || v==="-" || String(v).startsWith(pre)) ? v : pre+v;
-function notasDe(p, id, def){ const n = datos(p).notas[id]; const arr = (n && n.length) ? n : def; return arr.map((t,i)=>({ n:(i+1)+".-", texto:t })); }
+// notas del documento: solo las que escribe el usuario (sin notas, el documento no lleva notas; no se usan las del formato)
+function notasDe(p, id, def){ const arr = datos(p).notas[id] || []; return arr.map((t,i)=>({ n:(i+1)+".-", texto:t })); }
 
 export function tablasCargas(p, t){
   const calc = calcularTablero(p, t), g = calc.g;
@@ -290,7 +291,7 @@ export async function payloadExcel(p, id, org){
     });
     Object.assign(scal, { tension_control: tensionEstabilizada(v), tensiones: v.tensionControlTipo==="Vdc" ? `${v.tension} Vac / ${v.tensionControl} Vdc` : `${v.tension}/${v.tensionControl} Vac`, kv: (+v.tension||460)/1000 });
     // tableros de control: sus cargas por barra, como en la tabla de circuitos (alimentan el unifilar del tablero de control)
-    const control = tablerosControl(p).map(t=>({ t, filas: cargasTableroControl(p, t) })).filter(x=>x.filas.length).map(({ t, filas })=>({
+    const control = tablerosControl(p).filter(t=>t.tipo==="control").map(t=>({ t, filas: cargasTableroControl(p, t) })).filter(x=>x.filas.length).map(({ t, filas })=>({
       nombre: nombreHoja("CONTROL "+t.tag), scal:{ tablero_titulo: `${sistemaNombre(p) ? sistemaNombre(p)+" - " : ""}${t.nombre||"Tablero de control"} ${t.tag||""}`.toUpperCase() }, tablas:{ circuitos: filas } }));
     return { scal, tablas:{}, clonar:[{ hoja:"LISTADO", instancias }, { hoja:"CONTROL", instancias: control, quitarSiVacia:true }] };
   }

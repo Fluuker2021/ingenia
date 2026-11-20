@@ -222,7 +222,7 @@ function hAcometidas(c){
   const tbm = b => { const x = c.bornera(b); return x ? `${x.bornes[0].modelo}/${x.bornes[x.bornes.length-1].modelo}` : ""; };
   const desde = a => up(`VIENE DE ${a.desde||"-"}${a.circuito ? " CIRCUITO "+a.circuito : ""}`);
   const alim = a => `Alimentación\n${a.tension} ${v.frecuencia} Hz ${a.fases}`;
-  P.pz("a_est", dx, { lineas:{ desde:30 }, vars:{ desde:desde(est), alim:alim(est), tb:est.tb, tbm:tbm(est.tb), q:est.q.tag, qv:amp(est.q.in), qm:est.q.modelo, pe:"PE.1", nota:"(NOTA 1)" } });
+  P.pz("a_est", dx, { lineas:{ desde:30 }, vars:{ desde:desde(est), alim:alim(est), tb:est.tb, tbm:tbm(est.tb), q:est.q.tag, qv:amp(est.q.in), qm:est.q.modelo, pe:"PE.1", nota:"" } });
   flecha(P, K, "PE.1", "s", dx+376, 632, dx+376, 632.4, "der");
   if(eq.fuente){
     const f = eq.fuente;
@@ -243,7 +243,7 @@ function hAcometidas(c){
   if(aux){
     const q = aux.q.tag, serv = c220.map(x=>sinAl(x.descripcion).replace(/ interna$/i,"")).join(", ");
     P.pz("a_aux", 0, { lineas:{ desde:30, desc:30 }, vars:{ desde:desde(aux), alim:alim(aux), tb:aux.tb, tbm:tbm(aux.tb), q, qv:amp(aux.q.in), qm:aux.q.modelo,
-      a1:`${q}.2`, a2:`${q}.4`, pe:"PE.2", nota:"(NOTA 2)", desc:up(`Alimentación servicios del tablero${serv ? " ("+serv+")" : ""}`) } });
+      a1:`${q}.2`, a2:`${q}.4`, pe:"PE.2", nota:"", desc:up(`Alimentación servicios del tablero${serv ? " ("+serv+")" : ""}`) } });
     flecha(P, K, "PE.2", "s", 778, 632, 778, 632.4, "der");
     flecha(P, K, `${q}.2`, "s", 626, 297, 626.45, 296.85, "abajo"); flecha(P, K, `${q}.4`, "s", 658, 297, 658.45, 296.85, "abajo");
     P.pz("a_spd", 0, { vars:spd, texto: textoSpd });
@@ -264,7 +264,8 @@ function hAcometidas(c){
     `${aux ? 4 : 3}. LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A ${v.altitud} m.s.n.m.`].filter(Boolean);
   // las notas del usuario (Copito / editor) reemplazan a las del formato
   const notasU = P.etapa ? [] : datos(c.p).notas[P.docId] || [];   // en la etapa de control, las del usuario ya van en la hoja de acometida de fuerza
-  const txt = notasU.length ? ["NOTAS:"].concat(notasU.map((n, i)=>`${i+1}. ${n}`)) : notas;
+  // sin notas del usuario no se ponen notas (no las del formato)
+  const txt = notasU.length ? ["NOTAS:"].concat(notasU.map((n, i)=>`${i+1}. ${n}`)) : [];
   P.pz("notas", 15, { lineas:{ notas:150 }, vars:{ notas: txt.join("\n") } });
 }
 

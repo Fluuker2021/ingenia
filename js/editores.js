@@ -725,7 +725,7 @@ const ED = {
   },
   notas(el, p, cambio, docId){
     const d = datos(p); const arr = d.notas[docId] || [];
-    el.innerHTML = `${campo("Notas (una por línea)", `<textarea data-n rows="3" placeholder="Vacío = notas del formato">${esc(arr.join("\n"))}</textarea>`)}`;
+    el.innerHTML = `${campo("Notas (una por línea)", `<textarea data-n rows="3" placeholder="Vacío = el documento no lleva notas">${esc(arr.join("\n"))}</textarea>`)}`;
     $("[data-n]", el).onchange = e=>{ d.notas[docId] = e.target.value.split(/\n/).map(s=>s.trim()).filter(Boolean); cambio(); };
   },
 };

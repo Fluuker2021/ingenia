@@ -186,7 +186,7 @@ export function nuevaCarga(kind="motor", tablero=""){
 /* ---------------- cargas de los transformadores ----------------
    Cada fila de d.cargasTrafo es una carga alimentada por el secundario de un transformador del listado de cargas
    (trafo = id de esa carga). Se suman a las derivaciones del transformador (con su ITM y su cable) y definen su potencia. */
-export const TIPOS_CARGA_TRAFO = [["motor","Motor"],["general","Carga general"],["tablero","Tablero externo"],["control","Control interno"],["plc","PLC"],["instrumentacion","Instrumentación"],["reserva","Reserva"]];
+export const TIPOS_CARGA_TRAFO = [["motor","Motor"],["general","Carga general"],["tablero","Tablero externo"],["control","Control interno"],["plc","PLC"],["fuente","Fuente 24 Vdc"],["instrumentacion","Instrumentación"],["reserva","Reserva"]];
 /* aplicación por tipo de carga: la carga general toma los servicios del tablero; el control interno (mando de los
    arranques del tablero) y los demás tipos no llevan aplicación (N.A.) */
 export const APLIC_CARGA_TRAFO = {
@@ -195,7 +195,7 @@ export const APLIC_CARGA_TRAFO = {
 export const UNIDADES_CARGA_TRAFO = r => r.tipo==="motor" ? [["hp","HP"],["kw","kW"],["w","W"]] : [["va","VA"],["w","W"],["kva","kVA"],["kw","kW"]];
 /* potencia típica (referencial) de una carga de transformador según su tipo y aplicación: se propone mientras el usuario
    no la cambie (manPot = false); en la tabla se ve en cursiva como los demás valores típicos */
-const POT_TRAFO = { control:[150,"va"], plc:[150,"va"], instrumentacion:[100,"va"], tablero:[500,"va"], reserva:[100,"va"] };
+const POT_TRAFO = { control:[150,"va"], plc:[150,"va"], fuente:[240,"w"], instrumentacion:[100,"va"], tablero:[500,"va"], reserva:[100,"va"] };
 const POT_TRAFO_GENERAL = { ventiladores:[200,"va"], calefaccion:[100,"w"], luminaria:[40,"w"], tomacorriente:[180,"va"], otro:[100,"va"] };
 const POT_TRAFO_MOTOR = { "ventilador-axial":0.25, "faja-transportadora":1, "compresor-piston":1 };
 export function potenciaTipicaTrafo(r){
@@ -330,7 +330,7 @@ export function circuitoHaciaControl(p, x, cual="est"){
   // interno»); un tablero de control, de la carga «Tablero externo» que lo nombra
   const filas = datos(p).cargasTrafo || [];
   const busca = pred => { for(const t of tablerosPotencia(p)) for(const g of controlInterno(p, t)) for(const r of g.ramas){ const f = /^lt:/.test(r.cfg||"") && filas.find(z=>"lt:"+z.id===r.cfg); if(f && pred(f, t)) return r.cb; } return ""; };
-  if(cual==="est" && x.tipo==="fuerzacontrol") return busca((f, t)=>t.id===x.id && f.tipo==="plc") || busca((f, t)=>t.id===x.id && f.tipo==="control");
+  if(cual==="est" && x.tipo==="fuerzacontrol") return busca((f, t)=>t.id===x.id && f.tipo==="plc") || busca((f, t)=>t.id===x.id && f.tipo==="fuente") || busca((f, t)=>t.id===x.id && f.tipo==="control");
   return busca(f=>f.tipo==="tablero" && x.tag && String(f.desc||"").toUpperCase().includes(String(x.tag).toUpperCase()));
 }
 /* cargas de un tablero: las asignadas + (tablero de distribución) un alimentador por cada tablero aguas abajo + (tablero

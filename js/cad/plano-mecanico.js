@@ -483,7 +483,7 @@ function dibujarFrente(v, m, llam){
   for(const z of m.visores||[]){ visorFrente(v, z); llam.push({ x:z.x1, y:z.y1 - 15, texto:"VISOR IP66 (VENTANA DE INSPECCIÓN CON TAPA ABATIBLE)" }); }
   for(const c of m.caperuzas||[]) caperuzaFrente(v, c, false);
   if((m.caperuzas||[]).length){ const c = m.caperuzas[0]; llam.push({ x:c.x + c.w/2, y:c.y + c.h/2 - 10, texto:"CAPERUZA ANTILLUVIA (VENTILADOR / FILTRO)" }); }
-  const q = m.puerta.find(d=>d.tipo==="manija"); if(q) llam.push({ x:q.x, y:q.y + 45, texto:"MANIJA DEL INTERRUPTOR PRINCIPAL Q1 (NOTA 4)" });
+  const q = m.puerta.find(d=>d.tipo==="manija"); if(q) llam.push({ x:q.x, y:q.y + 45, texto:"MANIJA DEL INTERRUPTOR PRINCIPAL Q1" });
   if(m.panel){ const p = m.panel; v.R(p.x, p.y, p.w, p.h, "M-OCULTO"); llam.push({ x:p.x, y:p.y + p.h - 20, texto:"PANEL DE OPERACIÓN (VER LÁMINA 3)" }); }
   const fv = m.puerta.find(d=>d.tipo==="ventilador"), fr = m.puerta.find(d=>d.tipo==="rejilla"), aa = m.puerta.find(d=>d.tipo==="aa");
   if(fv) llam.push({ x:fv.x + fv.w/2, y:fv.y, texto:"VENTILADOR CON FILTRO (ENTRADA DE AIRE)" });
@@ -491,7 +491,7 @@ function dibujarFrente(v, m, llam){
   if(aa) llam.push({ x:aa.x + aa.w/2, y:aa.y, texto:"AIRE ACONDICIONADO DE PUERTA" });
   for(const d of m.puerta.filter(d=>d.tipo==="panelvfd")) llam.push({ x:d.x + d.w/2, y:d.y, texto:`PANEL DE OPERADOR DE ${d.tag}` });
   if(m.tipo==="control"){
-    for(const d of m.puerta.filter(d=>d.tipo==="hmi")) llam.push({ x:d.x + d.w/2, y:d.y + d.h/4, texto:`PANTALLA ${d.tag} (RECORTE ${d.recorteW} x ${d.recorteH} mm, NOTA 4)` });
+    for(const d of m.puerta.filter(d=>d.tipo==="hmi")) llam.push({ x:d.x + d.w/2, y:d.y + d.h/4, texto:`PANTALLA ${d.tag} (RECORTE ${d.recorteW} x ${d.recorteH} mm)` });
     for(const d of m.puerta.filter(d=>d.tipo==="ventilador" && d.rol==="salida")) llam.push({ x:d.x + d.w/2, y:d.y, texto:`VENTILADOR ${d.tag} CON FILTRO (EXTRACCIÓN DE AIRE)` });
     const lz = m.puerta.find(d=>d.tipo==="luz"); if(lz) llam.push({ x:lz.x + 15, y:lz.y, texto:"LUCES PILOTO DE TENSIÓN PRESENTE" });
   }
@@ -511,7 +511,7 @@ function dibujarFrente(v, m, llam){
     v.T(x, y - h*0.22, 1.3, "ATENCIÓN", "M-SENAL", { halign:1, valign:2 });
     v.T(x, y - h*0.36, 1.1, "RIESGO ELÉCTRICO", "M-SENAL", { halign:1, valign:2 });
   }
-  if(sen.length) llam.push({ x:sen[0].x - sen[0].w/2, y:sen[0].y, texto:`SEÑAL «ATENCIÓN / RIESGO ELÉCTRICO» EN ${sen.length > 1 ? "CADA PUERTA" : "LA PUERTA"} (NOTA 5)` });
+  if(sen.length) llam.push({ x:sen[0].x - sen[0].w/2, y:sen[0].y, texto:`SEÑAL «ATENCIÓN / RIESGO ELÉCTRICO» EN ${sen.length > 1 ? "CADA PUERTA" : "LA PUERTA"}` });
 }
 function dibujarLateral(v, m){
   const { D, H, zocalo } = m;
@@ -708,16 +708,16 @@ export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
     tituloVista(doc, vL.X(m.D/2), vL.Y(-m.zocalo) - 16, "VISTA LATERAL DERECHA", escTxt(s1));
     // isométrica en el espacio restante (sin escala), notas debajo
     const xIso0 = vL.X(m.D + 80) + 18, xIso1 = ox + AR.x1 - 8;
-    const notas = (m.notas || notasPlano(m)).concat(id ? datos(p).notas[id] || [] : []);   // + notas del usuario
+    const notas = id ? datos(p).notas[id] || [] : [];   // solo las notas del usuario (sin notas, la lámina no lleva notas)
     const xNot1 = ox + RES.x0 - 6;                               // las notas no invaden el bloque del cajetín
     const anchoNot = Math.max(80, xNot1 - xIso0);
-    const altoNotas = notas.reduce((a, n)=>a + envolver(n, Math.floor(anchoNot/(1.9*0.78)) - 4).length*2.76 + 0.8, 0) + 10;
+    const altoNotas = !notas.length ? 0 : notas.reduce((a, n)=>a + envolver(n, Math.floor(anchoNot/(1.9*0.78)) - 4).length*2.76 + 0.8, 0) + 10;
     const yIsoTop = AR.y1 - 10, yIsoBot = AR.y0 + altoNotas + 12;
     const sIso = Math.max((isoW)/Math.max(40, xIso1 - xIso0 - 10), (isoH)/Math.max(40, yIsoTop - yIsoBot - 14));
     const isoOx = xIso0 + Math.max(0, ((xIso1 - xIso0) - isoW/sIso)/2), isoOy = yIsoBot + 10 + (m.W*0.5 + m.zocalo)/sIso;
     isometrica(doc, isoOx, isoOy, sIso, m);
     tituloVista(doc, (xIso0 + xIso1)/2, yIsoBot + 4, "VISTA ISOMÉTRICA", "SIN ESCALA");
-    parrafos(doc, xIso0, yIsoBot - 6, anchoNot, "NOTAS:", notas, 1.9);
+    if(notas.length) parrafos(doc, xIso0, yIsoBot - 6, anchoNot, "NOTAS:", notas, 1.9);
     k++;
 
     // ---------- lámina 2: disposición interior ----------

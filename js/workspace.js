@@ -108,7 +108,7 @@ function vistaCargas(body, p, id){
       tablaHTML([["ÍTEM","#"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["HP","hp"],["kW","kw"],["In (A)","_in"],["FDP","fp"],["EFF","eff"],["FU","fu"],["FS","fs"],["Potencia instalada (kVA)","_si"],["Máxima demanda (kVA)","_md"]], filas, tot) +
       `<div class="stat-row mt-2"><div class="stat"><div class="k">Potencia instalada</div><div class="v">${r2(c.installedKVA,1)} kVA</div></div><div class="stat"><div class="k">Máxima demanda</div><div class="v">${r2(c.totalKVA,1)} kVA</div></div><div class="stat"><div class="k">I máxima demanda</div><div class="v">${r2(c.demandCurrent,1)} A</div></div><div class="stat"><div class="k">Interruptor general</div><div class="v">3x${c.mainBreaker} A</div></div></div>` +
       `</div>`;
-  }).concat(tablerosControl(p).map(t=>({ t, filas: cargasTableroControl(p, t) })).filter(x=>x.filas.length).map(({ t, filas })=>{
+  }).concat(tablerosControl(p).filter(t=>t.tipo==="control").map(t=>({ t, filas: cargasTableroControl(p, t) })).filter(x=>x.filas.length).map(({ t, filas })=>{
     // tableros de control: cargas por barra (la misma tabla que usa su unifilar)
     const tot = `<tr class="xl-total"><td colspan="4" style="text-align:right">POTENCIA TOTAL</td><td class="num">${filas.reduce((a, f)=>a + (+f.potencia||0), 0)} W</td><td colspan="3"></td></tr>`;
     return cabeceraHoja(p, id, "LISTADO DE CARGAS") +

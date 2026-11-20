@@ -38,7 +38,7 @@ export function claseDerivacion(p, t, cfg, texto){
   if(cfg && /^lt:/.test(cfg)){
     const r = (datos(p).cargasTrafo||[]).find(x=>"lt:"+x.id===cfg); if(!r) return {};
     if(r.tipo==="tablero") return { tablero:true };
-    if(r.tipo==="control" || r.tipo==="plc" || r.tipo==="reserva") return { interno:true };
+    if(r.tipo==="control" || r.tipo==="plc" || r.tipo==="fuente" || r.tipo==="reserva") return { interno:true };
     if(r.tipo==="general" && APLIC_SERV.has(r.application)) return { interno:true };
     return {};
   }

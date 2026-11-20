@@ -157,6 +157,7 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
     // supresor de sobretensiones del tipo elegido (en dos líneas, como en la pieza: «OVR T1-T2 3L» / «12.5-440s P QS»)
     const ovr = ovrTablero(acc, g.voltage), ovrM = sinMarca(modeloEnMarca(ovr.modelo, "", mr)), ovrP = /^(OVR \S+ 3L)\s+(.*)$/.exec(ovrM);
     const textoAc = s => { const tt = String(s).trim(); if(ren[tt]) return ren[tt];
+      if(/^\(NOTA \d+\)$/.test(tt)) return "";   // referencias a las notas del formato (no se usan)
       if(tt==="TIPO 1 Y 2") return ovr.texto;
       if(tt==="OVR T1-T2 3L") return ovrP ? ovrP[1] : ovrM;
       if(tt==="12.5-440s P QS") return ovrP ? ovrP[2] : "";
@@ -169,7 +170,7 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
     pieza(doc, kit, "h_acometida", ox+DX, DY, { omitir:om, lineas:{ acometida:16, notas:48 }, texto: textoAc, mover:[{ r:[-0.6, 157, 117, 192], dx:5, dy:0 }], vars:{
       acometida:`VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}`, alim:`Alimentación\n${g.voltage} V ${g.freq} Hz 3F\n+PE`,
       q:"Q1", qv:`${calc.mainBreaker}A`, qm: mr.interruptores==="ABB" ? `Tmax XT ${calc.mainBreaker}A 3P (Ekip LS/I)` : sinMarca(modeloEnMarca("Tmax", `3x${calc.mainBreaker}A`, mr)), t1:`${g.voltage}/120Vac+T`, vp:`${g.voltage}V`, vs:"120V",
-      notas: notasU.length ? "NOTAS :\n" + notasU.map((n, i)=>`${i+1}.${n}`).join("\n") : `NOTAS :\n1.LA ACOMETIDA PARA EL ${nombre} DE ${g.voltage} Vac, 3F + T, ${g.freq} HZ ES SUMINISTRADA POR EL CLIENTE.\n2.BARRA A TIERRA FIJA DEL TABLERO DE FUERZA Y CONTROL.\n3.LOS EQUIPOS ELÉCTRICOS Y DE PROTECCIÓN ESTÁN DISEÑADOS Y FABRICADOS PARA TRABAJAR A ${v.altitud} m.s.n.m.` } });
+      notas: notasU.length ? "NOTAS :\n" + notasU.map((n, i)=>`${i+1}.${n}`).join("\n") : "" } });
     // sin relé de fases: el tramo de la cadena de la bobina de mínima tensión que pasaba por su contacto 15-18 queda directo
     if(!acc.releFase){
       doc.line(ox+DX+625, 390.85+DY, ox+DX+625, 362.85+DY, "E-CONTROL");

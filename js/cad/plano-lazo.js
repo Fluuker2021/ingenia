@@ -361,6 +361,7 @@ function paginar(filas, util){
 
 /* notas de la plantilla (o las del usuario) abajo a la izquierda, junto a la leyenda; devuelve la altura que ocupan */
 function notasOps(lista){
+  if(!lista.length) return { h:2.5, ls:2.5*1.6667, lineas:[], top:37.01 };
   for(const h of [2.5, 2.2, 2.0, 1.8]){
     const n = Math.min(Math.round(275/h), Math.floor(280/(h*0.72))), ls = h*1.6667;
     const lineas = ["NOTAS :"].concat(lista.flatMap((t, i)=>envolver(`${i+1}. ${t}`, n).map((l, k)=>k ? "    "+l : l)));
@@ -379,7 +380,7 @@ export async function lazoKit({ p, valsDe, cliente, id }){
   const alarmas = new Map();
   try{ for(const a of filosofiaDe(p).tablas.alarmas || []) if(/^(HH|H|L|LL)$/.test(a.tipo||"")){ if(!alarmas.has(a.instrumento)) alarmas.set(a.instrumento, new Set()); alarmas.get(a.instrumento).add(a.tipo); } }catch(e){}
   const notasU = (d.notas||{})[id || "ins-lazo"] || [];
-  const N = notasOps(notasU.length ? notasU : NOTA_DEF);
+  const N = notasOps(notasU);   // solo las notas del usuario
   const yBot = Math.max(Y_BOT_MIN, N.top + 8), util = Y_TOP - yBot;
   // filas de cada tablero de control (cada tablero empieza en una lámina nueva)
   const lista = tablerosControl(p).length ? tablerosControl(p) : [tc(p)];

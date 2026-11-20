@@ -5,6 +5,7 @@
    - Demás hojas / páginas: encabezado «proyecto | título · Rev.» y pie
      «Documento elaborado por … | Página X de N», en la misma letra que el documento (Arial).
    Excel (ExcelJS) y Word (XML) se arman con las mismas medidas, textos, tamaños y colores. */
+import { corregir } from "./ortografia.js";
 
 export const FUENTE = "Arial";
 const C = { grafito:"17191D", grafito800:"1F2228", amarillo:"F5C518", amarillo100:"FDF1C4", gris:"ECEFF2", texto2:"5B6472", borde:"8A94A3", blanco:"FFFFFF" };
@@ -365,7 +366,7 @@ const xesc = t => String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").r
 const TW = px => Math.round(px*15);             // px (96 dpi) → twips
 const ANCHO_TW = TW(ANCHO_PX);
 const rpr = (sz, o={})=>`<w:rPr><w:rFonts w:ascii="${FUENTE}" w:hAnsi="${FUENTE}" w:cs="${FUENTE}" w:eastAsia="${FUENTE}"/>${o.b ? "<w:b/><w:bCs/>" : ""}<w:color w:val="${o.color||C.grafito}"/><w:sz w:val="${Math.round(sz*2)}"/><w:szCs w:val="${Math.round(sz*2)}"/></w:rPr>`;
-const run = (t, sz, o)=>`<w:r>${rpr(sz, o)}<w:t xml:space="preserve">${xesc(t)}</w:t></w:r>`;
+const run = (t, sz, o)=>`<w:r>${rpr(sz, o)}<w:t xml:space="preserve">${xesc(typeof t==="string" ? corregir(t) : t)}</w:t></w:r>`;
 const runs = (t, sz, o)=>String(t ?? "").split("\n").map((x, i)=>(i ? `<w:r>${rpr(sz, o)}<w:br/></w:r>` : "")+run(x, sz, o)).join("");
 /* párrafo de altura exacta (pt) con texto centrado: reproduce una fila de la carátula de Excel */
 const filaPar = (alto, texto, sz, o={})=>`<w:p><w:pPr><w:spacing w:before="0" w:after="0" w:line="${Math.round(alto*20)}" w:lineRule="exact"/><w:jc w:val="center"/>${rpr(sz||2)}</w:pPr>${texto ? runs(texto, sz, o) : ""}</w:p>`;

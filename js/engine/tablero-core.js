@@ -1,6 +1,7 @@
 /* Ingenia — motor de cálculo del tablero de fuerza (NEC 430 / 310.16 / 250.122, catálogos ABB y
    Miguélez) y escritor DXF R12 con símbolos reales. Extraído sin cambios de criterio de la herramienta de
    tableros validada; solo se retiraron dependencias de interfaz. NO editar a mano los catálogos sin fuente. */
+import { corregir } from "../ortografia.js";
 
 const DS = {
   motor: "https://library.e.abb.com/public/1a72763b30155df2c1256dba00392fa3/2CDC130002C0203.pdf",
@@ -633,7 +634,8 @@ const DXF_ACCENTS = {
 // los caracteres especiales conocidos (tildes, Σ, ·, etc.) y cualquier otro carácter no-ASCII remanente se
 // descarta (en vez de dejarlo pasar corrupto, como ocurría antes con p.ej. "Σ" en los rótulos del transformador).
 function dxfEsc(s){
-  return String(s==null?"":s)
+  // ortografía de los textos escritos por el usuario (tildes faltantes del vocabulario técnico)
+  return corregir(String(s==null?"":s))
     // unidades de tensión siempre como «Vac» / «Vdc», aunque el texto se haya pasado a mayúsculas
     .replace(/(\d\s?)VAC\b/g,"$1Vac").replace(/(\d\s?)VDC\b/g,"$1Vdc")
     .replace(/°/g,"%%d").replace(/±/g,"%%p").replace(/Ø/g,"%%c")

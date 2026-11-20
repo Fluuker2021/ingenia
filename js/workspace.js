@@ -12,6 +12,7 @@ import { esPro, pantallaPro } from "./plan.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, instrumentos, r2, tableros, tablerosControl, tf, cablesFuerza, CANALIZACIONES } from "./datos.js";
 import { aciCercano } from "./cad/formato.js";
 import { parseDXF, boundsOf, colorCapa, rgbACI } from "./dxf.js";
+import { corregir } from "./ortografia.js";
 import { seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { ENTREGABLES } from "./catalog.js";
 import { montarBarraCopito } from "./copito-docs.js";
@@ -88,7 +89,7 @@ function fmtF(f){ const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); ret
 /* columnas de texto descriptivo: alineadas a la izquierda; el resto de valores, centrados */
 const esDescripcion = c => /^descrip|descripción/i.test(c[0]) || ["descripcion","desc"].includes(c[1]);
 function tablaHTML(cols, filas, totales){
-  return `<div class="table-wrap"><table class="xl-table"><thead><tr>${cols.map(c=>`<th class="${esDescripcion(c)?"izq":""}">${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${filas.map((f,i)=>`<tr>${cols.map(c=>{ const v = c[1]==="#" ? i+1 : f[c[1]]; return `<td class="${typeof v==="number"?"num":""}${esDescripcion(c)?" izq":""}">${esc(v==null?"":String(v)).replace(/\n/g,"<br>")}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:16px">Sin registros — completa los datos de entrada.</td></tr>`}${totales||""}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="xl-table"><thead><tr>${cols.map(c=>`<th class="${esDescripcion(c)?"izq":""}">${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${filas.map((f,i)=>`<tr>${cols.map(c=>{ const v = c[1]==="#" ? i+1 : f[c[1]]; return `<td class="${typeof v==="number"?"num":""}${esDescripcion(c)?" izq":""}">${esc(v==null?"":typeof v==="string" ? corregir(v) : String(v)).replace(/\n/g,"<br>")}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:16px">Sin registros — completa los datos de entrada.</td></tr>`}${totales||""}</tbody></table></div>`;
 }
 function vistaTabla(body, p, id, titulo, cols, filas, extra){
   body.innerHTML = cabeceraHoja(p, id, titulo) + tablaHTML(cols, filas) + (extra||"") + `</div>` + pieVista(p, id);

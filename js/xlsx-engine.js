@@ -11,6 +11,7 @@
    fila insertada), alturas de fila y área de impresión. Las imágenes del formato se conservan y los logos
    (organización / cliente) se colocan en las posiciones indicadas por el manifiesto de la plantilla. */
 
+import { corregir } from "./ortografia.js";
 import { encabezadoPieExcel, reemplazarCaratulaExcel, bloqueEncabezadoExcel, FILAS_ENCABEZADO, logoEnCaja, logosEncabezado, cerrarLibroExcel } from "./formato-doc.js";
 
 const TOKEN = /\{\{\s*([^}]+?)\s*\}\}/g;
@@ -113,7 +114,7 @@ function sustituir(v, scal, fila){
     else if(key in scal) val = scal[key];
     else return fila ? "" : m; // marcador desconocido fuera de tabla: se deja visible para que se detecte
     if(solo && typeof val==="number") num = val;
-    return val==null ? "" : String(val);
+    return val==null ? "" : typeof val==="string" ? corregir(val) : String(val);   // ortografía de los textos del usuario
   });
   return num!=null ? num : out;
 }

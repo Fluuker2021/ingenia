@@ -3,7 +3,7 @@
 import { entregable, DISCIPLINAS } from "./catalog.js";
 import * as S from "./store.js";
 import { esc } from "./ui.js";
-import { valoresDiseno, tensionControlTxt, tensionEstabilizada, tempDiseno, seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
+import { valoresDiseno, tensionControlTxt, tensionEstabilizada, tempDiseno, condicionesSitio, seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { procesarFilas, resumenIO, ESQUEMAS } from "./modules/tablas.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, circuitosControl, instrumentos, expandirTag, tipoInstrumento, esAnalogico, sistemaTag, sistemaNombre, r2, parametrosG,
   tableros, tablerosControl, tableroPorId, tf, tc, desdeTxt, esControl, esPotencia, TIPOS_TABLERO, ipRecomendado, cablesFuerza, CLASES_CABLE, CANALIZACIONES, controlInterno, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, ovrTablero } from "./datos.js";
@@ -14,6 +14,7 @@ import { GENERADORES, dxfBytes } from "./cad/planos.js";
 import { valoresCajetin } from "./cad/formato.js";
 import { parseDXF, toCompact, boundsOf } from "./dxf.js";
 import { ENTREGABLES } from "./catalog.js";
+import { textosNormas } from "./modules/normas.js";
 
 const BASE = "assets/plantillas/";
 let _manifest = null, _hd = null;
@@ -138,7 +139,7 @@ function generico(pit){
 }
 
 /* memorias de cálculo (conductores y máxima demanda): datos para las plantillas Word, todos los tableros */
-export function datosMemoria(p){
+export function datosMemoria(p, docId = "ele-md"){
   const d = datos(p), v = valoresDiseno(p), mem = d.memoria;
   const calcs = calcularTodos(p);
   const g = calcs[0] ? calcs[0].g : parametrosG(p);
@@ -185,6 +186,8 @@ export function datosMemoria(p){
     tableros:tablerosM, cables, protecciones: prot, anexo_md: anexoMD, anexo_cables: anexoC, anexo_prot: anexoP,
     pi_total: r2(raiz.reduce((a,c)=>a+c.installedKVA,0),2), md_total: r2(raiz.reduce((a,c)=>a+c.totalKVA,0),2), i_md_total: r2(raiz.reduce((a,c)=>a+c.demandCurrent,0),2),
     itm_general: raiz.map(c=>`${c.tablero.tag}: 3x${c.mainBreaker} A`).join(" · "),
+    // condiciones del sitio (las que indicó el usuario; «-» si no tiene el dato) y códigos y estándares elegidos
+    condiciones: condicionesSitio(v).map(texto=>({ texto })), codigos: textosNormas(p, docId).map(texto=>({ texto })),
   };
 }
 
@@ -247,8 +250,8 @@ export const DOCS = {
   "ele-cables": { formato:"xlsx", plantilla:"xlsx/lista_cables.xlsx", man:"lista_cables", ref:"Listado de cables con canalización", editores:["cables","notas"] },
   "ele-equipos": { formato:"xlsx", plantilla:"xlsx/equipos_electricos.xlsx", man:"equipos_electricos", ref:"Listado de equipos: carátula + listado", editores:["tableros","equiposCfg","notas"] },
   "ele-hd": { formato:"xlsx", plantilla:"xlsx/hoja_datos_instrumentos.xlsx", man:"hoja_datos_instrumentos", ref:"Hoja de datos: carátula + índice + una hoja por tablero", editores:["hdEq"] },
-  "ele-mc": { formato:"docx", plantilla:"docx/memoria_conductores.docx", ref:"Memoria de cálculo con anexos de conductores y protecciones", editores:["memoria"] },
-  "ele-md": { formato:"docx", plantilla:"docx/memoria_md.docx", ref:"Memoria de cálculo con anexo de máxima demanda", editores:[] },
+  "ele-mc": { formato:"docx", plantilla:"docx/memoria_conductores.docx", ref:"Memoria de cálculo con anexos de conductores y protecciones", editores:["memoria","normas"] },
+  "ele-md": { formato:"docx", plantilla:"docx/memoria_md.docx", ref:"Memoria de cálculo con anexo de máxima demanda", editores:["normas"] },
   "ele-unifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros","marcas"] },
   "ele-multifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["cargas","marcas"] },
   "ele-mecanico": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["mecanico","marcas"], vista3d:true },

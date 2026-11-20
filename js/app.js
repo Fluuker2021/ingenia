@@ -203,7 +203,7 @@ function modalProyecto(p, pasoIni=0){
       const ip = ()=>{ $("#f-ip",root).textContent = ipRecomendado(dis); };
       const renderDis = ()=>{
         const box = $("#f-dis", root);
-        box.innerHTML = grupos.map(g=>`<h3 class="ed-sub">${esc(g.grupo)}</h3><div class="grid-3">${g.campos.map(c=>campoDiseno(c, dis)).join("")}</div>`).join("");
+        box.innerHTML = grupos.map(g=>`<h3 class="ed-sub">${esc(g.grupo)}</h3>${g.nota ? `<p class="nota-grupo">${esc(g.nota)}</p>` : ""}<div class="grid-3">${g.campos.map(c=>campoDiseno(c, dis)).join("")}</div>`).join("");
         enlazarDiseno(box, (k, v)=>{ dis[k] = v; ip(); });
         ip();
       };

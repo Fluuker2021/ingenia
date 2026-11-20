@@ -285,31 +285,124 @@ function textoCelda(doc, cell, txt, x, y, w, h, k){
 /* ======================= Word ======================= */
 async function html2canvas(){ await script("vendor/html2canvas-1.4.1.min.js"); return window.html2canvas; }
 async function docxPreview(){ await script("vendor/jszip-3.10.1.min.js"); await script("vendor/docx-preview-0.4.1.min.js"); return window.docx; }
+/* Word → HTML con el visor (docx-preview) en el contenedor host, con los arreglos para que se vea como en Word */
+export async function renderWord(buffer, host){
+  const docx = await docxPreview();
+  // ecuaciones: el visor necesita las propiedades de cada delimitador (<m:dPr>) aunque Word las omita
+  const zip = await window.JSZip.loadAsync(buffer);
+  for(const n of Object.keys(zip.files).filter(n=>/^word\/(document|header\d*|footer\d*)\.xml$/.test(n))){
+    const xml = await zip.file(n).async("string");
+    if(/<m:d>(?!\s*<m:dPr)/.test(xml)) zip.file(n, xml.replace(/<m:d>(?!\s*<m:dPr)/g, "<m:d><m:dPr/>"));
+  }
+  // viñetas con caracteres de las fuentes Symbol / Wingdings (área privada de Unicode): el navegador no las dibuja; se
+  // cambian por «•» y «▪» en Arial, como se ven en Word
+  if(zip.file("word/numbering.xml")){
+    let xml = await zip.file("word/numbering.xml").async("string");
+    xml = xml.replace(/<w:lvlText w:val="\uf0b7"\/>/g, '<w:lvlText w:val="•"/>').replace(/<w:lvlText w:val="\uf0a7"\/>/g, '<w:lvlText w:val="▪"/>')
+      .replace(/<w:rFonts w:ascii="(Symbol|Wingdings)" w:hAnsi="(Symbol|Wingdings)"( w:hint="default")?\/>/g, '<w:rFonts w:ascii="Arial" w:hAnsi="Arial"/>');
+    zip.file("word/numbering.xml", xml);
+  }
+  buffer = await zip.generateAsync({ type:"arraybuffer" });
+  await docx.renderAsync(new Blob([buffer]), host, host, { className:"docx", inWrapper:false, breakPages:true, renderHeaders:true, renderFooters:true, ignoreLastRenderedPageBreak:true, useBase64URL:true, experimental:true });
+  // sin guiones automáticos del navegador (Word no los usa y la captura los dibuja mal)
+  const est = document.createElement("style"); est.textContent = "section.docx, section.docx *{ hyphens:manual !important; -webkit-hyphens:manual !important; }"; host.appendChild(est);
+  // el visor calcula los tabuladores (encabezado, pie e índice) medio segundo después de dibujar: se espera a que termine
+  // antes de reordenar el índice (si no, su cálculo falla y el encabezado y el pie quedan sin tabular)
+  await new Promise(r=>setTimeout(r, 650));
+  arreglarNumeracion(host);
+  arreglarIndice(host);
+  await (document.fonts ? document.fonts.ready : Promise.resolve());
+  return host;
+}
+/* listas numeradas y con viñetas: el visor separa el número del texto con un tabulador dentro de «::before», que se
+   dibuja como un espacio; el número (o la viñeta) ocupa la sangría francesa, así el texto queda alineado como en Word */
+function arreglarNumeracion(host){
+  // reglas del visor: estilos de párrafo con sangría, contenido y contadores de cada nivel de numeración
+  const estilo = {}, contenido = {}, incremento = {}, fija = {}, inicial = {}, antes = {};
+  const pares = t => { const out = []; const tk = String(t||"").trim().split(/\s+/); for(let i=0; i<tk.length; i++){ if(!tk[i] || tk[i]==="none") continue; const n = tk[i], v = /^-?\d+$/.test(tk[i+1]||"") ? +tk[++i] : null; out.push([n, v]); } return out; };
+  for(const st of host.querySelectorAll("style")){ let rs; try{ rs = st.sheet && st.sheet.cssRules; }catch(e){ rs = null; } if(!rs) continue;
+    for(const r of rs){ const sel = r.selectorText||"";
+      const me = /^p\.(docx_[\w-]+)$/.exec(sel); if(me && r.style.marginInlineStart) estilo[me[1]] = { mis: r.style.marginInlineStart, ti: r.style.textIndent || "0pt" };
+      const mb = /^p\.(docx-num-\d+-\d+)::?before$/.exec(sel);
+      if(mb){ contenido[mb[1]] = r.style.content; incremento[mb[1]] = pares(r.style.counterIncrement); antes[mb[1]] = { fontFamily:r.style.fontFamily, fontWeight:r.style.fontWeight, color:r.style.color, fontSize:r.style.fontSize }; }
+      const mn = /^p\.(docx-num-\d+-\d+)$/.exec(sel); if(mn && r.style.counterSet) fija[mn[1]] = (fija[mn[1]]||[]).concat(pares(r.style.counterSet));
+      if(sel===":root" && r.style.counterReset) for(const [n, v] of pares(r.style.counterReset)) inicial[n] = v || 0; } }
+  if(!Object.keys(contenido).length) return;
+  // los números se calculan aquí (la captura no aplica «counter-set» y los subtítulos seguían la cuenta: 5.3 en vez de
+  // 5.1) y se escriben como texto en la sangría francesa; la viñeta o el número ocupa la sangría, como en Word
+  const fmt = (n, tipo) => { tipo = tipo || "decimal";
+    if(/alpha|latin/.test(tipo)){ let s = "", x = n; while(x > 0){ x--; s = String.fromCharCode(97 + x%26) + s; x = Math.floor(x/26); } return /upper/.test(tipo) ? s.toUpperCase() : s; }
+    if(/roman/.test(tipo)){ const R = [[1000,"m"],[900,"cm"],[500,"d"],[400,"cd"],[100,"c"],[90,"xc"],[50,"l"],[40,"xl"],[10,"x"],[9,"ix"],[5,"v"],[4,"iv"],[1,"i"]]; let s = "", x = n; for(const [v, l] of R) while(x >= v){ s += l; x -= v; } return /upper/.test(tipo) ? s.toUpperCase() : s; }
+    if(tipo==="decimal-leading-zero") return String(n).padStart(2, "0");
+    return String(n); };
+  const val = Object.assign({}, inicial);
+  const texto = c => { let out = ""; const re = /"((?:[^"\\]|\\.)*)"|counter\(\s*([\w-]+)\s*(?:,\s*([\w-]+))?\s*\)/g; let m;
+    while((m = re.exec(c||""))){ if(m[2]) out += fmt(val[m[2]] || 0, m[3]);
+      else out += m[1].replace(/\\([0-9a-fA-F]{1,6})\s?/g, (x, h)=>String.fromCodePoint(parseInt(h, 16))).replace(/\\(.)/g, "$1"); }
+    return out.replace(/\t/g, "").trim(); };
+  const css = document.createElement("style"); css.textContent = "section.docx p.num-docx::before{ content:none !important; }"; host.appendChild(css);
+  for(const p of host.querySelectorAll("p[class*='docx-num-']")){
+    const cls = [...p.classList].find(c=>contenido[c]!=null); if(!cls) continue;
+    for(const [n, v] of fija[cls]||[]) val[n] = v || 0;
+    for(const [n, v] of incremento[cls]||[]) val[n] = (val[n]||0) + (v==null ? 1 : v);
+    const t = texto(contenido[cls]);
+    // sangría: cuando la lista viene del estilo de párrafo (p. ej. «Párrafo de lista»), en Word manda la del estilo
+    const est = [...p.classList].map(c=>estilo[c]).find(Boolean);
+    if(est){ p.style.marginInlineStart = est.mis; p.style.textIndent = est.ti; }
+    p.classList.add("num-docx");
+    if(!t) continue;
+    const ti = parseFloat(getComputedStyle(p).textIndent) || 0, ref = p.querySelector("span:not(:empty)") || p, cs = getComputedStyle(ref), a = antes[cls] || {};
+    const sp = document.createElement("span"); sp.textContent = t;
+    sp.style.cssText = `display:inline-block; min-width:${Math.max(0, -ti)}px; padding-right:4pt; box-sizing:border-box; text-indent:0; white-space:nowrap;`;
+    sp.style.fontFamily = a.fontFamily || cs.fontFamily; sp.style.fontWeight = a.fontWeight || cs.fontWeight; sp.style.fontSize = a.fontSize || cs.fontSize; sp.style.color = a.color || cs.color;
+    p.insertBefore(sp, p.firstChild);
+  }
+}
+/* índice (párrafos «TDC1…TDC9»): número, título y página con los tabuladores de Word (página alineada a la derecha y
+   puntos de relleno); el visor no aplica los tabuladores del estilo y el índice quedaba desalineado */
+function arreglarIndice(host){
+  const ps = [...host.querySelectorAll("p")].filter(p=>/\bdocx_(tdc|toc)\d\b|\bdocx_tabladeilustraciones\b|\bdocx_tableoffigures\b/i.test(p.className));
+  for(const p of ps){
+    const cont = p.querySelector(":scope > a") || p;
+    // los tramos separados por tabuladores: [número, título, página] (o [título, página])
+    const tramos = [[]];
+    for(const n of [...cont.childNodes]){ if(n.nodeType===1 && n.querySelector && (n.classList.contains("docx-tab-stop") || n.querySelector(".docx-tab-stop"))) tramos.push([]); else tramos[tramos.length-1].push(n); }
+    if(tramos.length < 2) continue;
+    const cs = getComputedStyle(p), sang = Math.max(0, -parseFloat(cs.textIndent)||0);
+    const pag = tramos.pop(), num = tramos.length > 1 ? tramos.shift() : [], tit = tramos.flat();
+    const caja = (nodos, estilo) => { const sp = document.createElement("span"); sp.style.cssText = estilo; nodos.forEach(n=>sp.appendChild(n)); return sp; };
+    const fila = document.createElement("span");
+    fila.style.cssText = "display:flex; align-items:baseline; width:100%;";
+    if(num.length) fila.appendChild(caja(num, `flex:0 0 ${sang}px; white-space:nowrap;`));
+    fila.appendChild(caja(tit, "flex:0 1 auto;"));
+    const pts = document.createElement("span"); pts.style.cssText = "flex:1 1 0; min-width:12px; overflow:hidden; white-space:nowrap; margin:0 2px; text-transform:none; font-weight:normal;"; pts.textContent = ".".repeat(400);
+    fila.appendChild(pts);
+    fila.appendChild(caja(pag, "flex:0 0 auto; white-space:nowrap;"));
+    // el número va en la sangría francesa: el párrafo empieza donde empieza el número
+    p.style.textIndent = "0"; p.style.marginInlineStart = `${Math.max(0, (parseFloat(cs.marginInlineStart)||0) - (num.length ? sang : 0))}px`;
+    cont.innerHTML = ""; cont.appendChild(fila);
+    if(cont!==p){ cont.style.display = "block"; cont.style.textDecoration = "none"; cont.style.color = "inherit"; }
+  }
+}
 export async function pdfWord(buffer){
-  const [PDF, h2c, docx] = await Promise.all([jsPDF(), html2canvas(), docxPreview()]);
+  const [PDF, h2c] = await Promise.all([jsPDF(), html2canvas()]);
   const host = document.createElement("div");
   host.style.cssText = "position:fixed; left:-20000px; top:0; background:#fff; z-index:-1;";
   document.body.appendChild(host);
   try{
-    // ecuaciones: el visor necesita las propiedades de cada delimitador (<m:dPr>) aunque Word las omita
-    const zip = await window.JSZip.loadAsync(buffer);
-    for(const n of Object.keys(zip.files).filter(n=>/^word\/(document|header\d*|footer\d*)\.xml$/.test(n))){
-      const xml = await zip.file(n).async("string");
-      if(/<m:d>(?!\s*<m:dPr)/.test(xml)) zip.file(n, xml.replace(/<m:d>(?!\s*<m:dPr)/g, "<m:d><m:dPr/>"));
-    }
-    buffer = await zip.generateAsync({ type:"arraybuffer" });
-    await docx.renderAsync(new Blob([buffer]), host, host, { className:"docx", inWrapper:false, breakPages:true, renderHeaders:true, renderFooters:true, ignoreLastRenderedPageBreak:true, useBase64URL:true, experimental:true });
-    // sin guiones automáticos del navegador (Word no los usa y la captura los dibuja mal)
-    const est = document.createElement("style"); est.textContent = "section.docx, section.docx *{ hyphens:manual !important; -webkit-hyphens:manual !important; }"; host.appendChild(est);
-    await (document.fonts ? document.fonts.ready : Promise.resolve());
+    await renderWord(buffer, host);
     await ecuacionesComoImagen(host);
     const ESC = 2, pxMm = 25.4/96;          // 2 píxeles por píxel CSS ≈ 192 ppp
     const secciones = [...host.querySelectorAll("section.docx")];
     const rel = (el, sec)=>{ const a = el.getBoundingClientRect(), b = sec.getBoundingClientRect(); return { x:a.left - b.left, y:a.top - b.top, w:a.width, h:a.height }; };
     // tablas con sangría negativa (p. ej. la carátula): el visor no la aplica y la tabla sale de la hoja; se centran
-    for(const sec of secciones) for(const t of sec.querySelectorAll("table")){
-      const r = rel(t, sec), W = sec.offsetWidth;
-      if(r.x + r.w > W - 2 && r.w < W){ const izq = (W - r.w)/2; t.style.marginLeft = `${(parseFloat(getComputedStyle(t).marginLeft)||0) + izq - r.x}px`; }
+    // (y las que son más anchas que el área de texto: en Word salen centradas en la hoja con su sangría negativa)
+    for(const sec of secciones){
+      const W = sec.offsetWidth, cs = getComputedStyle(sec), util = W - (parseFloat(cs.paddingLeft)||0) - (parseFloat(cs.paddingRight)||0);
+      for(const t of [...sec.querySelectorAll("table")].filter(t=>!t.parentElement.closest("table"))){   // tablas de primer nivel (cuerpo, encabezado y pie)
+        const r = rel(t, sec);
+        if((r.x + r.w > W - 2 || r.w > util + 2) && r.w < W){ const izq = (W - r.w)/2; t.style.marginLeft = `${(parseFloat(getComputedStyle(t).marginLeft)||0) + izq - r.x}px`; }
+      }
     }
     // 1) plan de páginas: cada sección entra en una hoja o su cuerpo se corta en líneas en blanco
     const plan = [];

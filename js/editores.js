@@ -5,6 +5,7 @@ import { save } from "./store.js";
 import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { renderEditor } from "./modules/tablas.js";
 import { arrastrarFilas, moverEn, colorTablero } from "./filas.js";
+import { NORMAS, NORMAS_DEF, normasDoc } from "./modules/normas.js";
 import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl, dimensionarCircuito, instrumentos, sistemaTag, uidc, APPLICATIONS,
   TIPOS_TABLERO, nuevoTablero, tableros, tablerosPotencia, tablerosControl, tableroPorId, esControl, esFuerza, tf, tc, desdeTxt, aplicarTipicos, REGIMENES,
   calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, TIPOS_OVR, ovrTablero, calcularTodos, controlInterno,
@@ -25,7 +26,7 @@ export const TITULOS = {
   tableros:"Tableros del proyecto", marcas:"Marcas de los equipos", instrumentos:"Listado de instrumentos", io:"Lista de entradas y salidas", tablerocontrol:"Configuración de los tableros de control", circuitos:"Circuitos de los tableros de control",
   memoria:"Criterios de la memoria de cálculo", hd:"Datos por instrumento", hdEq:"Datos por tablero", notas:"Notas del documento", cables:"Cables por carga",
   equiposCfg:"Alcance del listado", proceso:"Proceso y recomendación de instrumentos", filosofia:"Filosofía de control", arreglo:"Planta y ubicación de equipos",
-  mecanico:"Arreglo mecánico del tablero",
+  mecanico:"Arreglo mecánico del tablero", normas:"Códigos y estándares (apartado 3 del documento)",
 };
 
 export function renderEditores(cont, p, claves, docId, onChange){
@@ -131,6 +132,23 @@ function normalizarArranque(l){
 
 /* ---------------- editores ---------------- */
 const ED = {
+  /* códigos y estándares de las memorias: el usuario elige cuáles aparecen en el apartado «Códigos y estándares» */
+  normas(el, p, cambio, docId){
+    if(docId) el.dataset.doc = docId;
+    const c = normasDoc(p, el.dataset.doc);
+    const render = ()=>{
+      const sel = new Set(c.sel);
+      el.innerHTML = `<p class="muted" style="font-size:12.5px;margin:0 0 10px">Marca los códigos y estándares que deben aparecer en el apartado 3 del documento (salen en el orden de esta lista). Se cita la última revisión vigente de cada uno.</p>
+        <div class="normas-grid">${NORMAS.map(g=>`<div class="normas-grupo"><h3 class="ed-sub">${esc(g.grupo)}</h3>${g.lista.map(([k, t])=>`<label class="checkbox normas-item"><input type="checkbox" data-norma="${k}" ${sel.has(k)?"checked":""}> <span>${esc(t)}</span></label>`).join("")}</div>`).join("")}</div>
+        ${campo("Otros códigos o estándares (uno por línea)", `<textarea data-otras rows="3" placeholder="Ej: Especificación técnica del cliente ET-ELE-001">${esc(c.otras.join("\n"))}</textarea>`)}
+        <div class="row" style="gap:8px"><span class="muted" style="font-size:12.5px">${c.sel.length + c.otras.length} seleccionado(s)</span><span class="grow"></span><button class="btn-sm" data-ndef>Volver a la selección por defecto</button></div>`;
+      $$("[data-norma]", el).forEach(i=>i.onchange = ()=>{ const s2 = new Set(c.sel); if(i.checked) s2.add(i.dataset.norma); else s2.delete(i.dataset.norma);
+        c.sel = NORMAS.flatMap(g=>g.lista.map(x=>x[0])).filter(k=>s2.has(k)); cambio(); render(); });
+      $("[data-otras]", el).onchange = e=>{ c.otras = e.target.value.split(/\n/).map(x=>x.trim()).filter(Boolean); cambio(); render(); };
+      $("[data-ndef]", el).onclick = ()=>{ c.sel = NORMAS_DEF.slice(); c.otras = []; cambio(); render(); };
+    };
+    render();
+  },
   mecanico(el, p, cambio, docId){
     // plano mecánico del tablero de control (ins-mecanico-tc): tableros de control con su propio motor de arreglo
     if(docId) el.dataset.doc = docId;

@@ -14,11 +14,22 @@ export const PARAMETROS_DISENO = [
     { key:"tensionInstr", label:"Tensión de instrumentación (Vdc)", tipo:"numero", def:"24", ph:"Ej: 24" },
     { key:"icc", label:"Cortocircuito en la conexión (kA)", tipo:"numero", def:"25", hint:"Nivel de cortocircuito en el punto de conexión." },
   ]},
-  { grupo:"Condiciones ambientales del sitio", campos:[
+  { grupo:"Condiciones ambientales del sitio", nota:"Si no tienes un dato, escribe un guion (-). La altitud y las temperaturas mínima y máxima se usan en los cálculos: si no las conoces, deja el valor propuesto.", campos:[
     { key:"ubicacion", label:"Ubicación (región / distrito)", tipo:"text", def:"" },
     { key:"altitud", label:"Altitud (m s.n.m.)", tipo:"numero", def:"1000" },
     { key:"tempMin", label:"Temperatura mínima (°C)", tipo:"numero", neg:true, def:"0" },
     { key:"tempMax", label:"Temperatura máxima (°C)", tipo:"numero", neg:true, def:"35", hint:"Se usa como temperatura de diseño." },
+    // datos del sitio que solo se informan en los documentos (texto libre; «-» si no se tiene el dato)
+    { key:"tempMedia", label:"Temperatura media anual (°C)", tipo:"text", def:"", ph:"Ej: 12 o -", doc:true },
+    { key:"humedadMax", label:"Humedad relativa máxima (%)", tipo:"text", def:"", ph:"Ej: 95 o -", doc:true },
+    { key:"humedadMin", label:"Humedad relativa mínima (%)", tipo:"text", def:"", ph:"Ej: 20 o -", doc:true },
+    { key:"precipitacion", label:"Precipitación máxima anual (mm)", tipo:"text", def:"", ph:"Ej: 900 o -", doc:true },
+    { key:"viento", label:"Velocidad máxima del viento (km/h)", tipo:"text", def:"", ph:"Ej: 90 o -", doc:true },
+    { key:"isoceraunico", label:"Nivel isoceráunico (días de tormenta / año)", tipo:"text", def:"", ph:"Ej: 40 o -", doc:true },
+    { key:"radiacion", label:"Radiación solar máxima (W/m²)", tipo:"text", def:"", ph:"Ej: 1100 o -", doc:true },
+    { key:"sismo", label:"Zona sísmica / aceleración (g)", tipo:"text", def:"", ph:"Ej: Zona 4 (0,45 g) o -", doc:true },
+    { key:"resistividad", label:"Resistividad del terreno (Ω·m)", tipo:"text", def:"", ph:"Ej: 150 o -", doc:true },
+    { key:"coordenadas", label:"Coordenadas del sitio", tipo:"text", def:"", ph:"Ej: UTM 18L 280000 E, 8890000 N o -", doc:true },
     { key:"ambiente", label:"Instalación de los equipos", tipo:"select", opciones:["Interior (sala eléctrica)","Interior industrial","Exterior bajo techo","Exterior a la intemperie"], def:"Exterior bajo techo" },
     { key:"contaminacion", label:"Contaminación del ambiente", tipo:"select", opciones:["Normal","Polvo no conductivo","Polvo conductivo / minero","Corrosivo (químico)","Salino (zona costera)"], def:"Polvo no conductivo" },
     { key:"areaClasificada", label:"Área clasificada (NEC 500)", tipo:"select", opciones:["No clasificada","Clase I, División 1","Clase I, División 2","Clase II, División 1","Clase II, División 2"], def:"No clasificada" },
@@ -53,6 +64,20 @@ export const tensionesControl = v => [[v.tensionControl, v.tensionControlTipo], 
 export const controlEnDC = v => v.tensionControlTipo==="Vdc";
 /* tensión estabilizada que alimenta los tableros de control (barra de 120 Vac si el control es en Vdc) */
 export const tensionEstabilizada = v => controlEnDC(v) ? "120 Vac" : tensionControl1Txt(v);
+/* condiciones del sitio para los documentos: «Etiqueta: valor unidad» de los datos indicados (un guion si el usuario no
+   tiene el dato); las que se dejaron vacías no se listan */
+export function condicionesSitio(v){
+  const g = PARAMETROS_DISENO.find(x=>/ambientales/i.test(x.grupo)), out = [];
+  const lbl = c => c.label.replace(/\s*\([^)]*\)\s*$/, "");
+  const UNI = { "°C":" °C", "%":" %", "m s.n.m.":" m s.n.m.", "mm":" mm", "km/h":" km/h", "W/m²":" W/m²", "Ω·m":" Ω·m", "días de tormenta / año":" días de tormenta al año" };
+  for(const c of g.campos){
+    const x = String(v[c.key] ?? "").trim(); if(!x) continue;
+    if(["ambiente","contaminacion","areaClasificada","gradoProteccion"].includes(c.key)) continue;
+    const m = /\(([^)]*)\)\s*$/.exec(c.label), u = x==="-" || !m ? "" : (UNI[m[1]] || "");
+    out.push(`${c.key==="tempMax" ? "Temperatura ambiente de diseño (máxima)" : lbl(c)}: ${x}${u}`);
+  }
+  return out;
+}
 /* temperatura de diseño = temperatura máxima del sitio */
 export const tempDiseno = v => { const t = parseFloat(v.tempMax); return isNaN(t) ? 40 : t; };
 
@@ -66,7 +91,8 @@ export function seccionesCriteriosElectricos(p){
       "IEC 61439-1/2 – Conjuntos de aparamenta de baja tensión (tableros)", "IEC 60502-1 – Cables de potencia 0,6/1 kV", "IEEE 141 / IEEE 242 – Distribución industrial y coordinación de protecciones",
       "Código Nacional de Electricidad – Utilización (Perú), en lo aplicable", "Estándares y especificaciones del cliente que prevalecen sobre los anteriores cuando sean más exigentes." ] },
     { titulo:"3. Sistema eléctrico", texto:`Tensión de fuerza ${d.tension} Vac, 3 fases, ${d.frecuencia} Hz${d.puestaTierra ? ", sistema "+d.puestaTierra.toLowerCase() : ""}. Tensión de control ${tensionControlTxt(d)} obtenida de ${controlEnDC(d) ? "fuente de alimentación" : "transformador de control"} dedicado en cada tablero; tensión de instrumentación ${d.tensionInstr} Vdc. Nivel de cortocircuito disponible en el punto de conexión: ${d.icc} kA (dato del cliente; todos los dispositivos de protección tendrán capacidad de interrupción Icu/Ics igual o superior).`, items:[] },
-    { titulo:"4. Condiciones de sitio", texto:`${d.ubicacion?("Ubicación: "+d.ubicacion+". "):""}Altitud ${d.altitud} m s.n.m. Temperatura ambiente entre ${d.tempMin} °C y ${d.tempMax} °C; se adopta la temperatura máxima como temperatura de diseño. Ambiente: ${d.ambiente.toLowerCase()}.`, items:[
+    { titulo:"4. Condiciones de sitio", texto:`${d.ubicacion?("Ubicación: "+d.ubicacion+". "):""}Altitud ${d.altitud} m s.n.m. Temperatura ambiente entre ${d.tempMin} °C y ${d.tempMax} °C; se adopta la temperatura máxima como temperatura de diseño. Ambiente: ${d.ambiente.toLowerCase()}.`, items:[ ...condicionesSitio(d).filter(t=>!/^(Ubicación|Altitud|Temperatura mínima|Temperatura ambiente de diseño)/.test(t)),
+      
       "Los equipos electrónicos de potencia (variadores, arrancadores suaves) se derratean 1 % por cada 100 m sobre 1000 m s.n.m. y 1 % por °C sobre 40 °C, en forma multiplicativa.",
       "El grado de protección mínimo de gabinetes se define según el ambiente indicado; en zonas con polvo se exige IP65 / NEMA 4X." ] },
     { titulo:"5. Cargas y demanda", texto:"La potencia instalada (PI) se calcula como la suma de la potencia aparente de cada carga con factor de utilización y simultaneidad iguales a 1; la máxima demanda (MD) aplica los factores FU y FS declarados por carga. La corriente de máxima demanda se incrementa en 25 % por continuidad de carga (NEC 215.2(A)(1)) para el dimensionamiento de alimentadores.", items:[

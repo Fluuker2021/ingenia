@@ -31,8 +31,11 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
   if(!e.interno && !esPro(state)){ pantallaPro(main, state, p, e, topbar); return; }
   const di = docInfo(p, id);
   // todo se descarga en el formato estándar de Ingenia; la descarga se habilita en «Cajetín y revisiones»
+  // Excel y Word: «Datos» (con la identificación y el historial de revisiones al final), «Resumen» y «Descarga» (vista del
+  // PDF tal como se descargará); los planos conservan sus vistas previas y el cajetín
   const tabs = def.formato==="proceso" ? [["datos","1. Datos de entrada"],["vista","2. Resumen"],["cajetin","3. Cajetín y revisiones"]]
     : def.vista3d ? [["datos","1. Datos de entrada"],["vista","2. Vista previa 2D"],["vista3d","3. Vista previa 3D"],["cajetin","4. Cajetín y descarga"]]
+    : esOficina(def) ? [["datos","1. Datos"],["vista","2. Resumen"],["cajetin","3. Descarga"]]
     : [["datos","1. Datos de entrada"],["vista","2. Vista previa"],["cajetin","3. Cajetín y descarga"]];
   tab = tabs.some(t=>t[0]===tab) ? tab : "datos";
   main.innerHTML = topbar({ crumbs:[{label:"Proyectos", href:"#/proyectos"},{label:p.nombre, href:`#/proyecto/${p.id}/documentos`},{label:e.nombre}], title:e.nombre,
@@ -41,14 +44,22 @@ export async function screenDocumento(main, state, p, id, tab, topbar){
     `<div class="tabs">${tabs.map(t=>`<button data-wtab="${t[0]}" class="${t[0]===tab?"active":""}">${t[1]}</button>`).join("")}</div><div id="ws-body"></div>`;
   $$("[data-wtab]").forEach(b=>b.onclick = ()=>location.hash = `#/proyecto/${p.id}/doc/${id}/${b.dataset.wtab}`);
   const body = $("#ws-body");
-  if(tab==="datos") return tabDatos(body, p, id, def);
+  if(tab==="datos") return tabDatos(body, state, p, id, def);
   if(tab==="vista") return Promise.resolve(tabVista(body, state, p, id, def)).then(()=>montarBarraCopito(body, p, id));
   if(tab==="vista3d") return tabVista3D(body, p, id);
-  if(tab==="cajetin") return tabCajetin(body, state, p, id, def);
+  if(tab==="cajetin") return esOficina(def) ? tabDescarga(body, state, p, id, def) : tabCajetin(body, state, p, id, def);
 }
+const esOficina = def => def.formato==="xlsx" || def.formato==="docx";
 
 /* ---------------- 1. datos ---------------- */
-function tabDatos(body, p, id, def){
+function tabDatos(body, state, p, id, def){
+  if(esOficina(def)){
+    body.innerHTML = `<div id="eds"></div><div id="ws-ident" class="${def.editores.length ? "mt-2" : ""}"></div>
+      <div class="row mt-2" style="justify-content:flex-end"><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista">Ver resumen →</a></div>`;
+    if(def.editores.length) renderEditores($("#eds", body), p, def.editores, id, ()=>{});
+    tarjetasDocumento($("#ws-ident", body), state, p, id, def);
+    return;
+  }
   if(!def.editores.length){ body.innerHTML = `<div class="empty"><p><strong>No requiere datos adicionales.</strong></p><p>Se arma con los datos del proyecto.</p><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista">Ver vista previa →</a></div>`; return; }
   body.innerHTML = `<div id="eds"></div>
     <div class="row mt-2" style="justify-content:flex-end"><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/vista">Ver vista previa →</a></div>`;
@@ -94,7 +105,7 @@ function tablaHTML(cols, filas, totales){
 function vistaTabla(body, p, id, titulo, cols, filas, extra){
   body.innerHTML = cabeceraHoja(p, id, titulo) + tablaHTML(cols, filas) + (extra||"") + `</div>` + pieVista(p, id);
 }
-function pieVista(p, id){ return `<div class="row mt-2" style="justify-content:flex-end"><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">Siguiente: cajetín y descarga →</a></div>`; }
+function pieVista(p, id){ return `<div class="row mt-2" style="justify-content:flex-end"><a class="btn btn-primary" href="#/proyecto/${p.id}/doc/${id}/cajetin">${esOficina(defDoc(id)) ? "Siguiente: descarga →" : "Siguiente: cajetín y descarga →"}</a></div>`; }
 
 function vistaCargas(body, p, id){
   const calcs = calcularTodos(p);
@@ -258,13 +269,14 @@ async function tabVista3D(body, p, id){
 }
 
 /* ---------------- 3. cajetín y revisiones ---------------- */
-function tabCajetin(body, state, p, id, def){
+/* identificación del documento e historial de revisiones (en «Datos» para Excel y Word; en el cajetín de los planos) */
+function tarjetasDocumento(cont, state, p, id, def){
   const d = p.documentos[id]; docInfo(p, id);
   const org = state.org;
   const render = ()=>{
     // el estado sigue a la revisión vigente
     if(sincronizarEstado(d)) S.save();
-    body.innerHTML = html`<div class="grid-2">
+    cont.innerHTML = html`<div class="grid-2">
       <div class="card"><div class="card-head"><h2>Identificación</h2></div><div class="card-body">
         <div class="field"><label>Título</label><input type="text" data-f="titulo" value="${esc(d.titulo||"")}"></div>
         <div class="grid-3">
@@ -278,16 +290,24 @@ function tabCajetin(body, state, p, id, def){
         <div class="table-wrap"><table class="tb-rev"><thead><tr><th>Rev.</th><th>Fecha</th><th>Descripción / emitido para</th><th></th></tr></thead><tbody>
         ${d.revisiones.map((r,i)=>`<tr data-r="${i}"><td class="centro"><input type="text" class="centro" data-rv="rev" value="${esc(r.rev)}" style="width:54px"></td><td class="centro"><input type="date" class="centro" data-rv="fecha" value="${esc(r.fecha)}"></td><td><select data-rv="descripcion">${["Emitido para revisión interna","Emitido para revisión del cliente","Emitido para aprobación","Emitido para construcción","Conforme a obra"].concat(r.descripcion && !/^Emitido|^Conforme/.test(r.descripcion)?[r.descripcion]:[]).map(o=>`<option ${r.descripcion===o?"selected":""}>${esc(o)}</option>`).join("")}</select></td><td>${d.revisiones.length>1?`<button class="btn-ghost btn-sm" data-rdel>${ICON.trash}</button>`:""}</td></tr>`).join("")}
         </tbody></table></div></div></div>
-    </div>
+    </div>`;
+    $$("[data-f]", cont).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; S.save(); });
+    // al elegir para qué se emite la revisión, el documento queda emitido y su estado lo sigue (también en Documentos)
+    $$("[data-rv]", cont).forEach(i=>i.onchange = ()=>{ d.revisiones[+i.closest("tr").dataset.r][i.dataset.rv] = i.value; if(i.dataset.rv==="descripcion") d.emitida = true; docInfo(p, id); S.save(); render(); });
+    $$("[data-rdel]", cont).forEach(b=>b.onclick = ()=>{ d.revisiones.splice(+b.closest("tr").dataset.r, 1); docInfo(p, id); S.save(); render(); });
+    $("#rv-add", cont).onclick = ()=>{ const last = d.revisiones[d.revisiones.length-1]; const sig = nextRev(last.rev); d.revisiones.push({ rev:sig, fecha:new Date().toISOString().slice(0,10), descripcion: /^\d+$/.test(sig) ? "Emitido para construcción" : "Emitido para revisión del cliente" }); d.emitida = true; docInfo(p, id); S.save(); render(); };
+  };
+  render();
+}
+function tabCajetin(body, state, p, id, def){
+  const d = p.documentos[id]; docInfo(p, id);
+  const render = ()=>{
+    body.innerHTML = html`<div id="ws-ident"></div>
     ${def.formato==="dxf" ? `<div class="card mt-2"><div class="card-head"><h2>Planos de referencia (cajetín)</h2><button class="btn-sm" id="rf-auto">Volver a sugerir</button></div><div class="card-body" id="refs"></div></div>` : ""}
     ${descargable(id) ? `<div class="card mt-2 ws-descarga"><div class="card-body row between" style="flex-wrap:wrap"><h2 style="font-size:15px">Descargar el documento</h2><div class="row"><button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button><button class="btn-primary" id="ws-pdf">${ICON.download} Descargar PDF</button></div></div></div>` : ""}`;
     const wdl = $("#ws-dl", body); if(wdl) wdl.onclick = ()=>descargarDoc(state, p, id, wdl);
     const wpdf = $("#ws-pdf", body); if(wpdf) wpdf.onclick = ()=>descargarDoc(state, p, id, wpdf, "pdf");
-    $$("[data-f]", body).forEach(i=>i.onchange = ()=>{ d[i.dataset.f] = i.value; S.save(); });
-    // al elegir para qué se emite la revisión, el documento queda emitido y su estado lo sigue (también en Documentos)
-    $$("[data-rv]", body).forEach(i=>i.onchange = ()=>{ d.revisiones[+i.closest("tr").dataset.r][i.dataset.rv] = i.value; if(i.dataset.rv==="descripcion") d.emitida = true; docInfo(p, id); S.save(); render(); });
-    $$("[data-rdel]", body).forEach(b=>b.onclick = ()=>{ d.revisiones.splice(+b.closest("tr").dataset.r, 1); docInfo(p, id); S.save(); render(); });
-    $("#rv-add").onclick = ()=>{ const last = d.revisiones[d.revisiones.length-1]; const sig = nextRev(last.rev); d.revisiones.push({ rev:sig, fecha:new Date().toISOString().slice(0,10), descripcion: /^\d+$/.test(sig) ? "Emitido para construcción" : "Emitido para revisión del cliente" }); d.emitida = true; docInfo(p, id); S.save(); render(); };
+    tarjetasDocumento($("#ws-ident", body), state, p, id, def);
     if(def.formato==="dxf"){
       const rf = $("#refs");
       const draw = ()=>{ rf.innerHTML = `${d.referencias.map((r,i)=>`<div class="row mb-1" data-i="${i}"><input type="text" data-rf="titulo" value="${esc(r.titulo)}" style="flex:1" placeholder="Título del plano o documento de referencia"><button class="btn-ghost btn-sm" data-rfdel>${ICON.trash}</button></div>`).join("")}<button class="btn-sm" id="rf-add">${ICON.plus} Agregar</button>`;
@@ -300,6 +320,52 @@ function tabCajetin(body, state, p, id, def){
     }
   };
   render();
+}
+/* ---------------- 3. descarga (Excel y Word): vista del PDF tal como se descargará y los dos botones ---------------- */
+let pdfVista = null;   // { url, id } del PDF que se está mostrando (se libera al cambiar de documento)
+/* páginas de un PDF dibujadas en lienzos (pdf.js): se ve igual en cualquier navegador, también en el celular */
+async function verPaginasPDF(cont, pdf){
+  const pdfjs = await import("../vendor/pdfjs-4.10.38/pdf.min.mjs");
+  pdfjs.GlobalWorkerOptions.workerSrc = new URL("../vendor/pdfjs-4.10.38/pdf.worker.min.mjs", import.meta.url).href;
+  const doc = await pdfjs.getDocument({ data: new Uint8Array(pdf.slice(0)), standardFontDataUrl: new URL("../vendor/pdfjs-4.10.38/standard_fonts/", import.meta.url).href }).promise;
+  cont.innerHTML = "";
+  const ancho = Math.max(320, cont.clientWidth - 24), dpr = Math.min(2, window.devicePixelRatio || 1);
+  for(let i = 1; i <= doc.numPages; i++){
+    if(!cont.isConnected) return;
+    const pag = await doc.getPage(i), v0 = pag.getViewport({ scale:1 });
+    // páginas verticales al ancho disponible (hasta ~900 px); las apaisadas, a todo el ancho
+    const w = v0.width > v0.height ? ancho : Math.min(ancho, 900), vp = pag.getViewport({ scale: w/v0.width*dpr });
+    const fig = document.createElement("figure"); fig.className = "pdf-pagina";
+    const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height); cv.style.width = `${Math.round(w)}px`;
+    const cap = document.createElement("figcaption"); cap.textContent = `Página ${i} de ${doc.numPages}`;
+    fig.appendChild(cv); fig.appendChild(cap); cont.appendChild(fig);
+    await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+  }
+}
+async function tabDescarga(body, state, p, id, def){
+  if(pdfVista){ URL.revokeObjectURL(pdfVista.url); pdfVista = null; }
+  const puede = descargable(id);
+  body.innerHTML = `<div class="card ws-descarga"><div class="card-body row between" style="flex-wrap:wrap;gap:10px"><div><h2 style="font-size:15px">Descargar el documento</h2>
+      <span class="muted" style="font-size:12.5px">Así se verá el documento al descargarlo en PDF.</span></div>
+      <div class="row">${puede ? `<button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button><button class="btn-primary" id="ws-pdf">${ICON.download} Descargar PDF</button>` : ""}</div></div></div>
+    <div class="pdf-visor-caja mt-2" id="ws-visor">${spinner("Preparando la vista del PDF…")}</div>`;
+  let pdf = null;
+  const wdl = $("#ws-dl", body); if(wdl) wdl.onclick = ()=>descargarDoc(state, p, id, wdl);
+  const wpdf = $("#ws-pdf", body); if(wpdf) wpdf.onclick = ()=>descargarDoc(state, p, id, wpdf, "pdf", pdf);
+  if(!puede){ $("#ws-visor", body).innerHTML = `<div class="notice">Este documento no genera archivo descargable.</div>`; return; }
+  try{
+    const a = await generarArchivo(state, p, id);
+    if(!a){ $("#ws-visor", body).innerHTML = `<div class="notice">Alimenta los datos del documento para ver su PDF.</div>`; return; }
+    const P = await import("./pdf.js");
+    pdf = a.ext==="xlsx" ? await P.pdfExcel(a.datos) : await P.pdfWord(a.datos);
+    if(!body.isConnected) return;
+    const url = URL.createObjectURL(new Blob([pdf], { type:"application/pdf" })); pdfVista = { url, id };
+    const vis = $("#ws-visor", body);
+    vis.innerHTML = `<div class="pdf-paginas" id="ws-pags">${spinner("Dibujando las páginas…")}</div>`;
+    try{ await verPaginasPDF($("#ws-pags", vis), pdf); }
+    catch(e){ console.warn("visor pdf.js", e); vis.innerHTML = `<iframe class="pdf-visor" src="${url}#view=FitH" title="Vista del PDF"></iframe>`; }
+    if(vis.isConnected) vis.insertAdjacentHTML("beforeend", `<p class="muted" style="font-size:12px;margin:8px 2px 0">También puedes <a href="${url}" target="_blank" rel="noopener">abrir el PDF en otra pestaña</a>.</p>`);
+  }catch(err){ console.error(err); const v = $("#ws-visor", body); if(v) v.innerHTML = `<div class="notice warn">No se pudo preparar la vista del PDF: ${esc(err.message||err)}</div>`; }
 }
 export function nextRev(r){ if(/^\d+$/.test(r)) return String(+r+1); if(/^[A-Y]$/i.test(r)) return String.fromCharCode(r.toUpperCase().charCodeAt(0)+1); return "0"; }
 
@@ -369,7 +435,7 @@ async function logosPlano(org, p){
 async function logoCliente(p){ if(!p.plantillas || !p.plantillas.logo_cliente) return null; const f = await S.leerArchivo(p.plantillas.logo_cliente); return f ? await logoPNG(await S.blobToDataURL(f.blob)) : null; }
 
 /* archivo nativo del documento: { datos, ext, mime } (DXF, Excel o Word); hojas: láminas del plano */
-async function generarArchivo(state, p, id){
+export async function generarArchivo(state, p, id){
   const def = defDoc(id), e = entregable(id);
   const org = await orgConLogo(state);
   const di = docInfo(p, id);
@@ -399,7 +465,7 @@ async function generarArchivo(state, p, id){
       return { datos: out, ext:"xlsx", mime:X.MIME.xlsx };
     } else if(def.formato==="docx"){
       const base = def.aliasDe || id;
-      const extra = (base==="ele-mc" || base==="ele-md") ? datosMemoria(p) : def.datos ? def.datos(p) : def.secciones ? { secciones: def.secciones(p) } : {};
+      const extra = (base==="ele-mc" || base==="ele-md") ? datosMemoria(p, base) : def.datos ? def.datos(p) : def.secciones ? { secciones: def.secciones(p) } : {};
       const scal = escalares(p, id, org);
       const data = Object.assign({}, scal, { cliente_corto:(p.cliente||"").toUpperCase(), numero_proyecto:"", orden_compra:p.ordenCompra||"", revisiones: di.revisiones.map(r=>({ rev:r.rev, fecha:fmtF(r.fecha), descripcion:r.descripcion, elaboro:r.elaboro||scal.elaboro, reviso:r.reviso||scal.reviso, aprobo:r.aprobo||scal.aprobo })) }, extra);
       delete data._calc;
@@ -416,12 +482,14 @@ async function generarArchivo(state, p, id){
 }
 
 /* descarga del documento: «nativo» (DXF, Excel o Word) o «pdf» (el mismo archivo convertido a PDF) */
-export async function descargarDoc(state, p, id, btn, tipo="nativo"){
+export async function descargarDoc(state, p, id, btn, tipo="nativo", pdfListo=null){
   const e = entregable(id);
   const lbl = btn ? btn.innerHTML : ""; if(btn){ btn.disabled = true; btn.textContent = "Generando…"; }
   try{
     const di = docInfo(p, id), dd = p.documentos[id];
     const nombre = ext => X.nombreSeguro(`${p.nombre||"Proyecto"} - ${e.nombre} - Rev ${di.rev||"A"}`)+"."+ext;
+    // PDF ya preparado en la pestaña «Descarga»: se descarga el mismo que se ve
+    if(tipo==="pdf" && pdfListo){ X.descargar(pdfListo, nombre("pdf"), "application/pdf"); if(dd.estado==="Por elaborar"){ dd.estado = "En elaboración"; S.save(); } toast("Documento generado: "+e.nombre); return; }
     const a = await generarArchivo(state, p, id);
     if(!a){ toast("Este entorno no genera archivo: alimenta el listado de instrumentos."); return; }
     if(tipo==="pdf"){

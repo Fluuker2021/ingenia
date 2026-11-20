@@ -246,6 +246,14 @@ export function arregloTablero(p, t, calc){
     filasCtrl.push({ nombre:"Contactores", columnas:E.dol.map(d=>({ circ:d.circ, ancho:Math.max(d.gm.w, d.k.w)+6, comp:d.k })) });
   }
   for(const gc of E.ctrl) filasCtrl.push({ nombre:`Distribución de control ${gc.circ.tag}`, grupos: agruparCtrl(gc.partes) });
+  // relés diferenciales de las cargas con protección diferencial propia (riel DIN); su toroide va en el cable de salida
+  const conDif = calc.circuits.filter(c=>c.diferencial);
+  if(conDif.length){
+    filasCtrl.push({ nombre:"Relés diferenciales", grupos:[conDif.map((c, i)=>({ id:"rd"+(i+1), tag:c.diferencial.tag, tipo:"rele", desc:`Relé diferencial de ${(c.load && (c.load.tag || c.load.desc)) || "la carga "+c.tag} (${c.diferencial.sens}), con su toroide en la salida`,
+      modelo:"Relé diferencial electrónico regulable 0,03…3 A, riel DIN (ref. ABB RD3 / Schneider Vigirex)", val:c.diferencial.sens, w:36, h:90, d:70, z:ZPLACA, x:0, y:0, cant:1, montaje:"din", perdidas:2, fuente:"Relés diferenciales con toroide (referencial)" }))] });
+    for(const c of conDif){ const a = Math.round(c.installedCurrent || 10); E.extra.push({ tag:"T"+c.diferencial.tag, desc:`Toroide (transformador diferencial) del relé ${c.diferencial.tag}, en el cable de salida de ${(c.load && c.load.tag) || "la carga"}`, modelo:`Toroide cerrado Ø ${a > 120 ? 110 : a > 60 ? 70 : a > 25 ? 46 : 29} mm (ref. ABB TRM / Schneider IA/TA)`, cant:1, dim:"", montaje:"Cable de salida", fuente:"Relés diferenciales con toroide (referencial)" }); }
+    criterios.push(`Protección diferencial propia en ${conDif.map(c=>(c.load && c.load.tag) || c.tag).join(", ")}: relé diferencial en riel DIN y toroide en el cable de salida de cada carga.`);
+  }
   // tablero de fuerza y control: su etapa de control (fuente de 24 Vdc, distribución de 120 Vac, PLC, red y relés de
   // interfaz, con los TAG de su unifilar y su multifilar) va en una sección propia del mismo gabinete, con sus borneras
   const filasEtapa = [], bornesEtapa = [];

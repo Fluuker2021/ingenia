@@ -73,15 +73,15 @@ function columnas(calc, g){
     if(c.kind==="motor" && (l.starter==="vfd" || l.starter==="ss")){
       const q = item(c, /^ITM/), f = item(c, /^Portafusible/), rl = item(c, /^Filtro de l[ií]nea/), v = item(c, /^Variador|^Arrancador suave/);
       const vars = Object.assign(motor, { q:q.devtag, qv:amps(q.val), qm:sinMarca(q.model), f:f.devtag, fv:f.val, fm:sinMarca(f.model).replace(/\s*\+.*$/,""), rl:rl.devtag, rlm:sinMarca(rl.model), rlv:rl.val, vfd:v.devtag, vfdm:sinMarca(v.model), vfdv:v.val, vfdtxt:sinMarca(v.model) });
-      return { pieza:"b_vfd", ss: l.starter==="ss", omitir: l.starter==="ss" || !rl.devtag ? ["filtro"] : [], vars, awg, egc };
+      return { pieza:"b_vfd", dif: c.diferencial || null, ss: l.starter==="ss", omitir: l.starter==="ss" || !rl.devtag ? ["filtro"] : [], vars, awg, egc };
     }
     if(c.kind==="motor"){
       const q = item(c, /^Guardamotor|^ITM/), k = item(c, /^Contactor/);
       const bm = borneFuerza(parseFloat(String(q.val||"").replace(/[^\d.]/g,"")) || c.installedCurrent);
-      return { pieza:"b_mcp", vars: Object.assign(motor, { q:q.devtag, qv:q.val, qm:sinMarca(q.model), k:k.devtag, kv:k.val, km:sinMarca(k.model), aux: /^AF\d/.test(sinMarca(k.model)) ? "HKF1-11+HK1-11" : "AUX. 1NA+1NC", tb:tagBornera(c.tag), tbs:bm.replace(/^\D+/,"")+" mm2", tbm:bm, tbpe:bm+"-PE" }), awg, egc };
+      return { pieza:"b_mcp", dif: c.diferencial || null, vars: Object.assign(motor, { q:q.devtag, qv:q.val, qm:sinMarca(q.model), k:k.devtag, kv:k.val, km:sinMarca(k.model), aux: /^AF\d/.test(sinMarca(k.model)) ? "HKF1-11+HK1-11" : "AUX. 1NA+1NC", tb:tagBornera(c.tag), tbs:bm.replace(/^\D+/,"")+" mm2", tbm:bm, tbpe:bm+"-PE" }), awg, egc };
     }
     const q = item(c, /^ITM/), bf = borneFuerza(c.installedCurrent);
-    return { pieza:"b_mcp", omitir:["contactor","auxiliares","motor"], vars:{ q:q.devtag, qv:amps(q.val), qm:sinMarca(q.model), tb:tagBornera(c.tag), tbs:bf.replace(/^\D+/,"")+" mm2", tbm:bf, tbpe:bf+"-PE", tag:l.tag||"", desc1:d1, desc2:d2 }, awg, egc };
+    return { pieza:"b_mcp", dif: c.diferencial || null, omitir:["contactor","auxiliares","motor"], vars:{ q:q.devtag, qv:amps(q.val), qm:sinMarca(q.model), tb:tagBornera(c.tag), tbs:bf.replace(/^\D+/,"")+" mm2", tbm:bf, tbpe:bf+"-PE", tag:l.tag||"", desc1:d1, desc2:d2 }, awg, egc };
   });
 }
 
@@ -173,6 +173,15 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
           quitar: c.ss ? new RegExp(REF.source+"|"+SOLO_VFD.source) : REF,
           texto: (s, e)=>{ if(c.awg && /^\s*\d+(\/0)?\s*AWG\s*$/i.test(s)) return (e[4] >= pe-1 && e[4] <= pe+9) ? c.egc : c.awg; return barraTxt(s); } });
         for(const z of (c.omitir||[])){ const pz = PUENTE[z]; if(pz) for(const ex of EJES[c.pieza]) doc.line(ox+DX+x0+ex, pz[0]+DY, ox+DX+x0+ex, pz[1]+DY, "E-FZA-BT-PRI"); }
+        // protección diferencial propia de la carga: toroide que abraza las tres fases bajo el interruptor y su relé
+        if(c.dif){
+          const ej = EJES[c.pieza], yT = DY + (c.pieza==="b_vfd" ? 548 : 495), xa = ox+DX+x0+ej[0] - 6, xb = ox+DX+x0+ej[ej.length-1] + 6, cx = (xa + xb)/2, rx = (xb - xa)/2, ry = 3.2;
+          const pts = []; for(let k = 0; k <= 32; k++){ const a = k*Math.PI/16; pts.push([cx + rx*Math.cos(a), yT + ry*Math.sin(a)]); }
+          doc.polyline(pts, "E-SIM");
+          doc.text(xa - 2, yT + 2.6, 2.5, c.dif.tag, "G-TEX", { halign:2 });
+          doc.text(xa - 2, yT - 1.4, 2.2, `Idn ${c.dif.sens}`, "G-TEX", { halign:2 });
+          doc.text(xa - 2, yT - 5.0, 2.0, "RELÉ DIF. + TOROIDE", "G-TEX", { halign:2 });
+        }
         if(c.pieza==="b_trafo" && hojaSec.has(c)) doc.text(ox+DX+x0+69, 262+DY, 2.5, `A HOJA ${hojaSec.get(c)}`, "G-TEX", { halign:1 });
         if(c.externa){
           const xa = ox+DX+x0+69, ya = 462+DY;

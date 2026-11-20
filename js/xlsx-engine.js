@@ -357,6 +357,8 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
     const enc = estandar && t.man && t.man.encabezado ? encabezadoEstandar(H, t.man.encabezado) : null;
     const grupos = anclasDe(t.ws).sort((a,b)=>b.filas[0].rn - a.filas[0].rn);
     for(const g of grupos) rellenarTabla(H, g, t.tablas[g.nombre] || [], t.scal);
+    // sin notas del usuario el documento no lleva notas: tampoco el rótulo «Notas:» del formato
+    if(Array.isArray(t.tablas.notas) && !t.tablas.notas.length) t.ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:false }, cell=>{ if(/^notas\s*:?$/i.test(textoCelda(cell.value).trim())) cell.value = null; }));
     if(enc && t.man.encabezado.ajustarAltos) ajustarAltos(H, enc.fin+1);
     H.remerge();
     // cuadros cerrados: cada tabla (con su bloque de totales) queda encerrada en un marco continuo

@@ -13,7 +13,9 @@ const C = { grafito:"17191D", grafito800:"1F2228", amarillo:"F5C518", amarillo10
 /* grilla de la carátula = columnas del cuadro de revisiones y firmas (ancho en caracteres de Excel) */
 const COLS = [5, 10, 20, 9, 9, 9, 8, 8, 8, 8];
 const ENC = ["Rev.", "Fecha", "Emitido para", "Elaboró", "Revisó", "Aprobó", "Ing. Disc.", "Coord. Proy.", "Superint. Ing.", "Gerente Proy."];
-const pxCol = w => Math.trunc(w*7 + 5);                  // ancho de columna de Excel → píxeles
+// ancho de columna de Excel → píxeles (fórmula de la norma OOXML, fuente de 7 px por dígito): la misma que usan Excel y la
+// conversión a PDF; con «+5 px» por columna los logos del lado derecho quedaban corridos fuera del cuadro
+const pxCol = w => Math.trunc(((256*w + Math.trunc(128/7))/256)*7);
 const ANCHO_PX = COLS.reduce((a, w)=>a + pxCol(w), 0);    // ≈ 708 px ≈ 18,7 cm
 /* alturas (pt) de la carátula; el total respeta la proporción de la hoja A4 para que el cuadro quede al pie */
 const ALTO_TOTAL = 800, ALTO_LOGO = 100, FILA_REV = 18;
@@ -316,6 +318,7 @@ export function bloqueEncabezadoExcel(ws, r0, c1, c2, titulo, valores={}){
 /* logos del encabezado de los listados: el de la empresa a la izquierda y el del cliente a la derecha, con la MISMA altura
    (la mayor con la que ambos entran en su caja) y aire debajo para separarlos del primer cuadro.
    logos: { org:{ dataURL, aspect }, cliente:{…} }; cajas: { org:{ tl, br }, cliente:{ tl, br } } (celdas, base 0) */
+const MARGEN_LOGO = 12;   // px desde el borde del cuadro
 export function logosEncabezado(wb, ws, logos, cajas){
   if(!logos || !cajas) return;
   const medida = c => { const [c0, r0] = c.tl, [c1, r1] = c.br; let x0 = 0, y0 = 0, W = 0, H = 0;
@@ -327,7 +330,8 @@ export function logosEncabezado(wb, ws, logos, cajas){
   for(const x of items){
     try{
       const w = h*(x.l.aspect||3);
-      const izq = x.k==="org" ? x.m.x0 + x.m.W*0.03 : x.m.x0 + x.m.W*0.97 - w;
+      // mismo margen desde el borde del cuadro a los dos lados (simetría): empresa a la izquierda, cliente a la derecha
+      const izq = x.k==="org" ? x.m.x0 + MARGEN_LOGO : x.m.x0 + x.m.W - MARGEN_LOGO - w;
       imagenExcel(wb, ws, x.l.dataURL, izq, x.m.y0 + (x.m.H*0.8 - h)/2, w, h);
     }catch(e){ console.warn("logo", e); }
   }

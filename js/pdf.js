@@ -182,9 +182,13 @@ export async function pdfExcel(buffer){
       for(const { im, img } of imagenes){
         const tl = im.range.tl, br = im.range.br;
         const pos = (a, col)=>{ const i = Math.floor(col ? a.col : a.row), fr = (col ? a.col : a.row) - i; return col ? [i+1, fr] : [i+1, fr]; };
-        const [c0, fc0] = pos(tl, true), [r0, fr0] = pos(tl, false);
+        // ancla nativa (columna / fila + desplazamiento en EMU) si existe: la fracción que calcula ExcelJS (tl.col) es
+        // inexacta en columnas angostas y corría los logos
+        const nat = tl.nativeCol!=null && tl.nativeColOff!=null;
+        const [c0, fc0] = nat ? [tl.nativeCol + 1, 0] : pos(tl, true), [r0, fr0] = nat ? [tl.nativeRow + 1, 0] : pos(tl, false);
         if(!enPag.has(r0) || c0 < R.c1 || c0 > R.c2) continue;
-        const x0 = xCol[c0] + fc0*(cw[c0]||0), y0 = yFila[r0] + fr0*(rh[r0]||0);
+        const mmEMU = 25.4/914400;
+        const x0 = xCol[c0] + (nat ? Math.min(tl.nativeColOff*mmEMU, cw[c0]||0) : fc0*(cw[c0]||0)), y0 = yFila[r0] + (nat ? Math.min(tl.nativeRowOff*mmEMU, rh[r0]||0) : fr0*(rh[r0]||0));
         let w, hh;
         if(im.range.ext){ w = im.range.ext.width*25.4/96; hh = im.range.ext.height*25.4/96; }
         else if(br){ const [c1, fc1] = pos(br, true), [r1, fr1] = pos(br, false); w = (xCol[Math.min(c1, R.c2+1)] ?? xCol[R.c2+1]) + fc1*(cw[c1]||0) - x0; hh = (yFila[r1] ?? yFila[r0]) + fr1*(rh[r1]||0) - y0; }

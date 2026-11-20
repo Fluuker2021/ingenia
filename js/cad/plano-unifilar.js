@@ -525,7 +525,7 @@ const LEY_ORDEN = [
   ["gm", { pieza:"col_mcp", y:[-37.4, -21.1], capa:/^I-SIM$/, desc:"GUARDAMOTOR (INTERRUPTOR DE PROTECCIÓN DE MOTOR)" }],
   ["contactor", { pieza:"col_mcp", y:[-93.9, -81.7], capa:/^E-SIM$/, desc:"CONTACTOR TRIPOLAR" }],
   ["id", { fila:3 }], ["rd", { pieza:"rama_id", y:[-66.7, -37.0], capa:/^E-SIM$/, desc:"INTERRUPTOR / RELÉ DIFERENCIAL TRIFÁSICO 30 mA (CON TOROIDE)" }], ["fus1", { fila:4 }], ["fus3", { fila:5 }], ["luz", { fila:6 }], ["spd", { fila:7 }], ["rf", { fila:8 }],
-  ["vfd", { fila:9 }], ["as", { fila:9, desc:"ARRANCADOR SUAVE", sim:{ VFD:"SS" } }], ["tablero", { tablero:true, desc:"TABLERO (ALIMENTACIÓN A OTRO TABLERO)" }], ["filtro", { fila:11 }], ["motor", { fila:10 }],
+  ["vfd", { fila:9 }], ["as", { fila:9, desc:"ARRANCADOR SUAVE", sim:{ VFD:"SS" } }], ["tablero", { tablero:true, desc:"TABLERO ELÉCTRICO" }], ["filtro", { fila:11 }], ["motor", { fila:10 }],
   ["trafo", { fila:12 }], ["tierra", { fila:13 }],
 ];
 function cajaE(e){

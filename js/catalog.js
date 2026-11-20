@@ -161,7 +161,7 @@ export const ETAPAS_TRABAJO = [
 export const REQUIERE = {
   "ins-pid":[], "ele-cargas":[],
   "ins-instrumentos":["ins-pid"], "ele-md":["ele-cargas"], "ele-mc":["ele-cargas"], "ele-cables":["ele-mc"], "ins-io":["ins-instrumentos","ele-cargas"],
-  "ele-unifilar":["ele-cargas","ele-md"], "ins-unifilar-tc":["ins-io"], "ins-arquitectura":["ins-io"], "ins-lazo":["ins-io"],
+  "ele-unifilar":["ele-cargas"], "ins-unifilar-tc":["ins-io"], "ins-arquitectura":["ins-io"], "ins-lazo":["ins-io"],
   "ele-multifilar":["ele-unifilar"], "ins-multifilar-tc":["ins-unifilar-tc"], "ele-mecanico":["ele-multifilar"], "ins-mecanico-tc":["ins-multifilar-tc"],
   "ele-equipos":["ele-unifilar"], "ele-hd":["ele-mecanico"], "ins-hd":["ins-instrumentos"], "ins-filosofia":["ins-io","ins-pid"],
 };

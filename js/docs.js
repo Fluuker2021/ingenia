@@ -32,7 +32,7 @@ export function docInfo(p, id){
   if(!Array.isArray(d.referencias) && REL_PLANOS[id]) out.referencias = referenciasSugeridas(p, id);
   return out;
 }
-const REL_PLANOS = { "ele-multifilar":["ele-unifilar","ele-cargas"], "ele-mecanico":["ele-unifilar","ele-multifilar"], "ele-arreglo":["ele-equipos","ele-unifilar"], "ins-pid":["ins-instrumentos"], "ins-multifilar-tc":["ins-io","ins-unifilar-tc"], "ins-mecanico-tc":["ins-unifilar-tc","ins-multifilar-tc"], "ins-arreglo":["ins-instrumentos","ins-pid"], "ins-lazo":["ins-io","ins-instrumentos","ins-multifilar-tc"], "ins-arquitectura":["ins-io","ins-instrumentos"], "ins-unifilar-tc":["ins-multifilar-tc","ins-instrumentos"], "ele-unifilar":["ele-cargas","ele-mc"], "ins-bloques":["ele-unifilar","ins-unifilar-tc"] };
+const REL_PLANOS = { "ele-multifilar":["ele-unifilar","ele-cargas"], "ele-mecanico":["ele-unifilar","ele-multifilar"], "ele-arreglo":["ele-equipos","ele-unifilar"], "ins-pid":["ins-instrumentos"], "ins-multifilar-tc":["ins-io","ins-unifilar-tc"], "ins-mecanico-tc":["ins-unifilar-tc","ins-multifilar-tc"], "ins-arreglo":["ins-instrumentos","ins-pid"], "ins-lazo":["ins-io","ins-instrumentos","ins-multifilar-tc"], "ins-arquitectura":["ins-io","ins-instrumentos"], "ins-unifilar-tc":["ins-multifilar-tc","ins-instrumentos"], "ele-unifilar":["ele-cargas"], "ins-bloques":["ele-unifilar","ins-unifilar-tc"] };
 export function referenciasSugeridas(p, id){
   const refs = (REL_PLANOS[id]||[]).filter(r=>p.documentos[r]).slice(0,5).map(r=>({ codigo:"", titulo:(p.documentos[r].titulo||entregable(r).nombre).toUpperCase() }));
   if(p.pidRef && refs.length<5) refs.unshift({ codigo:p.pidRef, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN" });

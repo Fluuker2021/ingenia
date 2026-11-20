@@ -23,6 +23,7 @@
       <a href="#copito">Copito</a>
       <a href="#planes">Planes</a>
     </div>
+    <div class="ini-idioma" role="group" aria-label="Idioma / Language"><button type="button" data-idioma="es" aria-pressed="true" class="on">ES</button><button type="button" data-idioma="en" aria-pressed="false">EN</button></div>
     <a class="ini-btn ini-btn-amarillo ini-btn-sm" href="app.html"><span>Entrar<span class="ini-ocultar-sm"> a la plataforma</span></span></a>
   </nav>
 </header>
@@ -405,6 +406,15 @@ const datos = Promise.all([import("./js/catalog.js"), import("./js/control/plc-m
 }).catch(()=>{ /* sin los módulos quedan las cifras escritas en la página */ });
 const franja = document.querySelector(".ini-sec-cifras .ini-cifras");
 new IntersectionObserver((es, o)=>{ if(es[0].isIntersecting){ o.disconnect(); datos.finally(()=>franja.querySelectorAll("[data-cifra]").forEach(contar)); } }, { threshold:.4 }).observe(franja);
+
+/* idioma de la página: español o inglés (botones ES / EN de la cabecera, se recuerda en el navegador) */
+import("./js/inicio-i18n.js").then(({ aplicarIdioma, idiomaGuardado })=>{
+  const poner = lang=>{ aplicarIdioma(lang); previo = -1; marcar(); };
+  document.querySelectorAll("[data-idioma]").forEach(b=>b.addEventListener("click", ()=>poner(b.dataset.idioma)));
+  if(idiomaGuardado()==="en") poner("en");
+  // las listas de entregables se arman desde el catálogo (en español): se traducen al terminar
+  datos.finally(()=>{ if(idiomaGuardado()==="en") aplicarIdioma("en"); });
+}).catch(()=>{});
 </script>
 </body>
 </html>

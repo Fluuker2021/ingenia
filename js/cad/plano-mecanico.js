@@ -379,6 +379,60 @@ function dibujarInterior(v, m){
 /* =============================== lámina 1: vistas exteriores =============================== */
 const PUERTA_GAP = 3;
 const hojasPuerta = m => C.hojasPuerta(m, PUERTA_GAP);
+
+/* ---------- accesorios de puerta con la forma de los modelos de referencia ---------- */
+// rectángulo de esquinas redondeadas (coordenadas reales de la vista)
+function rrect(v, xa, ya, xb, yb, r, ly){
+  const x0 = Math.min(xa, xb), x1 = Math.max(xa, xb), y0 = Math.min(ya, yb), y1 = Math.max(ya, yb);
+  r = Math.max(0, Math.min(r, (x1 - x0)/2, (y1 - y0)/2));
+  if(r < 0.01){ v.R(x0, y0, x1 - x0, y1 - y0, ly); return; }
+  v.L(x0 + r, y0, x1 - r, y0, ly); v.L(x1, y0 + r, x1, y1 - r, ly); v.L(x1 - r, y1, x0 + r, y1, ly); v.L(x0, y1 - r, x0, y0 + r, ly);
+  v.A(x0 + r, y0 + r, r, 180, 270, ly); v.A(x1 - r, y0 + r, r, 270, 360, ly); v.A(x1 - r, y1 - r, r, 0, 90, ly); v.A(x0 + r, y1 - r, r, 90, 180, ly);
+}
+// rayado a 45° dentro de un polígono convexo (corte / cubierta)
+function rayado(v, pts, paso, ly){
+  const cs = pts.map(([x, y])=>x - y), c0 = Math.min(...cs), c1 = Math.max(...cs);
+  for(let c = c0 + paso/2; c < c1; c += paso){
+    const ts = [];
+    pts.forEach(([xa, ya], i)=>{ const [xb, yb] = pts[(i+1)%pts.length], fa = xa - ya - c, fb = xb - yb - c;
+      if((fa <= 0 && fb > 0) || (fa > 0 && fb <= 0)){ const t = fa/(fa - fb); ts.push([xa + (xb - xa)*t, ya + (yb - ya)*t]); } });
+    if(ts.length >= 2){ ts.sort((a, b)=>a[0] - b[0]); v.L(ts[0][0], ts[0][1], ts[ts.length-1][0], ts[ts.length-1][1], ly); }
+  }
+}
+/* manija con bloqueo por candado (lock out): escudo con la palanca, su placa con dos tornillos y el bloque inferior con el
+   cilindro de la cerradura (proporciones del modelo de referencia, 40 × 200 mm). x: centro, y0: borde inferior */
+function lockoutFrente(v, x, y0, w = C.LOCKOUT.w, h = C.LOCKOUT.h){
+  const E = "M-EQUIPO", D = "M-DETALLE", X = px => x + (px - 102.5)*w/155, Y = py => y0 + h - py*h/670;
+  rrect(v, X(30), Y(560), X(175), Y(0), w*0.15, E); rrect(v, X(40), Y(550), X(165), Y(10), w*0.1, D);
+  v.P([[62,38],[143,38],[153,52],[153,160],[138,205],[138,335],[119,360],[119,498],[128,524],[119,548],[86,548],[77,524],[86,498],[86,360],[67,335],[67,205],[52,160],[52,52]].map(([a, b])=>[X(a), Y(b)]), E, null, true);
+  v.R(X(74), Y(326), X(131) - X(74), Y(218) - Y(326), D);
+  for(const py of [236, 308]) v.C(X(102.5), Y(py), w*0.04, D);
+  rrect(v, X(25), Y(670), X(180), Y(560), w*0.1, E);
+  v.C(X(102.5), Y(615), w*0.16, D); v.C(X(102.5), Y(615), w*0.1, D); v.R(X(102.5) - w*0.025, Y(615) - w*0.06, w*0.05, w*0.12, D);
+}
+/* visor (ventana de inspección con tapa abatible): marco doble, ventana de esquinas redondeadas, dos cierres a la izquierda
+   y dos bisagras a la derecha */
+function visorFrente(v, z){
+  const E = "M-EQUIPO", D = "M-DETALLE", w = z.x1 - z.x0, h = z.y1 - z.y0, V = C.VISOR, wv = C.ventanaVisor(z);
+  v.R(z.x0, z.y0, w, h, E); v.R(z.x0 + V.marco, z.y0 + V.marco, w - 2*V.marco, h - 2*V.marco, D);
+  rrect(v, wv.x0, wv.y0, wv.x1, wv.y1, wv.r, E); rrect(v, wv.x0 + 4, wv.y0 + 4, wv.x1 - 4, wv.y1 - 4, wv.r - 4, D);
+  for(const yc of [z.y0 + V.cierre.y, z.y1 - V.cierre.y]){ const xc = z.x0 + V.cierre.x; v.C(xc, yc, V.cierre.r, E); v.C(xc, yc, V.cierre.r*0.66, D); v.C(xc, yc, V.cierre.r*0.25, D); }
+  for(const b of C.bisagrasVisor(z)){ const bw = V.bisagra.w; v.R(z.x1 - bw/2, b.y - b.h/2, bw, b.h, E); v.L(z.x1 + bw/2 - 4, b.y - b.h/2, z.x1 + bw/2 - 4, b.y + b.h/2, D);
+    for(const s of [-1, 1]) v.R(z.x1 + bw/2 - 6, b.y + s*b.h/2 - (s < 0 ? 4 : 0), 3, 4, D); }
+}
+/* caperuza vista de frente: contorno de trazos y rayado de la cubierta sobre el ventilador / filtro (con su TAG) */
+function caperuzaFrente(v, c, conTag){
+  const x0 = c.x - c.w/2, x1 = c.x + c.w/2, y0 = c.y - c.h/2, y1 = c.y + c.h/2;
+  v.R(x0, y0, c.w, c.h, "M-OCULTO");
+  rayado(v, [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], Math.max(18, c.w/9), "M-DETALLE");
+  if(conTag && c.tag) v.T(x1 - 8, y1 - 8, Math.min(2.2, 0.06*c.w/v.s + 1), c.tag, "M-ETIQUETA", { halign:2, valign:3 });
+}
+/* caperuza vista de costado: perfil con su rayado, desde la cara de la puerta (u0) hacia afuera */
+function caperuzaPerfil(v, u0, c, rayar){
+  const pts = C.perfilCaperuza(c).map(([u, y])=>[u0 + u, c.y - c.h/2 + y]);
+  v.P(pts, "M-EQUIPO", null, false); v.L(pts[pts.length-1][0], pts[pts.length-1][1], pts[0][0], pts[0][1], "M-DETALLE");
+  if(rayar) rayado(v, pts, Math.max(18, c.h/14), "M-DETALLE");
+}
 function colorTxt(c){ return ({ verde:"V", rojo:"R", ambar:"A", azul:"AZ", negro:"", amarillo:"AM" })[c] || ""; }
 function dibujarDispositivo(v, d, conLeyenda){
   const E = "M-EQUIPO", D = "M-DETALLE";
@@ -418,17 +472,16 @@ function dibujarFrente(v, m, llam){
     v.R(p.x0, PUERTA_GAP, p.x1 - p.x0, H - 2*PUERTA_GAP, "M-PUERTA");
     const xb = p.bisagra==="izq" ? p.x0 : p.x1;
     for(const yb of [200, H/2, H - 200]) v.R(xb - 6, yb - 40, 12, 80, "M-DETALLE");
-    const xm = p.bisagra==="izq" ? p.x1 - 45 : p.x0 + 25;
-    const yM = m.manijaY ?? 900; v.R(xm, yM, 20, 160, "M-EQUIPO"); v.C(xm + 10, yM + 140, 6, "M-DETALLE");
   }
-  llam.push({ x:hojasPuerta(m)[0].x1 - 35, y:(m.manijaY ?? 900) + 80, texto:"MANIJA CON CERRADURA Y LLAVE" });
+  // manijas en el borde de cierre de cada hoja (entre las puertas); con lock out, la manija con bloqueo por candado
+  const mjs = C.manijasPuerta(m, PUERTA_GAP);
+  for(const mj of mjs){ if(mj.lockout) lockoutFrente(v, mj.x, mj.y0); else { v.R(mj.x - 10, mj.y0, 20, 160, "M-EQUIPO"); v.C(mj.x, mj.y0 + 140, 6, "M-DETALLE"); } }
+  llam.push({ x:mjs[0].x + mjs[0].w/2, y:mjs[0].y0 + mjs[0].h/2, texto: m.lockout ? "MANIJA CON BLOQUEO POR CANDADO (LOCK OUT), ENTRE LAS PUERTAS" : "MANIJA CON CERRADURA Y LLAVE" });
   // dispositivos de puerta
   for(const d of m.puerta) dibujarDispositivo(v, d);
   // visores (ventana de inspección IP66) sobre los dispositivos elegidos y caperuzas antilluvia de los ventiladores
-  for(const z of m.visores||[]){ v.R(z.x0, z.y0, z.x1 - z.x0, z.y1 - z.y0, "M-EQUIPO"); v.R(z.x0 + 10, z.y0 + 10, z.x1 - z.x0 - 20, z.y1 - z.y0 - 20, "M-DETALLE");
-    for(const yb of [z.y0 + 25, z.y1 - 25]) v.R(z.x0 - 8, yb - 12, 8, 24, "M-DETALLE");
-    llam.push({ x:z.x1, y:z.y1 - 15, texto:"VISOR IP66 (VENTANA DE INSPECCIÓN CON TAPA ABATIBLE)" }); }
-  for(const c of m.caperuzas||[]){ v.R(c.x - c.w/2, c.y - c.h/2, c.w, c.h, "M-EQUIPO"); for(let yy = c.y - c.h/2 + 12; yy < c.y + c.h/2 - 6; yy += 14) v.L(c.x - c.w/2 + 6, yy, c.x + c.w/2 - 6, yy, "M-DETALLE"); }
+  for(const z of m.visores||[]){ visorFrente(v, z); llam.push({ x:z.x1, y:z.y1 - 15, texto:"VISOR IP66 (VENTANA DE INSPECCIÓN CON TAPA ABATIBLE)" }); }
+  for(const c of m.caperuzas||[]) caperuzaFrente(v, c, false);
   if((m.caperuzas||[]).length){ const c = m.caperuzas[0]; llam.push({ x:c.x + c.w/2, y:c.y + c.h/2 - 10, texto:"CAPERUZA ANTILLUVIA (VENTILADOR / FILTRO)" }); }
   const q = m.puerta.find(d=>d.tipo==="manija"); if(q) llam.push({ x:q.x, y:q.y + 45, texto:"MANIJA DEL INTERRUPTOR PRINCIPAL Q1 (NOTA 4)" });
   if(m.panel){ const p = m.panel; v.R(p.x, p.y, p.w, p.h, "M-OCULTO"); llam.push({ x:p.x, y:p.y + p.h - 20, texto:"PANEL DE OPERACIÓN (VER LÁMINA 3)" }); }
@@ -466,7 +519,8 @@ function dibujarLateral(v, m){
   if(zocalo) v.R(0, -zocalo, D, zocalo, "M-GABINETE");
   // puerta, bisagras y manijas
   v.R(D, PUERTA_GAP, 22, H - 2*PUERTA_GAP, "M-PUERTA");
-  v.R(D + 22, m.manijaY ?? 900, 30, 160, "M-EQUIPO");
+  { const mj = C.manijasPuerta(m, PUERTA_GAP)[0]; if(mj.lockout){ v.R(D + 22, mj.y0 + mj.h*0.16, 10, mj.h*0.84, "M-EQUIPO"); v.R(D + 32, mj.y0 + mj.h*0.22, mj.prof - 10, mj.h*0.72, "M-EQUIPO"); v.R(D + 22, mj.y0, mj.prof*0.6, mj.h*0.16, "M-EQUIPO"); }
+    else v.R(D + 22, mj.y0, mj.prof, mj.h, "M-EQUIPO"); }
   const q = m.puerta.find(d=>d.tipo==="manija"); if(q){ v.R(D + 22, q.y - 40, 55, 80, "M-EQUIPO"); }
   const pv = m.puerta.filter(d=>d.tipo==="panelvfd"); for(const d of pv) v.R(D + 22, d.y - d.h/2, 18, d.h, "M-DETALLE");
   // placa de montaje y envolvente de los equipos (ocultos)
@@ -478,8 +532,8 @@ function dibujarLateral(v, m){
   else v.R(25, 75, dmax - 25, H - 155, "M-OCULTO");
   if(m.techo){ v.P([[-40, H], [D + 60, H], [D + 60, H + 30], [-40, H + (m.techoAlto || 55)]], "M-GABINETE", null, true); }
   // visores y caperuzas vistos de costado: sobresalen de la puerta (la caperuza con su abertura hacia abajo)
-  for(const z of m.visores||[]) v.R(D + 22, z.y0, z.prof, z.y1 - z.y0, "M-DETALLE");
-  for(const c of m.caperuzas||[]) v.P([[D + 22, c.y + c.h/2], [D + 22 + c.prof, c.y + c.h/2 - 20], [D + 22 + c.prof, c.y - c.h/2], [D + 22, c.y - c.h/2]], "M-DETALLE", null, true);
+  for(const z of m.visores||[]){ v.R(D + 22, z.y0, z.prof, z.y1 - z.y0, "M-DETALLE"); v.L(D + 22 + z.prof - 6, z.y0 + 4, D + 22 + z.prof - 6, z.y1 - 4, "M-DETALLE"); }
+  for(const c of m.caperuzas||[]) caperuzaPerfil(v, D + 22, c, false);
   const yE = H + (m.techoAlto || 0);
   for(const xe of [80, D - 80]){ v.R(xe - 6, yE, 12, 45, "M-GABINETE"); v.C(xe, yE + 55, 14, "M-GABINETE"); }
 }
@@ -497,8 +551,16 @@ function isometrica(doc, ox, oy, s, m){
   if(zocalo){ L(P(0, 0, 0), P(W, 0, 0)); L(P(W, 0, 0), P(W, 0, D)); }
   for(const s of m.secciones.slice(1)){ L(P(s.x0, H, 0), P(s.x0, H, D), "M-DETALLE"); }
   // puertas, manijas y dispositivos
-  for(const p of hojasPuerta(m)){ poly([P(p.x0, PUERTA_GAP, 0), P(p.x1, PUERTA_GAP, 0), P(p.x1, H - PUERTA_GAP, 0), P(p.x0, H - PUERTA_GAP, 0)], "M-PUERTA");
-    const xm = p.bisagra==="izq" ? p.x1 - 45 : p.x0 + 25, yM = m.manijaY ?? 900; poly([P(xm, yM, 0), P(xm + 20, yM, 0), P(xm + 20, yM + 160, 0), P(xm, yM + 160, 0)], "M-EQUIPO"); }
+  for(const p of hojasPuerta(m)) poly([P(p.x0, PUERTA_GAP, 0), P(p.x1, PUERTA_GAP, 0), P(p.x1, H - PUERTA_GAP, 0), P(p.x0, H - PUERTA_GAP, 0)], "M-PUERTA");
+  // manijas en el borde de cierre de cada hoja (con lock out: escudo con palanca y bloque de la cerradura)
+  for(const mj of C.manijasPuerta(m, PUERTA_GAP)){
+    if(mj.lockout){ const xa = mj.x - mj.w/2, xb = mj.x + mj.w/2, yb = mj.y0 + mj.h*0.164, e = -mj.prof;
+      poly([P(xa, yb, 0), P(xb, yb, 0), P(xb, mj.y0 + mj.h, 0), P(xa, mj.y0 + mj.h, 0)], "M-EQUIPO");
+      poly([P(xa + 6, yb + 30, e), P(xb - 6, yb + 30, e), P(xb - 6, mj.y0 + mj.h - 8, e), P(xa + 6, mj.y0 + mj.h - 8, e)], "M-DETALLE");
+      L(P(xb - 6, yb + 30, e), P(xb - 6, yb + 30, 0), "M-DETALLE"); L(P(xb - 6, mj.y0 + mj.h - 8, e), P(xb - 6, mj.y0 + mj.h - 8, 0), "M-DETALLE");
+      poly([P(xa - 1, mj.y0, 0), P(xb + 1, mj.y0, 0), P(xb + 1, yb, 0), P(xa - 1, yb, 0)], "M-EQUIPO"); }
+    else poly([P(mj.x - 10, mj.y0, 0), P(mj.x + 10, mj.y0, 0), P(mj.x + 10, mj.y0 + 160, 0), P(mj.x - 10, mj.y0 + 160, 0)], "M-EQUIPO");
+  }
   const elipse = (cx, cy, r, ly) => { const pts = []; for(let k=0;k<20;k++){ const a = k*Math.PI/10; pts.push(P(cx + r*Math.cos(a), cy + r*Math.sin(a), 0)); } poly(pts, ly); };
   for(const d of m.puerta){
     if(d.w){ poly([P(d.x - d.w/2, d.y - d.h/2, 0), P(d.x + d.w/2, d.y - d.h/2, 0), P(d.x + d.w/2, d.y + d.h/2, 0), P(d.x - d.w/2, d.y + d.h/2, 0)], "M-EQUIPO"); if(d.tipo==="manija") elipse(d.x, d.y, 30, "M-DETALLE"); }
@@ -511,10 +573,96 @@ function isometrica(doc, ox, oy, s, m){
   // techo y cáncamos
   if(m.techo){ const hf = m.techoTipo==="inclinado" ? 90 : 30;   // alto del techo en el frente (inclinado: cae hacia atrás)
     poly([P(-40, H + hf, -40), P(W + 40, H + hf, -40), P(W + 40, H + 30, D + 40), P(-40, H + 30, D + 40)]); L(P(-40, H, -40), P(-40, H + hf, -40)); L(P(W + 40, H, -40), P(W + 40, H + hf, -40)); L(P(W + 40, H, D + 40), P(W + 40, H + 30, D + 40)); L(P(-40, H, -40), P(W + 40, H, -40)); L(P(W + 40, H, -40), P(W + 40, H, D + 40)); }
-  for(const z of m.visores||[]) poly([P(z.x0, z.y0, 0), P(z.x1, z.y0, 0), P(z.x1, z.y1, 0), P(z.x0, z.y1, 0)], "M-EQUIPO");
-  for(const c of m.caperuzas||[]) poly([P(c.x - c.w/2, c.y - c.h/2, 0), P(c.x + c.w/2, c.y - c.h/2, 0), P(c.x + c.w/2, c.y + c.h/2, 0), P(c.x - c.w/2, c.y + c.h/2, 0)], "M-EQUIPO");
+  // visores: caja que sobresale de la puerta con su ventana de esquinas redondeadas
+  for(const z of m.visores||[]){ const e = -z.prof, wv = C.ventanaVisor(z);
+    poly([P(z.x0, z.y0, e), P(z.x1, z.y0, e), P(z.x1, z.y1, e), P(z.x0, z.y1, e)], "M-EQUIPO");
+    poly([P(z.x1, z.y0, 0), P(z.x1, z.y0, e), P(z.x1, z.y1, e), P(z.x1, z.y1, 0)], "M-EQUIPO"); L(P(z.x0, z.y1, 0), P(z.x0, z.y1, e), "M-EQUIPO"); L(P(z.x0, z.y1, 0), P(z.x1, z.y1, 0), "M-EQUIPO");
+    poly([P(wv.x0, wv.y0, e), P(wv.x1, wv.y0, e), P(wv.x1, wv.y1, e), P(wv.x0, wv.y1, e)], "M-DETALLE"); }
+  // caperuzas: frente vertical, cara inclinada y tapa superior (perfil de la referencia), abiertas hacia abajo
+  for(const c of m.caperuzas||[]){
+    const x0 = c.x - c.w/2, x1 = c.x + c.w/2, y0 = c.y - c.h/2, pf = C.perfilCaperuza(c).map(([u, y])=>[-u, y0 + y]);   // e = -salida
+    const [, pTop, pIncl, pFr, pBase] = pf;
+    for(const [a, b] of [[pTop, pIncl], [pIncl, pFr], [pFr, pBase]]) poly([P(x0, a[1], a[0]), P(x1, a[1], a[0]), P(x1, b[1], b[0]), P(x0, b[1], b[0])], "M-EQUIPO");
+    poly(pf.map(([e, y])=>P(x1, y, e)), "M-EQUIPO");
+  }
   const yE = H + (m.techoTipo==="inclinado" ? 90 : m.techo ? 30 : 0);
   for(const [xe, ee] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ L(P(xe, yE, ee), P(xe, yE + 45, ee)); const pts = []; for(let k=0;k<16;k++){ const a = k*Math.PI/8; pts.push(P(xe + 14*Math.cos(a), yE + 59 + 14*Math.sin(a), ee)); } poly(pts); }
+}
+
+/* ---------- lámina 3: detalles de los accesorios de puerta ----------
+   Ventilador y filtro de salida (con su caperuza si la lleva): corte lateral (cuerpo dentro del tablero, puerta, rejilla y
+   perfil de la caperuza rayado) y frente (rejilla, contorno de trazos y rayado de la caperuza, con su TAG), como el modelo
+   de referencia; visor (frente) y manija con lock out (frente y costado). Una sola escala, en la caja libre (mm de lámina). */
+function detallesAccesorios(doc, caja, m){
+  const items = [];
+  for(const d of [m.puerta.find(x=>x.tipo==="ventilador"), m.puerta.find(x=>x.tipo==="rejilla")].filter(Boolean)){
+    const cap = (m.caperuzas||[]).find(c=>c.tag===d.tag) || null, fd = d.tipo==="ventilador" ? Math.round(d.w*0.42) : Math.round(d.w*0.12);
+    const hh = cap ? cap.h : d.h + 40, sal = cap ? cap.prof : 14;
+    items.push({ tipo:"vent", d, cap, fd, vistas:[fd + 22 + sal + 20, (cap ? cap.w : d.w + 40)], h:hh,
+      titulo:`${d.tipo==="ventilador" ? "VENTILADOR" : "FILTRO DE SALIDA"} ${d.tag}${cap ? " CON CAPERUZA" : ""}` });
+  }
+  if((m.visores||[]).length){ const z = m.visores[0]; items.push({ tipo:"visor", z, vistas:[z.x1 - z.x0 + 12, z.prof + 10], h:z.y1 - z.y0, titulo:"VISOR IP66 CON TAPA ABATIBLE" }); }
+  if(m.lockout) items.push({ tipo:"lockout", vistas:[C.LOCKOUT.w + 6, C.LOCKOUT.prof + 6], h:C.LOCKOUT.h, titulo:"MANIJA CON LOCK OUT" });
+  if(!items.length) return;
+  const W = caja.x1 - caja.x0, H = caja.y1 - caja.y0, GAP = 14, GV = 16;
+  // ancho de cada detalle en la lámina: sus vistas o su título (lo que sea mayor)
+  const vistasW = (it, s) => it.vistas.reduce((b, w)=>b + w/s, 0) + GV*(it.vistas.length - 1);
+  const itemW = (it, s) => Math.max(vistasW(it, s), ("%%U" + it.titulo).length*3.5*0.8 - 8);
+  const ancho = s => items.reduce((a, it)=>a + itemW(it, s), 0) + GAP*(items.length - 1);
+  const s = ESCALAS.find(e=>ancho(e) <= W - 4 && Math.max(...items.map(it=>it.h))/e + 46 + 20/e <= H);
+  if(!s) return;
+  doc.text(caja.x0, caja.y1, 2.8, "%%UDETALLES DE ACCESORIOS DE PUERTA", "M-TEXTO");
+  // títulos debajo de los textos de las vistas («INTERIOR», «ABERTURA HACIA ABAJO»), todos a la misma altura
+  const dT = Math.max(16, 20/s + 9), yBase = caja.y0 + 8 + dT + Math.max(0, (H - 46 - 20/s - Math.max(...items.map(it=>it.h))/s)/2);
+  let x = caja.x0 + Math.max(0, (W - ancho(s))/2);
+  for(const it of items){
+    const x0 = x, xFin = x0 + itemW(it, s);
+    x += (itemW(it, s) - vistasW(it, s))/2;
+    if(it.tipo==="vent"){
+      const { d, cap, fd } = it, u0 = fd + 6;                     // u: salida desde la cara interior de la puerta
+      const yc = it.h/2, dd = Object.assign({}, d, { x:0, y:yc }), cc = cap && Object.assign({}, cap, { x:0, y:yc });
+      // corte lateral: cuerpo del ventilador dentro del tablero, puerta, rejilla exterior y perfil de la caperuza
+      const v1 = vista(doc, x - 0, yBase, s), U = u => u;
+      // puerta (con el recorte por donde pasa el ventilador)
+      const rc = (d.recorte || d.h*0.9)/2;
+      for(const uu of [u0, u0 + 22]){ v1.L(U(uu), -20, U(uu), yc - rc, "M-PUERTA"); v1.L(U(uu), yc + rc, U(uu), it.h + 20, "M-PUERTA"); }
+      for(const yy of [-20, it.h + 20, yc - rc, yc + rc]) v1.L(U(u0), yy, U(u0 + 22), yy, "M-PUERTA");
+      v1.R(U(u0 - fd), yc - d.h*0.45, fd, d.h*0.9, "M-EQUIPO");
+      if(d.tipo==="ventilador"){ v1.R(U(u0 - fd*0.92), yc - d.h*0.2, fd*0.55, d.h*0.4, "M-DETALLE"); for(const f of [-0.3, 0, 0.3]) v1.L(U(u0 - fd*0.35), yc + f*d.h, U(u0), yc + f*d.h, "M-DETALLE"); }
+      v1.R(U(u0 + 22), yc - d.h/2, 10, d.h, "M-EQUIPO");
+      for(let yy = yc - d.h/2 + 8; yy < yc + d.h/2 - 4; yy += 12) v1.L(U(u0 + 22), yy, U(u0 + 32), yy + 6, "M-DETALLE");
+      if(cc){ caperuzaPerfil(v1, u0 + 22, cc, true);
+        cotaV(doc, v1.Y(0), v1.Y(it.h), v1.X(u0 + 22 + cap.prof) + 6, v1.X(u0 + 22 + cap.prof), String(cap.h));
+        cotaH(doc, v1.X(u0 + 22), v1.X(u0 + 22 + cap.prof), v1.Y(it.h) + 6, v1.Y(it.h), String(cap.prof));
+        doc.text(v1.X(u0 + 22 + cap.prof/2), v1.Y(-20) - 2.5, 1.6, "ABERTURA HACIA ABAJO", "M-TEXTO", { halign:1, valign:3 }); }
+      doc.text(v1.X(u0 - fd/2), v1.Y(-20) - 2.5, 1.6, "INTERIOR", "M-TEXTO", { halign:1, valign:3 });
+      x += it.vistas[0]/s + GV;
+      // frente: rejilla del ventilador y, encima, la caperuza (contorno de trazos y rayado) con su TAG
+      const wF = it.vistas[1], v2 = vista(doc, x + wF/(2*s), yBase, s);
+      dibujarDispositivo(v2, dd, false);
+      if(cc){ caperuzaFrente(v2, cc, true); cotaH(doc, v2.X(-cap.w/2), v2.X(cap.w/2), v2.Y(it.h) + 6, v2.Y(it.h), String(cap.w)); }
+      else { v2.T(d.w/2 - 8, yc + d.h/2 - 8, 1.6, d.tag, "M-ETIQUETA", { halign:2, valign:3 }); cotaH(doc, v2.X(-d.w/2), v2.X(d.w/2), v2.Y(yc + d.h/2) + 6, v2.Y(yc + d.h/2), String(d.w)); }
+      x += wF/s;
+    } else if(it.tipo==="visor"){
+      const z = it.z, w = z.x1 - z.x0, v1 = vista(doc, x - z.x0/s, yBase - z.y0/s, s);
+      visorFrente(v1, z);
+      cotaH(doc, v1.X(z.x0), v1.X(z.x1), v1.Y(z.y1) + 6, v1.Y(z.y1), String(Math.round(w)));
+      cotaV(doc, v1.Y(z.y0), v1.Y(z.y1), v1.X(z.x0) - 5, v1.X(z.x0), String(Math.round(z.y1 - z.y0)));
+      x += it.vistas[0]/s + GV;
+      const v2 = vista(doc, x, yBase, s); v2.R(0, 0, 6, it.h, "M-PUERTA"); v2.R(6, 0, z.prof - 8, it.h, "M-EQUIPO"); v2.R(z.prof - 2, it.h*0.04, 4, it.h*0.92, "M-DETALLE");
+      x += it.vistas[1]/s;
+    } else {
+      const L = C.LOCKOUT, v1 = vista(doc, x + L.w/(2*s), yBase, s);
+      lockoutFrente(v1, 0, 0);
+      cotaV(doc, v1.Y(0), v1.Y(L.h), v1.X(-L.w/2) - 5, v1.X(-L.w/2), String(L.h));
+      cotaH(doc, v1.X(-L.w/2), v1.X(L.w/2), v1.Y(L.h) + 6, v1.Y(L.h), String(L.w));
+      x += it.vistas[0]/s + GV;
+      const v2 = vista(doc, x, yBase, s); v2.R(0, L.h*0.16, 10, L.h*0.84, "M-EQUIPO"); v2.R(10, L.h*0.22, L.prof - 10, L.h*0.72, "M-EQUIPO"); v2.R(0, 0, L.prof*0.6, L.h*0.16, "M-EQUIPO");
+      x += it.vistas[1]/s;
+    }
+    tituloVista(doc, (x0 + xFin)/2, yBase - dT, it.titulo, escTxt(s));
+    x = xFin + GAP;
+  }
 }
 
 /* =============================== generador =============================== */
@@ -562,7 +710,7 @@ export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
     const xIso0 = vL.X(m.D + 80) + 18, xIso1 = ox + AR.x1 - 8;
     const notas = (m.notas || notasPlano(m)).concat(id ? datos(p).notas[id] || [] : []);   // + notas del usuario
     const xNot1 = ox + RES.x0 - 6;                               // las notas no invaden el bloque del cajetín
-    const anchoNot = Math.max(120, xNot1 - xIso0);
+    const anchoNot = Math.max(80, xNot1 - xIso0);
     const altoNotas = notas.reduce((a, n)=>a + envolver(n, Math.floor(anchoNot/(1.9*0.78)) - 4).length*2.76 + 0.8, 0) + 10;
     const yIsoTop = AR.y1 - 10, yIsoBot = AR.y0 + altoNotas + 12;
     const sIso = Math.max((isoW)/Math.max(40, xIso1 - xIso0 - 10), (isoH)/Math.max(40, yIsoTop - yIsoBot - 14));
@@ -672,7 +820,9 @@ export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
     // si la tabla llega al bloque del cajetín, se limita su largo
     const yMinG = (xR0 + wG > ox + RES.x0) ? RES.y1 + 4 : AR.y0 + 4;
     const nG = Math.max(2, Math.floor((yG - yMinG - 6)/3.8));
-    tabla(doc, xR0, yG, colsG, filasG.slice(0, nG), { h:3.8, fs:1.55 });
+    const hG = tabla(doc, xR0, yG, colsG, filasG.slice(0, nG), { h:3.8, fs:1.55 });
+    // detalles de los accesorios de puerta (ventilador / filtro con caperuza, visor y lock out) en el espacio libre de abajo
+    detallesAccesorios(doc, { x0:xR0, x1:ox + AR.x1 - 8, y0:ox ? RES.y1 + 8 : RES.y1 + 8, y1:yG - hG - 12 }, m);
     k++;
 
     // ---------- lámina 4: lista de materiales, criterios y balance térmico ----------

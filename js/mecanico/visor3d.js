@@ -259,16 +259,7 @@ export async function visor3D(cont, modelo, opciones){
     caja(-40, H, -40, W + 80, 30, 8, mat(RAL7035), capas.envolvente); caja(-40, H, D + 32, W + 80, 30, 8, mat(RAL7035), capas.envolvente);
   } else if(m.techo) caja(-40, H, -40, W + 80, 30, D + 80, mat(RAL7035), capas.envolvente);
   for(const [xe, ze] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ const t = new THREE.Mesh(new THREE.TorusGeometry(16*k, 4*k, 8, 20), metal(0x8a8f96)); t.position.set(xe*k, (H + (m.techoTipo==="inclinado" ? 90 : m.techo ? 30 : 0) + 30)*k, ze*k); capas.envolvente.add(t); }
-  // visores (ventana de inspección: marco y policarbonato) y caperuzas antilluvia sobre la puerta
-  for(const z of m.visores||[]){ const w = z.x1 - z.x0, h = z.y1 - z.y0;
-    caja(z.x0, z.y0, D + 2, w, 10, z.prof, mat(0x3b3f46), capas.puerta); caja(z.x0, z.y1 - 10, D + 2, w, 10, z.prof, mat(0x3b3f46), capas.puerta);
-    caja(z.x0, z.y0, D + 2, 10, h, z.prof, mat(0x3b3f46), capas.puerta); caja(z.x1 - 10, z.y0, D + 2, 10, h, z.prof, mat(0x3b3f46), capas.puerta);
-    const vid = caja(z.x0 + 10, z.y0 + 10, D + 2 + z.prof - 4, w - 20, h - 20, 4, mat(0xbfd6e6, { transparent:true, opacity:0.28, depthWrite:false }), capas.puerta, null, false);
-    vid.userData.info = { tag:"", desc:`Visor IP66 sobre ${[...new Set(z.tags)].join(", ")}`, modelo:"Ventana de inspección con tapa abatible", dim:`${Math.round(w)} × ${Math.round(h)} mm` }; }
-  for(const c of m.caperuzas||[]){
-    const z0 = D + 2, g = caja(c.x - c.w/2, c.y - c.h/2 + 20, z0 + c.prof - 6, c.w, c.h - 20, 6, mat(RAL7035), capas.puerta);
-    caja(c.x - c.w/2, c.y + c.h/2 - 6, z0, c.w, 6, c.prof, mat(RAL7035), capas.puerta); caja(c.x - c.w/2, c.y - c.h/2 + 20, z0, 6, c.h - 26, c.prof, mat(RAL7035), capas.puerta); caja(c.x + c.w/2 - 6, c.y - c.h/2 + 20, z0, 6, c.h - 26, c.prof, mat(RAL7035), capas.puerta);
-    g.userData.info = { tag:c.tag, desc:"Caperuza antilluvia del ventilador / filtro (abertura hacia abajo)", modelo:"Cubierta de intemperie", dim:`${Math.round(c.w)} × ${Math.round(c.h)} × ${c.prof} mm` }; }
+  // (los visores, las caperuzas y las manijas con lock out se montan en su hoja de puerta: ver «puertas»)
   // prensaestopas en la base
   for(const c of m.base){ const zc = c.zb ?? (c.fila ? D*0.32 : D*0.6); const g = cil(c.x, m.tipo==="control" && m.entrada==="superior" ? H + 6 : -6, zc, (c.agujero||25)/2 + 3, 18, c.ref==="RESERVA" ? 0x9aa0a8 : 0x2b2f36, capas.envolvente); g.userData.info = { tag:c.ref, desc:c.desc, modelo:`Prensaestopa ${c.rosca}${c.awg ? " · cable "+c.awg : ""}`, dim:`Agujero Ø${c.agujero} mm` }; }
 
@@ -341,11 +332,65 @@ export async function visor3D(cont, modelo, opciones){
       const pg = new THREE.Group(); piv.add(pg); pg.position.set(-xp*k, 0, -D*k);
       const hoja = caja(x0, 3, D, x1 - x0, H - 6, 20, mat(RAL7035, { roughness:0.5 }), pg);
       hoja.userData.info = { tag:s.id, desc:`Puerta de la sección ${s.id.slice(1)} (${s.rol==="potencia" ? "fuerza" : s.rol==="control" || s.rol==="etapa" ? "control" : "fuerza y control"})`, modelo:"Plancha de acero, RAL 7035", dim:`${r1(x1 - x0)} × ${r1(H - 6)} mm` };
-      const xm = bis==="izq" ? x1 - 45 : x0 + 25; caja(xm, m.manijaY ?? 900, D + 20, 20, 160, 30, mat(0x2b2f36), pg);
       hojas.push({ piv, bis, x0, x1, abierto:0, objetivo:0, grupo:pg });
     }
   }
   const hojaDe = x => hojas.find(h=>x >= h.x0 - 1 && x <= h.x1 + 1) || hojas[0];
+  const zP = D + 20;   // cara exterior de la puerta
+  // manijas en el borde de cierre de cada hoja (entre las puertas); con lock out, la manija con bloqueo por candado:
+  // escudo, palanca con su placa y bloque inferior con el cilindro de la cerradura
+  for(const mj of C.manijasPuerta(m, 3)){
+    const g = hojaDe(mj.x).grupo;
+    if(!mj.lockout){ caja(mj.x - 10, mj.y0, zP, 20, 160, 30, mat(0x2b2f36), g); continue; }
+    const hb = mj.h*0.164, oscuro = plas(0x2b2e33), negro = plas(0x1d1e21);
+    const esc = cuerpo(g, mj.x - mj.w/2, mj.y0 + hb, zP, mj.w, mj.h - hb, 10, oscuro, 4, { tag:"Lock out", desc:"Manija con bloqueo por candado (lock out / tag out), en el borde de cierre de la hoja", modelo:"Manija giratoria con porta-candado", dim:`${mj.w} × ${mj.h} mm` });
+    cuerpo(g, mj.x - mj.w*0.33, mj.y0 + hb + 18, zP + 10, mj.w*0.66, mj.h*0.36, mj.prof - 12, negro, 3);                  // empuñadura
+    cuerpo(g, mj.x - mj.w*0.11, mj.y0 + hb + 8, zP + 10, mj.w*0.22, mj.h*0.5, mj.prof - 20, negro, 2);                    // cuello de la palanca
+    caja(mj.x - mj.w*0.18, mj.y0 + mj.h*0.5, zP + mj.prof - 1, mj.w*0.36, mj.h*0.16, 1.2, metal(0xc9ccd0), g, null, false);   // placa
+    cuerpo(g, mj.x - mj.w/2 - 1, mj.y0, zP, mj.w + 2, hb - 2, 14, oscuro, 3);                                           // bloque inferior
+    cil(mj.x, mj.y0 + hb/2 - 1, zP + 15, mj.w*0.16, 4, metal(0xb9bdc2), g, "z");                                        // cilindro de la cerradura
+    caja(mj.x - 1, mj.y0 + hb/2 - 4, zP + 17, 2, 6, 0.6, negro, g, null, false);
+    esc.castShadow = true;
+  }
+  // visores (modelo de referencia): marco que sobresale de la puerta, tapa con ventana de esquinas redondeadas y
+  // policarbonato, dos cierres a la izquierda y dos bisagras a la derecha. Van montados en su hoja (se abren con ella).
+  const matVisor = plas(0x3b3f46), matPolic = mat(0xbfd6e6, { transparent:true, opacity:0.28, depthWrite:false, side:THREE.DoubleSide });
+  for(const z of m.visores||[]){
+    const g = hojaDe((z.x0 + z.x1)/2).grupo, w = z.x1 - z.x0, h = z.y1 - z.y0, V = C.VISOR, wv = C.ventanaVisor(z), t = 6, zf = zP + z.prof - t;
+    // marco perimetral (de la puerta a la tapa)
+    for(const [x, y, ww, hh] of [[z.x0, z.y0, w, 8], [z.x0, z.y1 - 8, w, 8], [z.x0, z.y0, 8, h], [z.x1 - 8, z.y0, 8, h]]) caja(x, y, zP, ww, hh, z.prof - t, matVisor, g);
+    // tapa: placa con el recorte redondeado de la ventana
+    const sh = new THREE.Shape(); sh.moveTo(z.x0*k, z.y0*k); sh.lineTo(z.x1*k, z.y0*k); sh.lineTo(z.x1*k, z.y1*k); sh.lineTo(z.x0*k, z.y1*k); sh.lineTo(z.x0*k, z.y0*k);
+    const hole = new THREE.Path(), r = wv.r;
+    hole.moveTo((wv.x0 + r)*k, wv.y0*k); hole.lineTo((wv.x1 - r)*k, wv.y0*k); hole.quadraticCurveTo(wv.x1*k, wv.y0*k, wv.x1*k, (wv.y0 + r)*k);
+    hole.lineTo(wv.x1*k, (wv.y1 - r)*k); hole.quadraticCurveTo(wv.x1*k, wv.y1*k, (wv.x1 - r)*k, wv.y1*k); hole.lineTo((wv.x0 + r)*k, wv.y1*k);
+    hole.quadraticCurveTo(wv.x0*k, wv.y1*k, wv.x0*k, (wv.y1 - r)*k); hole.lineTo(wv.x0*k, (wv.y0 + r)*k); hole.quadraticCurveTo(wv.x0*k, wv.y0*k, (wv.x0 + r)*k, wv.y0*k);
+    sh.holes.push(hole);
+    const tapa = new THREE.Mesh(new THREE.ExtrudeGeometry(sh, { depth:t*k, bevelEnabled:false, curveSegments:6 }), matVisor);
+    tapa.position.set(0, 0, zf*k); tapa.castShadow = tapa.receiveShadow = true; g.add(tapa);
+    tapa.userData.info = { tag:"", desc:`Visor IP66 (ventana de inspección con tapa abatible) sobre ${[...new Set(z.tags)].join(", ") || "los dispositivos de puerta"}`, modelo:"Ventana de inspección con tapa abatible", dim:`${Math.round(w)} × ${Math.round(h)} × ${z.prof} mm` };
+    const vid = caja(wv.x0, wv.y0, zf + 1, wv.x1 - wv.x0, wv.y1 - wv.y0, 3, matPolic, g, null, false); vid.userData.info = tapa.userData.info;
+    // cierres (izquierda) y bisagras (derecha)
+    for(const yc of [z.y0 + V.cierre.y, z.y1 - V.cierre.y]){ cil(z.x0 + V.cierre.x, yc, zf + t + 2, V.cierre.r, 4, metal(0xb9bdc2), g, "z"); cil(z.x0 + V.cierre.x, yc, zf + t + 4.5, V.cierre.r*0.4, 2, plas(0x1d1e21), g, "z"); }
+    for(const b of C.bisagrasVisor(z)){ caja(z.x1 - V.bisagra.w/2, b.y - b.h/2, zf - 4, V.bisagra.w, b.h, t + 8, plas(0x2b2e33), g); cil(z.x1 + V.bisagra.w/2 - 3, b.y, zf + t/2, 2, b.h + 8, metal(0xb9bdc2), g); }
+  }
+  // caperuzas antilluvia (modelo de referencia): laterales con el perfil (espalda, tapa corta, cara inclinada y frente),
+  // tapa superior, cara inclinada y frente; abiertas hacia abajo. Montadas en su hoja (se abren con ella).
+  const matCap = mat(RAL7035, { side:THREE.DoubleSide }), e = 2;
+  for(const c of m.caperuzas||[]){
+    const g = hojaDe(c.x).grupo, x0 = c.x - c.w/2, x1 = c.x + c.w/2, y0 = c.y - c.h/2, pf = C.perfilCaperuza(c), p = c.prof;
+    const sh = new THREE.Shape(); pf.forEach(([u, y], i)=>i ? sh.lineTo(u*k, y*k) : sh.moveTo(u*k, y*k)); sh.lineTo(pf[0][0]*k, pf[0][1]*k);
+    const geoL = new THREE.ExtrudeGeometry(sh, { depth:e*k, bevelEnabled:false }).rotateY(-Math.PI/2);   // perfil en el plano y-z
+    for(const xl of [x0 + e, x1]){ const l = new THREE.Mesh(geoL, matCap); l.position.set(xl*k, y0*k, zP*k); l.castShadow = l.receiveShadow = true; g.add(l); }
+    const sup = caja(x0, y0 + c.h - e, zP, c.w, e, 0.4*p, matCap, g);
+    const fr = caja(x0, y0, zP + p - e, c.w, c.h - 0.85*p, e, matCap, g);
+    // cara inclinada: de la tapa (salida 0,4·p, arriba) al frente (salida p, 0,85·p más abajo)
+    const L = Math.hypot(0.6*p, 0.85*p), inc = new THREE.Mesh(geoCaja, matCap);
+    inc.scale.set(c.w*k, e*k, L*k); inc.rotation.x = Math.atan2(0.85*p, 0.6*p);
+    inc.position.set(c.x*k, (y0 + c.h - 0.425*p)*k, (zP + 0.7*p)*k); inc.castShadow = inc.receiveShadow = true; g.add(inc);
+    const info = { tag:c.tag, desc:"Caperuza antilluvia del ventilador / filtro (abertura hacia abajo)", modelo:"Cubierta de intemperie", dim:`${Math.round(c.w)} × ${Math.round(c.h)} × ${p} mm` };
+    for(const o of [sup, fr, inc]) o.userData.info = info;
+  }
   for(const d of m.puerta){
     const h = hojaDe(d.x), g = h.grupo, z = D + 20;
     const ap = apariencia(d) || { col:{} }, cc = (v, def) => colorDe(ap, v, def);

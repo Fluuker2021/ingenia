@@ -5,6 +5,8 @@
    control, así el plano 2D, la vista 3D y la lista de materiales los muestran igual.
    Modelos REFERENCIALES (familias de catálogo): verificar el código exacto con el fabricante del gabinete. */
 
+import { VISOR, hojasPuerta } from "./componentes.js";
+
 export const TECHOS = [["auto","Automático (con alero si el tablero va a la intemperie)"],["plano","Plano con alero"],["inclinado","Inclinado (caída hacia atrás)"],["no","Sin techo"]];
 // dispositivos de puerta que pueden ir bajo un visor
 export const TIPOS_VISOR = new Set(["luz","pulsador","selector","potenciometro","hmi","panelvfd","seta"]);
@@ -33,10 +35,14 @@ export function aplicarAccesoriosMecanicos(m, cfg){
   }
   // ----- caperuzas en los ventiladores y filtros de salida de la puerta
   const fans = m.puerta.filter(d=>d.tipo==="ventilador" || d.tipo==="rejilla");
-  m.caperuzas = cfg.caperuza ? fans.map(d=>({ tag:d.tag || "", x:d.x, y:d.y, w:d.w + 30, h:d.h + 30, prof:75, seccion:d.seccion })) : [];
+  // proporciones del modelo de referencia: ~1,24 veces el marco del ventilador, salida de ~27 % de su alto, con tapa
+  // superior corta, cara inclinada y frente vertical, abierta hacia abajo (solo cambian el ancho y el alto)
+  m.caperuzas = cfg.caperuza ? fans.map(d=>{ const w = Math.round(d.w*1.24/5)*5, h = Math.round(d.h*1.24/5)*5;
+    return { tag:d.tag || "", tipo:d.tipo, x:d.x, y:d.y, w, h, prof:Math.round(h*0.27/5)*5, seccion:d.seccion }; }) : [];
   if(m.caperuzas.length){
-    m.bom.push({ tag:"", desc:"Caperuza antilluvia (cubierta de intemperie) para ventilador y filtro de salida de puerta, IP56", modelo:"Cubierta de intemperie para ventilador con filtro (ref. Rittal SK 3255 / Pfannenberg, según tamaño)",
-      cant:m.caperuzas.length, dim:`${Math.round(m.caperuzas[0].w)} x ${Math.round(m.caperuzas[0].h)} x 75`, montaje:"Puerta", fuente:"Accesorios de climatización de gabinetes (referencial)" });
+    const c0 = m.caperuzas[0];
+    m.bom.push({ tag:"", desc:"Caperuza antilluvia (cubierta de intemperie) para ventilador y filtro de salida de puerta, IP56, abertura hacia abajo", modelo:"Cubierta de intemperie para ventilador con filtro (ref. Rittal SK 3255 / Pfannenberg, según tamaño)",
+      cant:m.caperuzas.length, dim:`${c0.w} x ${c0.h} x ${c0.prof}`, montaje:"Puerta", fuente:"Accesorios de climatización de gabinetes (referencial)" });
     m.criterios.push("Caperuzas antilluvia sobre los ventiladores y filtros de la puerta: protegen la entrada y salida de aire de la lluvia y el polvo.");
   }
   // ----- visores: uno por hoja de puerta, sobre los dispositivos elegidos
@@ -46,14 +52,25 @@ export function aplicarAccesoriosMecanicos(m, cfg){
   const bajoVisor = cfg.visor ? elegibles.filter(d=>lista ? lista.has(claveDisp(d)) : d.tipo!=="seta") : [];
   const porSeccion = new Map();
   for(const d of bajoVisor){ const k = d.seccion || "S1"; if(!porSeccion.has(k)) porSeccion.set(k, []); porSeccion.get(k).push(d); }
+  // la ventana (esquinas redondeadas) encierra los dispositivos con 10 mm de holgura; a su izquierda van los cierres y a
+  // su derecha las bisagras (VISOR); el visor no sale de su hoja de puerta
+  const hojas = hojasPuerta(m), mg = 10;
   m.visores = [...porSeccion.entries()].map(([seccion, ds])=>{
-    const cs = ds.map(cajaDisp), mg = 30;
-    return { seccion, tags: ds.map(d=>d.tag).filter(Boolean), x0: Math.min(...cs.map(c=>c.x0)) - mg, x1: Math.max(...cs.map(c=>c.x1)) + mg, y0: Math.min(...cs.map(c=>c.y0)) - mg, y1: Math.max(...cs.map(c=>c.y1)) + mg, prof:40 };
+    const cs = ds.map(cajaDisp), xc = (Math.min(...cs.map(c=>c.x0)) + Math.max(...cs.map(c=>c.x1)))/2;
+    const hj = hojas.find(h=>xc >= h.x0 && xc <= h.x1) || { x0:-Infinity, x1:Infinity };
+    return { seccion, tags: ds.map(d=>d.tag).filter(Boolean), x0: Math.max(hj.x0 + 12, Math.min(...cs.map(c=>c.x0)) - mg - VISOR.izq), x1: Math.min(hj.x1 - 18, Math.max(...cs.map(c=>c.x1)) + mg + VISOR.der),
+      y0: Math.min(...cs.map(c=>c.y0)) - mg - VISOR.vert, y1: Math.max(...cs.map(c=>c.y1)) + mg + VISOR.vert, prof:VISOR.prof };
   });
   for(const vz of m.visores){
     const w = Math.round(vz.x1 - vz.x0), h = Math.round(vz.y1 - vz.y0);
     m.bom.push({ tag:"", desc:`Visor (ventana de inspección) de policarbonato con marco, bisagra y cierre, IP66, sobre ${[...new Set(vz.tags)].join(", ") || "los dispositivos de puerta"}`,
       modelo:"Ventana de inspección IP66 con tapa abatible (ref. Rittal / Hensel / Fibox, según recorte)", cant:1, dim:`${w} x ${h} x 40`, montaje:"Puerta", fuente:"Accesorios de gabinetes (referencial)" });
+  }
+  // ----- lock out: manija con bloqueo por candado en cada hoja, en su borde de cierre (entre las puertas)
+  if(m.lockout){
+    m.bom.push({ tag:"", desc:"Manija de puerta con bloqueo por candado (lock out / tag out), con cilindro de cerradura, en el borde de cierre de cada hoja", modelo:"Manija giratoria con porta-candado (ref. Rittal SZ 2433 / Hoffman, según puerta)",
+      cant:hojas.length, dim:"40 x 200 x 38", montaje:"Puerta", fuente:"Accesorios de gabinetes (referencial)" });
+    m.criterios.push("Lock out: manija con bloqueo por candado en cada hoja de puerta, en su borde de cierre (entre las puertas); se bloquea con el candado de seguridad y la tarjeta de advertencia.");
   }
   if(m.visores.length) m.criterios.push(`Visor IP66 (ventana de inspección con tapa abatible) sobre los dispositivos de puerta elegidos: se ven desde afuera y quedan protegidos del ambiente${m.visores.some(v=>v.tags.length) ? ` (${[...new Set(m.visores.flatMap(v=>v.tags))].join(", ")})` : ""}.`);
   return m;

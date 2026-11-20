@@ -108,7 +108,20 @@ const FP_CIRC = c => c.kind==="motor" ? (+c.fp||0.85) : c.kind==="control" ? 0.8
    del mando del general (lock out) y luces de energizado (presencia de fases). La ventilación y la calefacción se guardan
    en la configuración mecánica del tablero (auto / sí / no) para que el arreglo, el unifilar y el multifilar coincidan. */
 export const ACC_DEF = () => ({ spd:true, releFase:true, diferencial:true, luces:true, luminaria:true, tomacorriente:true, lockout:true });
-export const ACC_PROTECCION = [["spd","OVR / SPD","Supresor de sobretensiones tipo 1+2 en la acometida"],["releFase","Relé de fases","Relé de monitoreo de tensión: secuencia, falta y asimetría de fases"],["diferencial","Diferencial","Interruptor diferencial de 30 mA en el circuito de tomacorriente"]];
+export const ACC_PROTECCION = [["spd","OVR / SPD","Supresor de sobretensiones en la acometida"],["releFase","Relé de fases","Relé de monitoreo de tensión: secuencia, falta y asimetría de fases"]];
+/* tipos de supresor de sobretensiones (OVR / SPD, IEC 61643-11) para la acometida del tablero: clave, nombre, ayuda,
+   texto del plano, corriente de descarga y modelo ABB de referencia (la marca elegida lo cambia por su equivalente) */
+export const TIPOS_OVR = [
+  ["T1", "Tipo 1", "Clase I: descarga directa del rayo (onda 10/350 µs). Acometida desde línea aérea o edificio con pararrayos; se coordina con un tipo 2 aguas abajo", "TIPO 1", "Iimp 25 kA (10/350 µs)", v=>`OVR T1 3L 25-${v} N`],
+  ["T1+2", "Tipo 1+2", "Clase I + II en un solo equipo (10/350 y 8/20 µs): acometida con riesgo de rayo directo e inducido", "TIPO 1 Y 2", "Iimp 12,5 kA (10/350 µs)", v=>`OVR T1-T2 3L 12.5-${v}s P QS`],
+  ["T2", "Tipo 2", "Clase II: sobretensiones inducidas y de maniobra (onda 8/20 µs). Tableros sin riesgo de rayo directo", "TIPO 2", "Imax 40 kA (8/20 µs)", v=>`OVR T2 3L 40-${v} P QS`],
+  ["T3", "Tipo 3", "Clase III: protección fina junto a equipos sensibles, aguas abajo de un tipo 2", "TIPO 3", "Uoc 10 kV (onda combinada)", v=>`OVR T3 3L 10-${v} P`],
+];
+/* supresor de la acometida del tablero: tipo elegido (por defecto 1+2) y su modelo para la tensión del sistema */
+export function ovrTablero(acc, voltage){
+  const T = TIPOS_OVR.find(x=>x[0]===(acc && acc.spdTipo)) || TIPOS_OVR[1], v = +voltage > 440 ? 600 : 440;
+  return { tipo:T[0], nombre:T[1], texto:T[3], descarga:T[4], modelo:T[5](v) };
+}
 export const ACC_ACCESORIOS = [["luminaria","Luminaria interna"],["calefaccion","Calefacción"],["ventilacion","Ventilación"],["tomacorriente","Tomacorriente"],["lockout","Lock out"],["luces","Luces de energizado"]];
 /* accesorios efectivos (con la ventilación y la calefacción resueltas): ventilación «auto» = forzada si el tablero tiene
    variadores o arrancadores suaves (el arreglo mecánico verifica el balance térmico y avisa si no alcanza) */
@@ -251,7 +264,7 @@ export function controlInterno(p, t){
   if(acc.ventilacion) disp.push({ label:"Ventiladores", destino:"VENTILADORES", va:200, min:6, cfg:"ventilacion" });
   if(acc.calefaccion) disp.push({ label:"Calefacción anticondensación", destino:"CALEFACCIÓN", va:100, min:6, cfg:"calefaccion" });
   if(acc.luminaria) disp.push({ label:"Luminaria interna", destino:"LUMINARIA", va:40, min:4, cfg:"luminaria" });
-  if(acc.tomacorriente) disp.push({ label:"Tomacorriente", destino:"TOMACORRIENTE", va:180, min:4, cfg:"tomacorriente", id: acc.diferencial!==false });
+  if(acc.tomacorriente) disp.push({ label:"Tomacorriente", destino:"TOMACORRIENTE", va:180, min:4, cfg:"tomacorriente", id:true });
   // sin segunda tensión todo va a la tensión de control; con ella, el control a la primera y los servicios a la segunda
   const enV1 = d => !v2 || /^tc:/.test(d.cfg);
   const rama = (d, vs, porDefecto) => {
@@ -297,15 +310,15 @@ export function controlInterno(p, t){
 /* tablero de fuerza y control: últimos números de TAG de la parte de fuerza (interruptores CB, fusibles F, borneras TB y
    supresores SPD), para que su etapa de control siga la numeración y no repita equipos en el mismo tablero. 0 en los demás. */
 export function tagsPotenciaTFC(p, t){
-  const r = { cb:0, f:0, tb:0, spd:0 };
+  const r = { cb:0, f:0, tb:0, spd:0, id:0 };
   if(!t || t.tipo!=="fuerzacontrol") return r;
   const calc = calcularTablero(p, t), acc = accesoriosTablero(p, t), fa = fusiblesAcometida(acc);
-  const ver = s => { const m = String(s||"").match(/^(CB|F|TB|SPD)(\d+)$/); if(m){ const k = m[1].toLowerCase(); r[k] = Math.max(r[k], +m[2]); } };
+  const ver = s => { const m = String(s||"").match(/^(CB|F|TB|SPD|ID)(\d+)$/); if(m){ const k = m[1].toLowerCase(); r[k] = Math.max(r[k], +m[2]); } };
   [...fa.luces, ...fa.rf, ...fa.uvr].forEach(ver); ver("CB1"); ver("TB1");
   if(acc.spd) r.spd = 3;
   for(const c of calc.circuits){
     ver("TB" + ((parseInt(String(c.tag||"").replace(/\D/g, ""), 10) || 0) + 1));
-    for(const it of c.items||[]){ ver(it.devtag); (it.devtags||[]).forEach(ver); }
+    for(const it of c.items||[]){ ver(it.devtag); ver(it.id); (it.devtags||[]).forEach(ver); }
   }
   return r;
 }
@@ -374,11 +387,22 @@ export function calcularTablero(p, t, _depth=0){
     }
     // modelos en la marca confirmada por el usuario (panel «Marcas de los equipos»)
     if(c) for(const it of c.items||[]) if(it.model) it.model = modeloEnMarca(it.model, it.val, mr);
-    // protección diferencial propia de la carga (pedido del cliente): relé diferencial con su toroide en la salida
-    if(c && l.diferencial && l.kind!=="control" && l.kind!=="reserva"){ c.diferencial = { tag:"RD"+(String(c.tag).replace(/\D/g, "") || c.tag), sens: l.kind==="motor" ? "300mA" : "30mA" };
-      c.items.push({ comp:"Protección diferencial (relé con toroide)", devtag:c.diferencial.tag, model:"Relé diferencial electrónico + transformador toroidal", val:c.diferencial.sens, src:null }); }
+    // protección diferencial propia de la carga (pedido del cliente): interruptor / relé diferencial de 30 mA con su toroide en
+    // la salida, de la corriente del interruptor del circuito (el TAG ID… se numera abajo, en el orden del unifilar)
+    if(c && l.diferencial && l.kind!=="control" && l.kind!=="reserva"){
+      const q = (c.items||[]).find(it=>/^ITM|^Guardamotor|^Interruptor/i.test(it.comp||"")) || {};
+      const m = String(q.val||"").split(" · ")[0].match(/(\d+(?:[.,]\d+)?)\s*A\b/g), amp = m ? parseFloat(m[m.length-1].replace(",", ".")) : 0;
+      c.diferencial = { tag:"ID", sens:"30mA", in: amp, val: amp ? `${amp}A` : "" };
+      c.items.push({ comp:"Protección diferencial 30 mA (interruptor / relé diferencial con toroide)", devtag:"ID", model:"Relé diferencial electrónico 30 mA + transformador toroidal", val:`${amp ? amp+"A " : ""}30mA`, src:null, dif:true }); }
     if(c){ c.load = l; c.cargaTag = l.tag || c.tag; c.descLabel = c.descLabel || l.desc || c.title; c.tablero = t; circuits.push(c); }
   });
+  // diferenciales del tablero: ID1, ID2… correlativos en el orden del unifilar (los de las cargas y los de las derivaciones
+  // de los transformadores de control)
+  let nID = 0;
+  for(const c of circuits){
+    if(c.diferencial){ c.diferencial.tag = "ID"+(++nID); for(const it of c.items) if(it.dif) it.devtag = c.diferencial.tag; }
+    if(c.kind==="control") for(const it of c.items||[]) if(it.rama && it.id) it.id = "ID"+(++nID);
+  }
   let mainBreaker = 0, totalKVA = 0, demandCurrent = 0, requiredNEC = 0, requiredDemand = 0, installedKVA = 0, installedCurrent = 0, maxC = 0, sumOthers = 0, fpSistema = 0, fpInstalado = 0;
   if(circuits.length){
     const running = circuits.filter(c=>!(c.fu===0));

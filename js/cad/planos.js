@@ -3,7 +3,7 @@
    Estilo, capas y disposición de una ingeniería de detalle usual de E&I. */
 import { DXFDoc, buildUnifilarDXF, dxfTrunc, symBreaker, symFuse, symGroundSmall, symGroundElectrode, symTransformer } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS } from "./formato.js";
-import { funcionISA, datos, calcularTablero, calcularTodos, circuitosControl, instrumentos, esAnalogico, esSalida, expandirTag, tipoInstrumento, sistemaTag, sistemaNombre,
+import { funcionISA, datos, ovrTablero, calcularTablero, calcularTodos, circuitosControl, instrumentos, esAnalogico, esSalida, expandirTag, tipoInstrumento, sistemaTag, sistemaNombre,
   tableros, tablerosPotencia, tablerosControl, tableroDeInstrumento, tableroPorId, tf, tc, desdeTxt, esControl, esFuerza } from "../datos.js";
 import { procesarFilas } from "../modules/tablas.js";
 import { valoresDiseno, tensionControlTxt, controlEnDC } from "../modules/criterios.js";
@@ -60,7 +60,7 @@ export function unifilarFuerza({ p, valsDe, cliente }){
       dibujarFormato: d => (area = dibujarLamina(d, i*PASO_HOJAS, 0, valsDe(i, lista.length, { TITULO2: `${(t.nombre||"").toUpperCase()} ${t.tag}` }), cliente)) });
     // accesorios del tablero (SPD, relé de supervisión de fases, luces piloto), como en el unifilar de referencia
     const acc = t.accesorios || {};
-    const lst = [acc.spd && ["SPD", `SUPRESOR DE SOBRETENSIONES TIPO 1+2, ${calc.g.voltage} V`], acc.releFase && ["RF", "RELÉ DE SUPERVISIÓN DE FASES (FALLA / SECUENCIA / U< U>)"], acc.luces && ["LT", "LUCES PILOTO R-S-T (PRESENCIA DE TENSIÓN)"]].filter(Boolean);
+    const lst = [acc.spd && ["SPD", `SUPRESOR DE SOBRETENSIONES ${ovrTablero(acc, calc.g.voltage).texto}, ${calc.g.voltage} V`], acc.releFase && ["RF", "RELÉ DE SUPERVISIÓN DE FASES (FALLA / SECUENCIA / U< U>)"], acc.luces && ["LT", "LUCES PILOTO R-S-T (PRESENCIA DE TENSIÓN)"]].filter(Boolean);
     if(area && lst.length){
       const x0 = area.x1 - 175, y0 = area.y1 - 12;
       T(doc, x0, y0, 2.6, "ACCESORIOS DE LA ACOMETIDA:", "G-TEXT");

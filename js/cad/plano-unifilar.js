@@ -7,7 +7,7 @@
 import { modeloCorto, modeloEnMarca, marcasProyecto } from "../engine/marcas.js";
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
-import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, accesoriosTablero, fusiblesAcometida, distribucionPrincipal } from "../datos.js";
+import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, accesoriosTablero, fusiblesAcometida, distribucionPrincipal, ovrTablero } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza, envolver, cajaAcometida, encajar, tituloTablero } from "./kit.js";
 import { unifilarControlKit } from "./plano-unifilar-control.js";
@@ -51,7 +51,7 @@ export function claseDerivacion(p, t, cfg, texto){
 function columnas(calc, p){
   let nMotor = 0;
   const tab = calc.tablero;
-  // protección diferencial propia de una carga (relé con toroide en su salida)
+  // protección diferencial propia de una carga (interruptor diferencial de 30 mA en serie bajo su interruptor)
   return calc.circuits.map(c=>{ const col = columna(c); if(col && col.tipo!=="trafo" && c.diferencial) Object.assign(col, { dif: c.diferencial }); return col; });
   function columna(c){
     const l = c.load || {}, cable = cableTxt(c);
@@ -104,6 +104,19 @@ function columnas(calc, p){
 // carga quedan a la misma distancia (simetría)
 const verticales = col => col.tipo==="trafo" ? col.n : 1;
 const ancho = col => verticales(col)*ANCHO_COL;
+/* interruptor diferencial del unifilar de referencia (pieza «rama_id»): contactos, toroide que abraza los conductores y
+   disparo con flecha; se dibuja en la vertical x desde yTop hacia abajo con su TAG, corriente y sensibilidad. Devuelve la
+   cota inferior del símbolo. */
+const ID_TOP = -37.09, ID_ALTO = 29.52, ID_BAJA = 30;
+function interruptorDif(doc, kit, x, yTop, s, dif){
+  const delID = e => {
+    if(e[1]!=="E-SIM") return e[0]==="T" && /^ID1\n/.test(String(e[8]));
+    const ys = e[0]==="L" ? [e[5], e[7]] : e[0]==="S" ? [e[5], e[7], e[9], e[11]] : [e[5]];
+    return ys.every(v=>v <= ID_TOP + 0.01 && v >= ID_TOP - ID_ALTO - 0.01);
+  };
+  pieza(doc, kit, "rama_id", x - 0.05*s, yTop - ID_TOP*s, { s, filtro: delID, texto: tx => /^ID1\n/.test(tx) ? [dif.tag, dif.val, dif.sens].filter(Boolean).join("\n") : tx });
+  return yTop - ID_ALTO*s;
+}
 // zonas de la columna del variador que se omiten según el arranque (coordenadas relativas a su ancla)
 const OMITIR = { fusible:[-4,-62.7,16,-48.5], filtro:[-22,-114.3,12,-85.9], vfd:[-9,-134,21,-117.7], motor:[-6.5,-284,17,-267.6] };
 const PUENTES = { fusible:[-48.6,-62.6], filtro:[-86,-106], vfd:[-117.8,-133.8], motor:null };
@@ -312,7 +325,8 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
       pieza(doc, kit, "acc_lt", ax, ay, { s, vars:Object.assign({ cable:"", dev:"LT1,LT2,LT3", rango:"40-600Vac" }, vv) });
       cableAcc(13.65, 97.1, 78.37, [vv.f, vv.fv, vv.fm], 71.4, "3C#14AWG+14AWG(N) 0.6/1kV"); }
     if(acc.spd){ usados.add("fus3").add("spd"); const vv = { f:"-FS1", fv:"3x125A" };
-      pieza(doc, kit, "acc_spd", ax, ay, { s, vars:Object.assign({ cable:"", dev:"SPD1,SPD2,SPD3", tipo:"TIPO 1 y 2", mod: sinMarca(modeloEnMarca(`OVR T1 T2 3L 12.5-${g.voltage>440 ? 600 : 440} P QS`, "", marcasProyecto(p))) }, vv) });
+      const ovr = ovrTablero(acc, g.voltage);
+      pieza(doc, kit, "acc_spd", ax, ay, { s, vars:Object.assign({ cable:"", dev:"SPD1,SPD2,SPD3", tipo: ovr.texto, mod: sinMarca(modeloEnMarca(ovr.modelo, "", marcasProyecto(p))) }, vv) });
       cableAcc(8.62, 58.57, 67.56, [vv.f, vv.fv], 60.6, "3C#10AWG+10AWG(T) 0.6/1kV"); }
     if(acc.releFase){ usados.add("fus3").add("rf"); const vv = { f:fa.rf.join(","), fv:"1X2A", fm:"E91/32" };
       pieza(doc, kit, "acc_rf", ax, ay, { s, vars:Object.assign({ cable:"", dev:"RF", mod: sinMarca(modeloEnMarca("CM-MPS.41S", "", marcasProyecto(p))) }, vv) });
@@ -372,11 +386,21 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
       if(c.tipo==="col_mcp") usados.add("contactor").add("motor");
       else { for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) usados.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="AS" ? "as" : "vfd", motor:"motor" }[k]); }
       if(c.reserva){ pieza(doc, kit, c.tipo, x, y, { s, vars:Object.assign({}, c.vars, { cable:"" }), omitir:[[-25, -300, 25, -29.5]] }); descripcion(doc, x, SY(-34), ["RESERVA"], s, P); continue; }
-      pieza(doc, kit, c.tipo, x, y, { s, vars:Object.assign({}, c.vars, { cable:"" }), omitir: om.map(k=>OMITIR[k]) });
-      for(const k of om){ const pz = PUENTES[k]; if(pz) doc.line(x, y+pz[0]*s, x, y+pz[1]*s, "E-FZA-BT-PRI"); }
-      // protección diferencial de la carga: toroide en el conductor, bajo el interruptor, con el relé y su sensibilidad
-      if(c.dif){ const yT = SY(c.tipo==="col_mcp" ? -60 : -41); doc.circle(x, yT, 2.6*s, "E-SIM");
-        doc.text(x + 4*s, yT + 0.6*s, 2.2*s, c.dif.tag, "G-TEX"); doc.text(x + 4*s, yT - 3.2*s, 2.2*s, c.dif.sens, "G-TEX"); }
+      // protección diferencial de la carga: interruptor diferencial (contactos con disparo desde el toroide) en serie bajo el
+      // interruptor; en la columna del variador / arrancador el resto de los equipos baja para darle lugar
+      const omit = om.map(k=>OMITIR[k]), mover = [], D = c.dif && c.tipo!=="col_mcp" ? ID_BAJA : 0;
+      if(c.dif){
+        if(c.tipo==="col_mcp") omit.push([-0.6, -81.9, 0.6, -37.2]);
+        else { omit.push([-0.6, -48.7, 0.6, -29.7], [-0.6, -206, 0.6, -133.7]); mover.push({ r:[-30, -134.5, 40, -48.5], dx:0, dy:-D*s }); }
+      }
+      pieza(doc, kit, c.tipo, x, y, { s, vars:Object.assign({}, c.vars, { cable:"" }), omitir: omit, mover });
+      for(const k of om){ const pz = PUENTES[k]; if(pz) doc.line(x, y+(pz[0]-D)*s, x, y+(pz[1]-D)*s, "E-FZA-BT-PRI"); }
+      if(c.dif){
+        const [yB, yI, yS] = c.tipo==="col_mcp" ? [-37.32, -40, -81.79] : [-29.77, ID_TOP, -48.62 - D];
+        doc.line(x, SY(yB), x, SY(yI), "E-FZA-BT-PRI");
+        doc.line(x, interruptorDif(doc, kit, x, SY(yI), s, c.dif), x, SY(yS), "E-FZA-BT-PRI");
+        if(c.tipo!=="col_mcp") doc.line(x, SY(-133.77 - D), x, SY(-205.92), "E-FZA-BT-PRI");
+      }
       fin(x, c.vars.cable, c.vars.desc, c.tablero ? null : c.vars.tag, SY(om.includes("motor") ? -271 : -287), c.tablero, SY(-267.7), c.tablero ? "E-FZA-BT-PRI" : null);
     }
   }
@@ -500,7 +524,7 @@ const LEY_ORDEN = [
   ["itm2", { fila:1 }], ["mccb3", { fila:2 }], ["mcb3", { fila:2, desc:"INTERRUPTOR TERMOMAGNÉTICO TRIFÁSICO (MCB)" }],
   ["gm", { pieza:"col_mcp", y:[-37.4, -21.1], capa:/^I-SIM$/, desc:"GUARDAMOTOR (INTERRUPTOR DE PROTECCIÓN DE MOTOR)" }],
   ["contactor", { pieza:"col_mcp", y:[-93.9, -81.7], capa:/^E-SIM$/, desc:"CONTACTOR TRIPOLAR" }],
-  ["id", { fila:3 }], ["rd", { toroide:true, desc:"PROTECCIÓN DIFERENCIAL (RELÉ CON TOROIDE)" }], ["fus1", { fila:4 }], ["fus3", { fila:5 }], ["luz", { fila:6 }], ["spd", { fila:7 }], ["rf", { fila:8 }],
+  ["id", { fila:3 }], ["rd", { pieza:"rama_id", y:[-66.7, -37.0], capa:/^E-SIM$/, desc:"INTERRUPTOR / RELÉ DIFERENCIAL TRIFÁSICO 30 mA (CON TOROIDE)" }], ["fus1", { fila:4 }], ["fus3", { fila:5 }], ["luz", { fila:6 }], ["spd", { fila:7 }], ["rf", { fila:8 }],
   ["vfd", { fila:9 }], ["as", { fila:9, desc:"ARRANCADOR SUAVE", sim:{ VFD:"AS" } }], ["filtro", { fila:11 }], ["motor", { fila:10 }],
   ["trafo", { fila:12 }], ["tierra", { fila:13 }],
 ];
@@ -546,10 +570,6 @@ function leyenda(doc, kit, x, y, usados, k=1){
         if(e[0]==="T" && def.sim && def.sim[String(e[8])]){ e2 = e2.slice(); e2[8] = def.sim[String(e[8])]; }
         ents.push(e2);
       }
-    } else if(def.toroide){
-      // conductor con el toroide del relé diferencial
-      ents.push(["L", "E-FZA-BT-PRI", null, null, 27.84, yC + 6.5, 27.84, yC - 6.5], ["C", "E-SIM", null, null, 27.84, yC, 2.6]);
-      ents.push(["T", "G-TEX", null, null, 90.97, yC, 2.5, 0, def.desc, 1, 2, 1]);
     } else if(def.pieza){
       // símbolo tomado de otra pieza: centrado en la celda del símbolo, reducido si no entra en la fila
       const src = kit.piezas[def.pieza]; if(!src) return;

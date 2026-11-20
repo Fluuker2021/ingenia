@@ -89,11 +89,15 @@ function arrancador(m, a){
   return null;
 }
 // --- accesorios de la acometida
-function spd(m){
-  if(m==="Schneider Electric") return "Schneider Acti9 iPRF1 12.5r 3P (tipo 1+2)";
-  if(m==="Siemens") return "Siemens 5SD7 (tipo 1+2, 12,5 kA)";
-  if(m==="Phoenix Contact") return "Phoenix Contact FLT-SEC-T1+T2-3S (tipo 1+2)";
-  return null;
+function spd(m, t){
+  // tipo del supresor de referencia: OVR T1-T2 (tipo 1+2), OVR T1, OVR T2 u OVR T3
+  const k = /OVR T1-T2|OVR T1 T2/.test(t) ? "T12" : /OVR T1\b/.test(t) ? "T1" : /OVR T3\b/.test(t) ? "T3" : /OVR T2\b/.test(t) ? "T2" : "T12";
+  const M = {
+    "Schneider Electric": { T1:"Schneider PRF1 Master 3P (tipo 1)", T12:"Schneider Acti9 iPRF1 12.5r 3P (tipo 1+2)", T2:"Schneider Acti9 iPRD40r 3P (tipo 2)", T3:"Schneider Acti9 iPRD8r 3P (tipo 3)" },
+    "Siemens": { T1:"Siemens 5SD7 (tipo 1, 25 kA)", T12:"Siemens 5SD7 (tipo 1+2, 12,5 kA)", T2:"Siemens 5SD7 (tipo 2, 40 kA)", T3:"Siemens 5SD7 (tipo 3)" },
+    "Phoenix Contact": { T1:"Phoenix Contact FLT-SEC-T1-3C (tipo 1)", T12:"Phoenix Contact FLT-SEC-T1+T2-3S (tipo 1+2)", T2:"Phoenix Contact VAL-MS 3+0 (tipo 2)", T3:"Phoenix Contact PLT-SEC-T3 (tipo 3)" },
+  };
+  return (M[m] || {})[k] || null;
 }
 function rele(m){
   if(m==="Schneider Electric") return "Schneider Zelio RM22TR33";
@@ -119,7 +123,7 @@ export function modeloEnMarca(texto, val, mr){
   else if(/\bEF\d+\b/.test(t)) r = sobrecarga(mr.maniobra);
   else if(/\bACS\d{3}\b/.test(t)) r = variador(mr.variadores, a);
   else if(/\bPS(R|E|TX)\d*/.test(t)) r = arrancador(mr.arrancadores, a);
-  else if(/\bOVR\b/.test(t)) r = spd(mr.spd);
+  else if(/\bOVR\b/.test(t)) r = spd(mr.spd, t);
   else if(/CM-MPS/.test(t)) r = rele(mr.reles);
   if(!r) return t;
   // se conserva la nota entre paréntesis del cálculo (criterio de selección), sin la referencia al manual de ABB

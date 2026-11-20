@@ -10,7 +10,7 @@
 import { modeloCorto, modeloEnMarca, marcasProyecto } from "../engine/marcas.js";
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS } from "./formato.js";
-import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, ACC_DEF, fusiblesAcometida, distribucionPrincipal } from "../datos.js";
+import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, ACC_DEF, fusiblesAcometida, distribucionPrincipal, ovrTablero } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza } from "./kit.js";
 import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/componentes.js";
@@ -29,6 +29,29 @@ const EJES = { b_vfd:[97,113,129], b_mcp:[39,55,71], b_trafo:[53,85] };
 const PE_X = { b_vfd:145, b_mcp:87, b_trafo:101 };
 const EJES_RAMA = { c_rama:[32, 64], c_rama_id:[46, 78] };   // fase y neutro de las derivaciones del secundario
 // zonas omitidas (coordenadas de la pieza) y tramos de conductor que las reemplazan
+/* tramo de la columna donde va el interruptor diferencial de la carga: entre el interruptor (ini) y el equipo siguiente
+   (fin), cota superior del símbolo (top), rótulos de cable que se quitan y posición de sus textos (a la izquierda) */
+const ZONA_DIF = { b_vfd:{ ini:572.85, fin:538.85, top:571, rotulo:[549.5, 562], xTxt:81 }, b_mcp:{ ini:556.85, fin:420.85, top:516, xTxt:33 } };
+function diferencialTrifasico(doc, xs, z, dif, xTxt){
+  const k = 1, Y = v => z.top + DY - (v - 37.09)*k;   // v: cota del símbolo del unifilar de referencia (hacia abajo)
+  const rc = 1, yC1 = Y(43.53), yC2 = Y(51.26), yArc = Y(47.14), rA = 4.53*k, xArc = (-0.92 + 4.53)*k;
+  const yT1 = Y(57.35), yT2 = Y(60.51), yT3 = Y(63.67), xL = xs[0] - 4.5, xU = xs[xs.length-1], xR = xU + 6;
+  for(const x of xs){
+    doc.line(x, z.ini + DY, x, yC1 + rc, "E-FZA-BT-PRI");
+    doc.circle(x, yC1, rc, "E-SIM"); doc.circle(x, yC2, rc, "E-SIM");
+    doc.arc(x - 0.92*k, yArc, rA, 305.62, 54.38, "E-SIM");
+    doc.line(x, yC2 - rc, x, z.fin + DY, "E-FZA-BT-PRI");      // el conductor pasa por el toroide
+  }
+  // mando común de los tres polos (trazos)
+  for(let x = xs[0] + xArc + 0.8; x < xU + xArc - 0.8; x += 3.2) doc.line(x, yArc, Math.min(x + 1.8, xU + xArc - 0.8), yArc, "E-SIM");
+  // toroide que abraza las tres fases, con su bobinado a la izquierda
+  doc.line(xL, yT1, xR, yT1, "E-SIM"); doc.line(xL, yT2, xU + 2.5, yT2, "E-SIM"); doc.line(xL, yT3, xU + 3.5, yT3, "E-SIM");
+  doc.arc(xL, (yT1 + yT2)/2, (yT1 - yT2)/2, 90, 270, "E-SIM"); doc.arc(xL, (yT2 + yT3)/2, (yT2 - yT3)/2, 90, 270, "E-SIM");
+  // disparo: del toroide al mando del interruptor, con flecha
+  doc.line(xR, yT1, xR, yArc, "E-SIM"); doc.line(xR, yArc, xU + xArc + 1.4, yArc, "E-SIM");
+  const tip = xU + xArc + 0.1; doc.solid([[tip, yArc], [tip + 1.5, yArc + 0.6], [tip + 1.5, yArc - 0.6], [tip + 1.5, yArc - 0.6]], "E-SIM");
+  [dif.tag, dif.val, dif.sens].filter(Boolean).forEach((t, i)=>doc.text(xTxt, (yC1 + yT3)/2 + 4 - i*4, 2.5, t, "G-TEXT", { halign:2, valign:2 }));
+}
 const OMITIR = { contactor:[0,393,80,423], auxiliares:[0,512,34,563], motor:[34,190,92,236], filtro:[-20,342,138,494] };
 const PUENTE = { contactor:[420.9,404.9], filtro:[492.9,342.9] };
 // referencias cruzadas a otras hojas del plano original (control) y textos propios del variador
@@ -131,9 +154,14 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
     [["F1","F2","F3"].map((f, i)=>[f, fa.luces[i]]), ["F4","F5","F6"].map((f, i)=>[f, fa.rf[i]]), ["F7","F8"].map((f, i)=>[f, fa.uvr[i]])].flat().forEach(([a, b])=>{ if(b) ren[a] = b; });
     const hojaAc = k + 1;
     const mr = marcasProyecto(p);
+    // supresor de sobretensiones del tipo elegido (en dos líneas, como en la pieza: «OVR T1-T2 3L» / «12.5-440s P QS»)
+    const ovr = ovrTablero(acc, g.voltage), ovrM = sinMarca(modeloEnMarca(ovr.modelo, "", mr)), ovrP = /^(OVR \S+ 3L)\s+(.*)$/.exec(ovrM);
     const textoAc = s => { const tt = String(s).trim(); if(ren[tt]) return ren[tt];
-      // modelos de la pieza de referencia en la marca confirmada (relé de fases, supresor, interruptor de la bobina)
-      if(/^(CM-MPS\.41S|OVR T1-T2 3L|S201-C2)$/.test(tt)){ const m = modeloEnMarca(tt, tt==="S201-C2" ? "1x2A" : "", mr); if(m!==tt) return sinMarca(m); }
+      if(tt==="TIPO 1 Y 2") return ovr.texto;
+      if(tt==="OVR T1-T2 3L") return ovrP ? ovrP[1] : ovrM;
+      if(tt==="12.5-440s P QS") return ovrP ? ovrP[2] : "";
+      // modelos de la pieza de referencia en la marca confirmada (relé de fases, interruptor de la bobina)
+      if(/^(CM-MPS\.41S|S201-C2)$/.test(tt)){ const m = modeloEnMarca(tt, tt==="S201-C2" ? "1x2A" : "", mr); if(m!==tt) return sinMarca(m); }
       // referencias de la pieza: las barras siguen en la hoja siguiente y los contactos del relé están en esta misma hoja
       if(/^2\.A:1$/.test(tt)) return `${hojaAc+1}.A:1`; const m = /^1\.([A-H]:\d)$/.exec(tt); if(m) return `${hojaAc}.${m[1]}`;
       return barraTxt(s); };
@@ -166,6 +194,10 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
       for(const c of cols){
         const a = ANCHO[c.pieza], x0 = x + (a*f - a)/2;
         const om = (c.omitir||[]).map(z=>OMITIR[z]);
+        // protección diferencial de la carga: se quitan los conductores entre el interruptor y el equipo siguiente (y el rótulo
+        // de cable del variador en ese tramo) para dibujar el interruptor diferencial
+        const zd = c.dif && ZONA_DIF[c.pieza];
+        if(zd) for(const ex of EJES[c.pieza]){ om.push([ex - 0.05, zd.fin - 0.05, ex + 0.05, zd.ini + 0.05]); if(zd.rotulo) om.push([ex - 3, zd.rotulo[0], ex + 16, zd.rotulo[1]]); }
         // control interno desde una segunda fuente: sin conexión a las barras, fusibles ni transformador
         if(c.externa) om.push([0, 400, 112, 700]);
         const pe = PE_X[c.pieza];
@@ -173,15 +205,8 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
           quitar: c.ss ? new RegExp(REF.source+"|"+SOLO_VFD.source) : REF,
           texto: (s, e)=>{ if(c.awg && /^\s*\d+(\/0)?\s*AWG\s*$/i.test(s)) return (e[4] >= pe-1 && e[4] <= pe+9) ? c.egc : c.awg; return barraTxt(s); } });
         for(const z of (c.omitir||[])){ const pz = PUENTE[z]; if(pz) for(const ex of EJES[c.pieza]) doc.line(ox+DX+x0+ex, pz[0]+DY, ox+DX+x0+ex, pz[1]+DY, "E-FZA-BT-PRI"); }
-        // protección diferencial propia de la carga: toroide que abraza las tres fases bajo el interruptor y su relé
-        if(c.dif){
-          const ej = EJES[c.pieza], yT = DY + (c.pieza==="b_vfd" ? 548 : 495), xa = ox+DX+x0+ej[0] - 6, xb = ox+DX+x0+ej[ej.length-1] + 6, cx = (xa + xb)/2, rx = (xb - xa)/2, ry = 3.2;
-          const pts = []; for(let k = 0; k <= 32; k++){ const a = k*Math.PI/16; pts.push([cx + rx*Math.cos(a), yT + ry*Math.sin(a)]); }
-          doc.polyline(pts, "E-SIM");
-          doc.text(xa - 2, yT + 2.6, 2.5, c.dif.tag, "G-TEX", { halign:2 });
-          doc.text(xa - 2, yT - 1.4, 2.2, `Idn ${c.dif.sens}`, "G-TEX", { halign:2 });
-          doc.text(xa - 2, yT - 5.0, 2.0, "RELÉ DIF. + TOROIDE", "G-TEX", { halign:2 });
-        }
+        // protección diferencial propia de la carga: interruptor diferencial trifásico (símbolo del unifilar)
+        if(zd) diferencialTrifasico(doc, EJES[c.pieza].map(ex=>ox+DX+x0+ex), zd, c.dif, ox+DX+x0+zd.xTxt);
         if(c.pieza==="b_trafo" && hojaSec.has(c)) doc.text(ox+DX+x0+69, 262+DY, 2.5, `A HOJA ${hojaSec.get(c)}`, "G-TEX", { halign:1 });
         if(c.externa){
           const xa = ox+DX+x0+69, ya = 462+DY;

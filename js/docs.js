@@ -6,7 +6,7 @@ import { esc } from "./ui.js";
 import { valoresDiseno, tensionControlTxt, tensionEstabilizada, tempDiseno, seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { procesarFilas, resumenIO, ESQUEMAS } from "./modules/tablas.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, circuitosControl, instrumentos, expandirTag, tipoInstrumento, esAnalogico, sistemaTag, sistemaNombre, r2, parametrosG,
-  tableros, tablerosControl, tableroPorId, tf, tc, desdeTxt, esControl, esPotencia, TIPOS_TABLERO, ipRecomendado, cablesFuerza, CLASES_CABLE, CANALIZACIONES, controlInterno, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS } from "./datos.js";
+  tableros, tablerosControl, tableroPorId, tf, tc, desdeTxt, esControl, esPotencia, TIPOS_TABLERO, ipRecomendado, cablesFuerza, CLASES_CABLE, CANALIZACIONES, controlInterno, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, ovrTablero } from "./datos.js";
 import { seccionesFilosofia, seccionesTipicos, datosFilosofia, prepararFilosofia } from "./modules/filosofia.js";
 import { tempCorrFactor, cableFor, miguelezCableFor } from "./engine/tablero-core.js";
 import { rellenarExcel } from "./xlsx-engine.js";
@@ -206,7 +206,7 @@ export function camposHDEq(p, t){
     f("Tensión nominal", "Vac", g.voltage); f("Número de fases / hilos", "", "3F + T"); f("Frecuencia", "Hz", g.freq); f("Tensión de control", v.tensionControlTipo, v.tensionControl);
     { const ci = controlInterno(p, t); if(ci.length > 1) f("Tensión de servicios (ventilación, luminaria, tomacorriente)", ci[1].tipo, ci[1].v);
       if(ci.some(g=>g.fuente==="externa")) f("Alimentación del control interno", "", `Segunda fuente externa${t.fuenteServiciosDesde ? " desde "+t.fuenteServiciosDesde : ""}`);
-      const a = accesoriosTablero(p, t); f("Protecciones de la acometida", "", ACC_PROTECCION.filter(([k])=>a[k]).map(([, l])=>l).join(", ") || "—"); f("Accesorios", "", ACC_ACCESORIOS.filter(([k])=>a[k]).map(([, l])=>l).join(", ") || "—"); }
+      const a = accesoriosTablero(p, t); f("Protecciones de la acometida", "", ACC_PROTECCION.filter(([k])=>a[k]).map(([k, l])=>k==="spd" ? `${l} ${ovrTablero(a, g.voltage).nombre.toLowerCase()}` : l).join(", ") || "—"); f("Accesorios", "", ACC_ACCESORIOS.filter(([k])=>a[k]).map(([, l])=>l).join(", ") || "—"); }
     f("Nivel de cortocircuito (capacidad mínima de interrupción)", "kA", g.faultLevel);
     f("Interruptor general", "A", c.mainBreaker ? "3x"+c.mainBreaker : ""); f("Corriente nominal de barras (mínima)", "A", c.mainBreaker || "");
     f("Potencia instalada", "kVA", r2(c.installedKVA,2)); f("Máxima demanda", "kVA", r2(c.totalKVA,2)); f("Corriente de máxima demanda", "A", r2(c.demandCurrent,2));
@@ -218,7 +218,7 @@ export function camposHDEq(p, t){
     const acc = t.accesorios || {};
     if(acc.spd || acc.releFase || acc.luces){
       sec("ACCESORIOS");
-      if(acc.spd) f("Supresor de sobretensiones (SPD)", "", `Tipo 1+2, ${g.voltage} V, 3F (p.ej. ABB OVR T1 T2 3L)`);
+      if(acc.spd){ const o = ovrTablero(acc, g.voltage); f("Supresor de sobretensiones (SPD)", "", `${o.nombre}, ${g.voltage} V, 3F, ${o.descarga} (p.ej. ABB ${o.modelo})`); }
       if(acc.releFase) f("Relé de supervisión de fases (falla, secuencia, sub/sobretensión)", "", "p.ej. ABB CM-MPS.41S");
       if(acc.luces) f("Luces piloto de presencia de tensión", "", "R, S, T — LED 22 mm");
     }

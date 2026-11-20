@@ -15,7 +15,7 @@
    Coordenadas: mm, origen en la esquina inferior izquierda del cuerpo del gabinete (sin zócalo), x a la derecha,
    y hacia arriba, z desde la pared posterior hacia la puerta. Todo lo cambiable por el usuario (o por Copito)
    vive en datos(p).mecanico[tablero.id]. */
-import { calcularTablero, datos, ipRecomendado, tablerosPotencia, desdeTxt, accesoriosTablero, fusiblesAcometida, distribucionPrincipal } from "../datos.js";
+import { calcularTablero, datos, ipRecomendado, tablerosPotencia, desdeTxt, accesoriosTablero, fusiblesAcometida, distribucionPrincipal, ovrTablero } from "../datos.js";
 import { valoresDiseno, tempDiseno } from "../modules/criterios.js";
 import * as C from "./componentes.js";
 import { equiposControl } from "../control/equipos.js";
@@ -79,7 +79,8 @@ function listaEquipos(p, t, calc, cfg, v){
   E.aux.push(mk({ tag:"CB1", tipo:"mcb", polos:1, desc:"Interruptor del circuito de la bobina de mínima tensión", modelo:"S201-C2", val:"2A", grupo:"uvr" }, C.mcb(1)));
   if(acc.spd!==false){
     E.aux.push(mk({ tag:"FS1", tipo:"xlp", polos:3, desc:"Seccionador portafusible del supresor de sobretensiones", modelo:"XLP000-6CC + fusibles 170M1568D 125A", val:"125A", grupo:"spd" }, C.seccionadorFusible("XLP000", 100)));
-    E.aux.push(mk({ tag:"SPD1", tipo:"spd", desc:"Supresor de sobretensiones tipo 1+2 (SPD1, SPD2, SPD3)", modelo:C.SPD.modelo, val:"12,5 kA", grupo:"spd" }, C.SPD));
+    const ovr = ovrTablero(acc, g.voltage);
+    E.aux.push(mk({ tag:"SPD1", tipo:"spd", desc:`Supresor de sobretensiones ${ovr.nombre.toLowerCase()} (SPD1, SPD2, SPD3)`, modelo:ovr.modelo, val:ovr.descarga, grupo:"spd" }, C.SPD));
   }
   E.bornes.push({ grupo:"TB1", desc:"Bornera de la bobina de mínima tensión y parada de emergencia", bornes:[{ n:"1", modelo:"PTTB 4" }, { n:"2", modelo:"PTTB 4" }] });
   // --- circuitos (columnas del multifilar, en el mismo orden)
@@ -796,7 +797,7 @@ export function arregloTablero(p, t, calc){
   const bom = listaMateriales(comps, bloquesB, barras, canaletas, rieles, puerta, fase, pe, aisladores.length*3, cabs, secciones.reduce((a, s)=>a + (s.puertas||1), 0), E.extra);
   // altura de la manija de la puerta: en los murales a media puerta (en uno bajo, 900 mm quedaba fuera de la hoja)
   const manijaY = montaje==="mural" ? Math.round(H/2 - 80) : 900;
-  return aplicarAccesoriosMecanicos({ tablero:t, calc, cfg, montaje, W, H, D, zocalo, manijaY, techo: /intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom, ajustes,
+  return aplicarAccesoriosMecanicos({ tablero:t, calc, cfg, montaje, W, H, D, zocalo, manijaY, lockout: !!acc.lockout, techo: /intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom, ajustes,
     secciones, placas, comps, canaletas, rieles, barras, aisladores, conexiones, bornes:bloquesB, puerta, panel, base, ventilacion:vent, termico:term,
     fase, pe, filas:filaInfo, criterios, avisos, bom, tension:g.voltage, frecuencia:g.freq, reserva }, cfg);
 

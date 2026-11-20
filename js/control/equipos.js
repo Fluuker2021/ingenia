@@ -87,7 +87,7 @@ export function equiposControl(p, t){
     modelo:"UT 4-HESI (5x20) + fusible 5x20", borne:`XF1.${i+1}`, descripcion:c.descripcion, cable:"2C#14AWG+14AWG(T)", potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") }));
   dist120.forEach((c, i)=>{ const a = +c.proteccion||2; circuitos.push({ barra:"120 Vac", circuito:"C"+(i+1), tag:cbTag(), tipo:"mcb", polos:2, in:a, val:`2x${a}A`, modelo:mcbModelo(2, a),
     borne:`${TB(3)}.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||""), cfg:c.cfg }); });
-  let nID = 0;
+  let nID = off.id || 0;   // tablero de fuerza y control: sigue la numeración de los diferenciales de la parte de fuerza
   c220.filter(c=>conAux || c.cfg!=="luz220").forEach((c, i)=>{ const a = +c.proteccion||4; const o = { cfg:c.cfg, barra: conAux ? "220 Vac" : vEst, circuito:"C"+(i+1), tag:cbTag(), tipo:"mcb", polos:2, in:a, val:`2x${a}A`, modelo:mcbModelo(2, a),
     borne:`${TB(4)}.${2*i+1}/${2*i+2}`, descripcion:c.descripcion, cable:c.cable || cablePara(a), potencia:+c.potencia||0, reserva:/^reserva$/i.test(c.descripcion||"") };
     if(c.diferencial){ o.id = { tag:"ID"+(++nID), tipo:"diferencial", polos:2, in:25, sens:"30mA", modelo:"FH202 AC-25/0.03", val:"2x25A 30mA" }; }

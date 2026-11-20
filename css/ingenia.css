@@ -575,6 +575,8 @@ td.num.err{color:var(--err); font-weight:600;}
 /* tabla de tableros: listas de casillas (protección / accesorios) en columna, sin cortar los textos */
 .acc-lista{display:flex; flex-direction:column; gap:3px; align-items:flex-start;}
 .acc-lista .checkbox{font-size:12.5px; white-space:nowrap; margin:0;}
+.acc-lista .acc-ovr{display:flex; align-items:center; gap:6px; font-size:12.5px; white-space:nowrap; margin:0;}
+.acc-lista .acc-ovr select{min-width:0; width:auto; padding-top:3px; padding-bottom:3px;}
 .tb-tableros td{vertical-align:top;}
 
 /* ---------- ruta de trabajo de los documentos ---------- */

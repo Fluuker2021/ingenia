@@ -184,6 +184,26 @@ export function hojasPuerta(m, gap = 3){
   }
   return out;
 }
+/* manija de cada hoja de puerta, en su borde de cierre (entre las puertas): x centro, y0 borde inferior, w × h. Con lock out
+   es la manija con bloqueo por candado del modelo de referencia (escudo con palanca, placa y cilindro de cerradura) */
+export const LOCKOUT = { w:40, h:200, prof:38 };
+export function manijasPuerta(m, gap = 3){
+  const yM = m.manijaY ?? 900;
+  return hojasPuerta(m, gap).map(h=>{ const xm = h.bisagra==="izq" ? h.x1 - 45 : h.x0 + 25;
+    return m.lockout ? { hoja:h, lockout:true, x:xm + 10, y0:yM - 20, w:LOCKOUT.w, h:LOCKOUT.h, prof:LOCKOUT.prof } : { hoja:h, x:xm + 10, y0:yM, w:20, h:160, prof:30 }; });
+}
+/* visor (ventana de inspección con tapa abatible) del modelo de referencia: marco, ventana de esquinas redondeadas,
+   dos cierres a la izquierda y dos bisagras a la derecha; solo cambian el ancho y el alto */
+export const VISOR = { izq:55, der:28, vert:28, marco:5, prof:40, cierre:{ x:28, y:35, r:12 }, bisagra:{ w:16, h:60, f:[0.3, 0.7] } };
+export function ventanaVisor(z){
+  const x0 = z.x0 + VISOR.izq, x1 = z.x1 - VISOR.der, y0 = z.y0 + VISOR.vert, y1 = z.y1 - VISOR.vert;
+  return { x0, x1, y0, y1, r: Math.max(4, Math.min(35, 0.14*Math.min(x1 - x0, y1 - y0))) };
+}
+export const bisagrasVisor = z => { const h = z.y1 - z.y0, hb = Math.min(VISOR.bisagra.h, 0.17*h); return VISOR.bisagra.f.map(f=>({ y: z.y0 + h*f, h: hb })); };
+/* perfil lateral de la caperuza antilluvia (modelo de referencia): espalda contra la puerta, tapa superior corta, cara
+   inclinada y frente vertical; abierta hacia abajo. Puntos [salida desde la puerta, altura] desde el borde inferior. */
+export function perfilCaperuza(c){ const p = c.prof, h = c.h; return [[0, 0], [0, h], [0.4*p, h], [p, h - 0.85*p], [p, 0]]; }
+
 /* placa de identificación (tipo, nombre, TAG y tensión): 140 × 90 mm, centrada en su hoja y a ~25 mm del borde superior de
    la puerta — el criterio de 5 de los 7 planos mecánicos de referencia (los otros 2 usan 140 × 40) */
 export const PLACA_ID = { w:140, h:90, margen:25 };
@@ -196,24 +216,34 @@ export function placaId(m){ const H = m.H, y1 = H - 3 - PLACA_ID.margen; return 
 export function senalesRiesgo(m){
   const { H } = m, hojas = hojasPuerta(m), manY = m.manijaY ?? 900, mural = m.montaje==="mural";
   const anchoMin = Math.min(...hojas.map(h=>h.x1 - h.x0));
-  const [w, h] = anchoMin >= 550 && H >= 1200 ? [200, 300] : anchoMin >= 380 ? [150, 210] : [110, 160];
-  const caja = (x, y) => [x - w/2, y - h/2, x + w/2, y + h/2];
   const pid = placaId(m);
+  // obstáculos de la hoja: dispositivos de puerta (con su caperuza o visor si los llevan), panel, placa y manija
   const obst = hoja => {
     const o = [];
-    for(const d of m.puerta||[]){ if(d.x < hoja.x0 - 1 || d.x > hoja.x1 + 1) continue; const dw = d.anillo || d.w || d.diam || 60, dh = d.anillo || d.h || d.diam || 60;
+    for(const d of m.puerta||[]){ if(d.x < hoja.x0 - 1 || d.x > hoja.x1 + 1) continue; const cp = (m.caperuzas||[]).find(c=>c.tag && c.tag===d.tag && c.x===d.x && c.y===d.y);
+      const dw = cp ? cp.w : d.anillo || d.w || d.diam || 60, dh = cp ? cp.h : d.anillo || d.h || d.diam || 60;
       o.push([d.x - dw/2 - 25, d.y - dh/2 - 25, d.x + dw/2 + 25, d.y + dh/2 + (d.leyenda ? 50 : 25)]); }
+    for(const z of m.visores||[]) if(z.x1 > hoja.x0 && z.x0 < hoja.x1) o.push([z.x0 - 20, z.y0 - 20, z.x1 + 20, z.y1 + 20]);
     if(m.panel && m.panel.x + m.panel.w > hoja.x0 && m.panel.x < hoja.x1) o.push([m.panel.x - 20, m.panel.y - 20, m.panel.x + m.panel.w + 20, m.panel.y + m.panel.h + 20]);
     if(pid.x >= hoja.x0 && pid.x <= hoja.x1) o.push([pid.x - pid.w/2 - 20, pid.y - pid.h/2 - 20, pid.x + pid.w/2 + 20, H]);
     const xm = hoja.bisagra==="izq" ? hoja.x1 - 45 : hoja.x0 + 25; o.push([xm - 25, manY - 25, xm + 45, manY + 185]);
     return o;
   };
-  const libre = (hoja, y) => { const x = (hoja.x0 + hoja.x1)/2, b = caja(x, y); if(b[1] < (mural ? 40 : 60) || b[3] > H - 40 || b[0] < hoja.x0 + 15 || b[2] > hoja.x1 - 15) return false;
-    return !obst(hoja).some(r=>b[0] < r[2] && b[2] > r[0] && b[1] < r[3] && b[3] > r[1]); };
-  const y0 = (mural ? 65 : 230) + h/2, ys = [];
-  for(let y = y0; y < H - h/2 - 40; y += 25) ys.push(Math.round(y));
-  const comun = ys.find(y=>hojas.every(hh=>libre(hh, y)));
-  return hojas.map(hh=>{ const y = comun ?? ys.find(yy=>libre(hh, yy)) ?? y0; return { x:(hh.x0 + hh.x1)/2, y, w, h, seccion:hh.seccion }; });
+  // tamaño según la hoja; si no hay lugar libre (p. ej. con caperuzas en una puerta chica), la placa se reduce
+  const tams = [[200, 300], [150, 210], [110, 160], [90, 130]].filter(([w, h])=>w===200 ? anchoMin >= 550 && H >= 1200 : w===150 ? anchoMin >= 380 : true);
+  let res = null;
+  for(const [w, h] of tams){
+    const caja = (x, y) => [x - w/2, y - h/2, x + w/2, y + h/2];
+    const libre = (hoja, y) => { const x = (hoja.x0 + hoja.x1)/2, b = caja(x, y); if(b[1] < (mural ? 40 : 60) || b[3] > H - 40 || b[0] < hoja.x0 + 15 || b[2] > hoja.x1 - 15) return false;
+      return !obst(hoja).some(r=>b[0] < r[2] && b[2] > r[0] && b[1] < r[3] && b[3] > r[1]); };
+    const y0 = (mural ? 65 : 230) + h/2, ys = [];
+    for(let y = y0; y < H - h/2 - 40; y += 25) ys.push(Math.round(y));
+    const comun = ys.find(y=>hojas.every(hh=>libre(hh, y)));
+    const r = hojas.map(hh=>{ const y = comun ?? ys.find(yy=>libre(hh, yy)); return { x:(hh.x0 + hh.x1)/2, y: y ?? y0, w, h, seccion:hh.seccion, ok: y!=null }; });
+    if(!res) res = r;
+    if(r.every(x=>x.ok)){ res = r; break; }
+  }
+  return res.map(({ ok, ...x })=>x);
 }
 
 export const VENTILADORES = [

@@ -6,7 +6,7 @@ import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/c
 import { renderEditor } from "./modules/tablas.js";
 import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl, dimensionarCircuito, instrumentos, sistemaTag, uidc, APPLICATIONS,
   TIPOS_TABLERO, nuevoTablero, tableros, tablerosPotencia, tablerosControl, tableroPorId, esControl, esFuerza, tf, tc, desdeTxt, aplicarTipicos, REGIMENES,
-  calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, calcularTodos, controlInterno,
+  calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, TIPOS_OVR, ovrTablero, calcularTodos, controlInterno,
   TIPOS_CARGA_TRAFO, APLIC_CARGA_TRAFO, UNIDADES_CARGA_TRAFO, nuevaCargaTrafo, vaCargaTrafo, aplicarPotenciaTrafo, aplicarPotenciaTipica } from "./datos.js";
 import { camposHD, camposHDEq } from "./docs.js";
 import { filosofiaDe, filosofiaAuto, guardarTabla, guardarTexto, guardarAreas, filosofiaOps, arquitecturaSVG, TEXTOS_FIL, TIPOS_ALARMA, TIPOS_INTERLOCK } from "./modules/filosofia.js";
@@ -205,7 +205,10 @@ const ED = {
     const d = datos(p);
     // ancho de un campo de texto según su contenido (los textos no se cortan)
     const ancho = (v, min) => `width:calc(${Math.max(min, String(v||"").length + 2)}ch + 18px)`;
-    const casillas = (lista, valores) => `<div class="acc-lista">${lista.map(([k, l, ayuda])=>`<label class="checkbox" ${ayuda ? `title="${esc(ayuda)}"` : ""}><input type="checkbox" data-acc="${k}" ${valores[k] ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div>`;
+    // protección de la acometida: supresor de sobretensiones (OVR, con su tipo) y relé de fases
+    const proteccion = acc => { const tipo = acc.spd ? (TIPOS_OVR.some(x=>x[0]===acc.spdTipo) ? acc.spdTipo : "T1+2") : "";
+      return `<div class="acc-lista"><label class="acc-ovr" title="Supresor de sobretensiones (OVR / SPD) de la acometida, según IEC 61643-11">OVR <select data-ovr>${[["", "Sin OVR", "El tablero no lleva supresor de sobretensiones"], ...TIPOS_OVR].map(([k, l, ayuda])=>`<option value="${esc(k)}" title="${esc(ayuda)}" ${tipo===k ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+        ${ACC_PROTECCION.filter(([k])=>k!=="spd").map(([k, l, ayuda])=>`<label class="checkbox" title="${esc(ayuda)}"><input type="checkbox" data-acc="${k}" ${acc[k] ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div>`; };
     const AYUDA_ACC = {
       ventilacion:"Ventiladores con filtro en la puerta y su circuito en el unifilar (automático: con variadores o arrancadores suaves)",
       calefaccion:"Resistencia anticondensación con termostato (automático: temperatura mínima ≤ 5 °C, exterior o altitud ≥ 3000 m)",
@@ -225,7 +228,7 @@ const ED = {
           <td><div class="acc-lista"><select data-c="desde"><option value="">Externo / existente</option>${pot.filter(x=>x!==t).map(x=>`<option value="${x.id}" ${t.desde===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>${t.desde?"":`<input type="text" data-c="desdeTexto" value="${esc(t.desdeTexto||"")}" placeholder="Ej: SE-01" style="${ancho(t.desdeTexto, 14)}">`}
             ${ctlInt ? `<label class="muted" style="font-size:11.5px;margin-top:4px">Control interno</label><select data-c="fuenteServicios" title="Alimentación del control interno (ventilación, luminaria, tomacorriente y tableros de control)"><option value="trafo" ${t.fuenteServicios!=="externa"?"selected":""}>Transformador propio</option><option value="externa" ${t.fuenteServicios==="externa"?"selected":""}>Segunda fuente externa</option></select>${t.fuenteServicios==="externa" ? `<input type="text" data-c="fuenteServiciosDesde" value="${esc(t.fuenteServiciosDesde||"")}" placeholder="Viene de… (ej: TD-02)" style="${ancho(t.fuenteServiciosDesde, 16)}">` : ""}` : ""}</div></td>
           <td class="centro">${esFuerza(t) && t.tipo!=="fuerzacontrol" ? `<select data-c="control"><option value="">${ctl[0] ? esc(ctl[0].tag)+" (por defecto)" : "—"}</option>${ctl.map(x=>`<option value="${x.id}" ${t.control===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>` : `<span class="muted">—</span>`}</td>
-          <td class="centro">${conAcc ? casillas(ACC_PROTECCION, acc) : '<span class="muted">—</span>'}</td>
+          <td class="centro">${conAcc ? proteccion(acc) : '<span class="muted">—</span>'}</td>
           <td><button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button></td></tr>`; }).join("")}
         </tbody></table></div>
         <div class="row mt-1">${Object.entries(TIPOS_TABLERO).map(([k,T])=>`<button class="btn-sm" data-addt="${k}">${ICON.plus} ${esc(T.nombre)}</button>`).join("")}</div>`;
@@ -237,6 +240,11 @@ const ED = {
         if(k==="ventilacion" || k==="calefaccion"){ const cfg = cfgMecanico(p, t); cfg[k] = k==="ventilacion" ? (i.checked ? "forzada" : "natural") : (i.checked ? "si" : "no"); }
         else { t.accesorios = t.accesorios || {}; t.accesorios[k] = i.checked; }
         cambio();
+      });
+      // supresor de sobretensiones: sin OVR o el tipo elegido
+      $$("tr[data-i] [data-ovr]", el).forEach(sl=>sl.onchange = ()=>{
+        const t = d.tableros[+sl.closest("tr").dataset.i]; t.accesorios = t.accesorios || {};
+        t.accesorios.spd = !!sl.value; if(sl.value) t.accesorios.spdTipo = sl.value; cambio();
       });
       $$("tr[data-i] [data-c]", el).forEach(i=>i.onchange = ()=>{
         const t = d.tableros[+i.closest("tr").dataset.i], k = i.dataset.c, v = i.value.trim();
@@ -259,7 +267,7 @@ const ED = {
         equipos[f[0]].push(`${it.devtag} ${String(it.val||"").split(" · ")[0]} — ${modeloCorto(it.model)}`);
       }
       for(const t of tablerosPotencia(p)){ const a = accesoriosTablero(p, t);
-        if(a.spd) equipos.spd.push(`SPD1 (${t.tag}) — ${modeloCorto(modeloEnMarca("OVR T1-T2 3L 12.5-440s P QS", "", mr))}`);
+        if(a.spd) equipos.spd.push(`SPD1 (${t.tag}) — ${modeloCorto(modeloEnMarca(ovrTablero(a, calcularTablero(p, t).g.voltage).modelo, "", mr))}`);
         if(a.releFase) equipos.reles.push(`RF (${t.tag}) — ${modeloCorto(modeloEnMarca("CM-MPS.41S", "", mr))}`); }
       for(const t of d.tableros) equipos.gabinetes.push(`${t.tag} — ${mr.gabinetes}`);
       // solo las familias con equipos en el proyecto; las listas largas se despliegan con «y N más»

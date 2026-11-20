@@ -620,3 +620,24 @@ select.sel-estado option{background:#fff; color:var(--text); font-weight:400;}
 .trafo-cuerpo select{width:auto;}
 .trafo-circ{display:flex; flex-wrap:wrap; gap:4px 16px;}
 @media (max-width:700px){ .docs-table tr[data-g] td:first-child{padding-left:0;} }
+
+/* recuadro de cabecera de la vista previa: marco completo (con su línea inferior) */
+.xl-head{border:1px solid var(--grafito-800); border-bottom-width:2px;}
+
+/* datos de entrada: filas de varios tableros (o transformadores) en una misma tabla, un fondo suave por grupo */
+tr.grupo-tab > td{background:var(--grupo-bg);}
+tr.grupo-tab > td:first-child{box-shadow:inset 3px 0 0 var(--grupo-borde);}
+tr.grupo-tab:hover > td{background:var(--grupo-bg); filter:brightness(.985);}
+tr.grupo-tab-0{--grupo-bg:#EEF4FB; --grupo-borde:#9DB8DA;}
+tr.grupo-tab-1{--grupo-bg:#FBF5E6; --grupo-borde:#DDBF7A;}
+tr.grupo-tab-2{--grupo-bg:#EEF7F0; --grupo-borde:#94C4A0;}
+tr.grupo-tab-3{--grupo-bg:#F5F0FA; --grupo-borde:#B8A3D6;}
+tr.grupo-tab-4{--grupo-bg:#ECF6F6; --grupo-borde:#8EC3C3;}
+tr.grupo-tab-5{--grupo-bg:#FAEFF1; --grupo-borde:#D9A3AE;}
+
+/* filas que se ordenan arrastrando (mantener presionado un espacio libre de la fila) */
+tbody.filas-movibles > tr[data-i] > td{cursor:grab;}
+tbody.filas-movibles > tr[data-i] > td :is(input, select, button, textarea){cursor:auto;}
+tbody.filas-movibles > tr[data-i] > td button{cursor:pointer;}
+tbody.filas-movibles > tr.fila-arrastrada > td{background:#FFF6CC !important; box-shadow:0 1px 0 #F5C518, 0 -1px 0 #F5C518;}
+body.arrastrando-fila, body.arrastrando-fila *{cursor:grabbing !important; user-select:none;}

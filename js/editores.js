@@ -4,6 +4,7 @@ import * as S from "./store.js";
 import { save } from "./store.js";
 import { PARAMETROS_DISENO, valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { renderEditor } from "./modules/tablas.js";
+import { arrastrarFilas, moverEn, colorTablero } from "./filas.js";
 import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl, dimensionarCircuito, instrumentos, sistemaTag, uidc, APPLICATIONS,
   TIPOS_TABLERO, nuevoTablero, tableros, tablerosPotencia, tablerosControl, tableroPorId, esControl, esFuerza, tf, tc, desdeTxt, aplicarTipicos, REGIMENES,
   calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, TIPOS_OVR, ovrTablero, calcularTodos, controlInterno,
@@ -73,7 +74,7 @@ export function enlazarDiseno(root, onCambio){
 }
 
 /* tabla editable genérica */
-function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, onCell, clase, extraBotones, mover }){
+function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, onCell, clase, extraBotones, mover, grupo }){
   // ancho de un campo: el mínimo de la columna o el del valor más largo (en caracteres), para que no se corte
   const anchoCol = c => { const largo = Math.max(String(c.t||"").length*0.6, ...filas.map(f=>String(f[c.k]??"").length));
     return `max(${c.w||110}px, calc(${Math.ceil(largo)}ch + ${c.n ? 34 : 18}px))`; };
@@ -82,13 +83,15 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
   const render = ()=>{
     // al redibujar se conserva el desplazamiento horizontal de la tabla y el campo en edición
     const wrap0 = $(".table-wrap", el), sl = wrap0 ? wrap0.scrollLeft : 0;
+    // filas de varios tableros (o transformadores) en la misma tabla: un fondo suave por grupo
+    const colorG = colorTablero(grupo ? filas.map(grupo) : []);
     const act = document.activeElement && el.contains(document.activeElement) && document.activeElement.closest("tr[data-i]") && document.activeElement.closest(".table-wrap")===wrap0 ? { i: document.activeElement.closest("tr").dataset.i, c: document.activeElement.dataset.c } : null;
     el.innerHTML = html`<div class="row between mb-2"><div class="row">
         ${nuevo ? `<button class="btn-primary btn-sm" data-add>${ICON.plus} Agregar fila</button>` : ""}
         ${ejemplo ? `<button class="btn-sm" data-ej>Cargar ejemplo</button>` : ""}${extraBotones||""}
       </div><span class="muted">${filas.length} registro(s)</span></div>
-      <div class="table-wrap"><table class="ed-table"><thead><tr>${columnas.map(c=>`<th>${esc(c.t)}</th>`).join("")}${nuevo||mover?"<th></th>":""}</tr></thead>
-      <tbody>${filas.map((f,i)=>`<tr data-i="${i}">${columnas.map(c=>{
+      <div class="table-wrap"><table class="ed-table"><thead><tr>${columnas.map(c=>`<th>${esc(c.t)}</th>`).join("")}${nuevo?"<th></th>":""}</tr></thead>
+      <tbody>${filas.map((f,i)=>`<tr data-i="${i}" class="${colorG(grupo ? grupo(f) : null)}" ${mover ? 'title="Mantén presionado un espacio libre de la fila para subirla o bajarla"' : ""}>${columnas.map(c=>{
         // valores centrados (la descripción a la izquierda) y anchos que crecen con el texto más largo de la columna
         const cls = (clase ? (clase(f, c.k)||"") : "") + (c.izq ? " izq" : "");
         if(c.calc) return `<td class="mono muted${c.izq?"":" centro"}">${esc(c.calc(f,i))}</td>`;
@@ -98,11 +101,12 @@ function tablaEditable(el, { columnas, filas, nuevo, ejemplo, onChange, vacio, o
           return `<td><select data-c="${c.k}" class="${cls}" style="width:calc(${largo}ch + 34px)" ${ops.length===1?"disabled":""}>${ops.map(o=>{ const [v,l] = Array.isArray(o)?o:[o,o]; return `<option value="${esc(v)}" ${String(f[c.k]??"")===String(v)?"selected":""}>${esc(l)}</option>`; }).join("")}</select></td>`; }
         if(c.chk) return `<td style="text-align:center"><input type="checkbox" data-c="${c.k}" ${f[c.k]?"checked":""}></td>`;
         return `<td><input type="${c.n?"number":"text"}" ${c.n?'step="any"':""} data-c="${c.k}" value="${esc(f[c.k]??"")}" class="${cls}" style="width:${anchoCol(c)}"></td>`;
-      }).join("")}${nuevo||mover?`<td style="white-space:nowrap">${mover?`<button class="btn-ghost btn-sm" data-up title="Subir">↑</button><button class="btn-ghost btn-sm" data-dn title="Bajar">↓</button>`:""}${nuevo?`<button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button>`:""}</td>`:""}</tr>`).join("") || `<tr><td colspan="${columnas.length+1}" class="muted" style="text-align:center;padding:20px">${esc(vacio||"Sin registros")}</td></tr>`}</tbody></table></div><div data-pie></div>`;
+      }).join("")}${nuevo?`<td style="white-space:nowrap"><button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button></td>`:""}</tr>`).join("") || `<tr><td colspan="${columnas.length+1}" class="muted" style="text-align:center;padding:20px">${esc(vacio||"Sin registros")}</td></tr>`}</tbody></table></div><div data-pie></div>`;
     const ad = $("[data-add]", el); if(ad) ad.onclick = ()=>{ filas.push(nuevo()); onChange(); render(); };
     const ej = $("[data-ej]", el); if(ej) ej.onclick = ()=>{ ejemplo().forEach(x=>filas.push(x)); onChange(); render(); toast("Ejemplo cargado — edítalo según tu proyecto"); };
     $$("[data-del]", el).forEach(b=>b.onclick = ()=>{ filas.splice(+b.closest("tr").dataset.i, 1); onChange(); render(); });
-    $$("[data-up],[data-dn]", el).forEach(b=>b.onclick = ()=>{ const i = +b.closest("tr").dataset.i, j = i + (b.hasAttribute("data-up") ? -1 : 1); if(j<0 || j>=filas.length) return; [filas[i], filas[j]] = [filas[j], filas[i]]; onChange(); render(); });
+    // orden de las filas: manteniendo presionado un espacio libre de la fila se la arrastra hacia arriba o abajo
+    if(mover && filas.length > 1) arrastrarFilas($("tbody", el), (i, j)=>{ moverEn(filas, i, j); onChange(); render(); });
     $$("[data-c]", el).forEach(inpEl=>inpEl.addEventListener("change", ()=>{
       const f = filas[+inpEl.closest("tr").dataset.i], c = columnas.find(x=>x.k===inpEl.dataset.c);
       f[c.k] = inpEl.type==="checkbox" ? inpEl.checked : c.n ? (inpEl.value===""?"":parseFloat(inpEl.value)) : inpEl.value;
@@ -366,7 +370,7 @@ const ED = {
     // potencia: la típica de su tipo y aplicación mientras el usuario no la cambie (las anteriores, distintas del valor por
     // defecto de 10, se consideran fijadas por el usuario)
     d.cargas.forEach(l=>{ l.man = l.man || {}; if(l.man.power==null) l.man.power = +l.power!==10; });
-    tablaEditable(wrap, { filas: d.cargas, onChange: cambio, vacio:"Sin cargas. Agrega la primera fila.",
+    tablaEditable(wrap, { filas: d.cargas, onChange: cambio, vacio:"Sin cargas. Agrega la primera fila.", mover:true, grupo: f=>f.tablero,
       nuevo: ()=>nuevaCarga("motor", def.id),
       extraBotones: `<button class="btn-sm" data-tip title="Vuelve a proponer FDP, EFF, FU y FS típicos en todas las cargas">Restablecer valores típicos</button>`,
       onCell: (f, k)=>{ if(["fp","effPct","fu","fs"].includes(k)){ f.man = f.man||{}; f.man[k] = true; } if(k==="kind" && (f.kind==="general" || f.kind==="reserva")){ f.powerUnit = "kw"; if(!(f.man||{}).fp) f.fp = 0.9; }
@@ -423,7 +427,7 @@ const ED = {
         if(r.manPot==null) r.manPot = !(+r.power===100 && r.powerUnit==="va");
         aplicarPotenciaTrafo(r);
         if(r.diferencial==null) r.diferencial = r.tipo==="general" && r.application==="tomacorriente"; });
-      tablaEditable(cont, { filas: d.cargasTrafo, vacio:"Sin cargas en los transformadores. Agrega la primera fila.", mover:true,
+      tablaEditable(cont, { filas: d.cargasTrafo, vacio:"Sin cargas en los transformadores. Agrega la primera fila.", mover:true, grupo: r=>r.trafo,
         nuevo: ()=>nuevaCargaTrafo(trafos[0].id),
         clase: (r, k)=>k==="power" && !r.manPot ? "tipico" : "",
         onChange: ()=>{ cambio(); setTimeout(()=>{

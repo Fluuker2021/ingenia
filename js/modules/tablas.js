@@ -3,6 +3,7 @@
    Esquemas con las columnas usuales de un listado de instrumentos y de un listado I/O. */
 import { esc, html, ICON, toast } from "../ui.js";
 import { save } from "../store.js";
+import { colorTablero } from "../filas.js";
 
 export const ESQUEMAS = {
   "ins-instrumentos": {
@@ -123,6 +124,8 @@ export function renderEditor(container, id, p, onChange){
   const filas = p.datos[id];
   const render = ()=>{
     const proc = procesarFilas(id, filas, p);
+    // filas de varios tableros en la misma tabla: un fondo suave por tablero (solo en los datos de entrada)
+    const colorG = colorTablero(esq.columnas.some(c=>c.key==="tablero") ? proc.map(f=>f.tablero) : []);
     container.innerHTML = html`
       <div class="row between mb-2">
         <div class="row">
@@ -133,7 +136,7 @@ export function renderEditor(container, id, p, onChange){
       </div>
       <div class="table-wrap"><table>
         <thead><tr>${esq.columnas.map(c=>`<th>${esc(c.titulo)}</th>`).join("")}<th></th></tr></thead>
-        <tbody>${proc.map((f,i)=>`<tr data-i="${i}">${esq.columnas.map(c=>{
+        <tbody>${proc.map((f,i)=>`<tr data-i="${i}" class="${colorG(f.tablero)}">${esq.columnas.map(c=>{
           if(c.auto) return `<td class="mono muted">${esc(f[c.key]??"")}</td>`;
           const ops = c.opcionesFn ? c.opcionesFn(p) : c.opciones;
           if(ops) return `<td><select data-k="${c.key}" style="min-width:120px"><option value=""></option>${ops.map(o=>`<option ${f[c.key]===o?"selected":""}>${esc(o)}</option>`).join("")}</select></td>`;

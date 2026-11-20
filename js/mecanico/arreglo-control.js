@@ -20,6 +20,7 @@ import { valoresDiseno, tempDiseno } from "../modules/criterios.js";
 import { equiposControl } from "../control/equipos.js";
 import { cfgMecanico, ACCIONES_MOVER } from "./arreglo.js";
 import * as C from "./componentes.js";
+import { aplicarAccesoriosMecanicos } from "./accesorios.js";
 
 const ZPLACA = 25;          // superficie de la placa de montaje desde la pared posterior
 const DUCT_GAP = 25;        // espacio libre entre equipos y canaleta (conductores de control de 1 mm²)
@@ -501,10 +502,10 @@ export function arregloControl(p, t){
 
   const bom = listaMateriales(comps, bloquesB, canaletas, rieles, barras, puerta, base, pe, secciones.reduce((a, s)=>a + (s.puertas||1), 0));
   const vTxt = [...new Set([eq.vEst, ...eq.acometidas.map(a=>a.tension)])].join(" / ");
-  return { tablero:t, tipo:"control", eq, cfg, montaje, W, H, D, zocalo, techo:/intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom:null, ajustes,
+  return aplicarAccesoriosMecanicos({ tablero:t, tipo:"control", eq, cfg, montaje, W, H, D, zocalo, techo:/intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom:null, ajustes,
     secciones, placas, comps, canaletas, rieles, barras, aisladores:[], conexiones, bornes:bloquesB, puerta, panel, base, ventilacion:vent, termico:term,
     fase:null, pe, filas:filaInfo, criterios, avisos, bom, tension:vTxt, frecuencia:v.frecuencia, reserva, manijaY, placaX, senalX,
-    placaTxt:`${vTxt}, 24 Vdc, ${v.frecuencia} Hz`, peligroTxt:`PELIGRO ${vTxt.replace(/ Vac/g, "")} Vac`, notas: notasControl(t, eq, montaje, entrada, ipRecomendado(v), hm, hmiEq) };
+    placaTxt:`${vTxt}, 24 Vdc, ${v.frecuencia} Hz`, peligroTxt:`PELIGRO ${vTxt.replace(/ Vac/g, "")} Vac`, notas: notasControl(t, eq, montaje, entrada, ipRecomendado(v), hm, hmiEq) }, cfg);
 }
 
 function notasControl(t, eq, montaje, entrada, ip, hm, hmiEq){

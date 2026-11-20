@@ -117,6 +117,16 @@ export function accesoriosTablero(p, t){
   const m = (((datos(p).mecanico)||{})[t && t.id]) || {};
   a.calefaccion = calefaccionTablero(p, t);
   a.ventilacion = m.ventilacion==="forzada" ? true : m.ventilacion==="natural" ? false : cargasPropias(p, t).some(l=>l.kind==="motor" && (l.starter==="vfd" || l.starter==="ss"));
+  // con transformadores definidos en el listado de cargas, los servicios del tablero son las cargas que el usuario les asignó
+  // (luminaria, tomacorriente, ventiladores y calefacción como «Carga general»): ya no se eligen como accesorios
+  const trafos = t ? cargasPropias(p, t).filter(l=>l.kind==="control") : [];
+  if(trafos.length){
+    const filas = (datos(p).cargasTrafo||[]).filter(r=>trafos.some(l=>l.id===r.trafo) && r.tipo==="general");
+    const hay = ap => filas.some(r=>r.application===ap);
+    a.luminaria = hay("luminaria"); a.tomacorriente = hay("tomacorriente");
+    if(m.ventilacion!=="natural" && m.ventilacion!=="forzada") a.ventilacion = a.ventilacion || hay("ventiladores");
+    if(!m.calefaccion || m.calefaccion==="auto") a.calefaccion = hay("calefaccion");
+  }
   return a;
 }
 /* fusibles de la acometida de un tablero de fuerza, numerados en el orden en que aparecen: luces de fases (3), relé de

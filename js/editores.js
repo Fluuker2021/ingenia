@@ -16,6 +16,7 @@ import { parseDXF, drawPreview } from "./dxf.js";
 import { cfgMecanico, arregloTablero } from "./mecanico/arreglo.js";
 import { FAMILIAS_MARCA, marcasProyecto, modeloEnMarca, modeloCorto } from "./engine/marcas.js";
 import { arregloControl } from "./mecanico/arreglo-control.js";
+import { TECHOS, NOMBRE_DISP } from "./mecanico/accesorios.js";
 import { FAMILIAS, LISTA_FAMILIAS, familiaPorTexto, modeloFamilia, modulosFamilia, infoModulo } from "./control/plc-modulos.js";
 
 export const TITULOS = {
@@ -151,6 +152,18 @@ const ED = {
         ${campo("Calefacción anticondensación", opc("calefaccion", [["auto","Automático (T mín. ≤ 5 °C o exterior)"],["si","Sí"],["no","No"]]))}
         ${campo("Temperatura interior máxima (°C)", num("tInterior", "45"), "Para el balance térmico (IEC 60890)")}
       </div>
+      <h3 class="ed-sub mt-2">Accesorios del tablero</h3>
+      <div class="grid-3">
+        ${campo("Techo", opc("techo", TECHOS), m && m.techoTipo ? `Se dibuja: ${m.techoTipo==="inclinado" ? "inclinado" : "plano con alero"}` : "")}
+        <div class="field"><label>Accesorios</label><div class="acc-lista">
+          ${ctl ? "" : `<label class="checkbox" title="Bloqueo con candado del mando del interruptor general (lock out / tag out)"><input type="checkbox" data-acct="lockout" ${accesoriosTablero(p, t).lockout ? "checked" : ""}> Lock out</label>
+          <label class="checkbox" title="Luces piloto de presencia de las tres fases en la puerta"><input type="checkbox" data-acct="luces" ${accesoriosTablero(p, t).luces ? "checked" : ""}> Luces de energizado</label>`}
+          <label class="checkbox" title="Cubierta antilluvia sobre los ventiladores y filtros de la puerta (abertura hacia abajo)"><input type="checkbox" data-mkb="caperuza" ${cfg.caperuza ? "checked" : ""}> Caperuza en los ventiladores${m && !m.puerta.some(d=>d.tipo==="ventilador"||d.tipo==="rejilla") ? ' <span class="muted">(sin ventiladores)</span>' : ""}</label>
+          <label class="checkbox" title="Ventana de inspección IP66 con tapa abatible sobre los dispositivos de puerta que se elijan"><input type="checkbox" data-mkb="visor" ${cfg.visor ? "checked" : ""}> Visor sobre los componentes de puerta</label>
+        </div></div>
+        ${cfg.visor && m ? `<div class="field"><label>Equipos dentro del visor</label><div class="acc-lista">${m.dispositivosVisor.length ? m.dispositivosVisor.map(d=>{ const sel = Array.isArray(cfg.visorEquipos) && cfg.visorEquipos.length ? cfg.visorEquipos.includes(d.clave) : d.tipo!=="seta";
+            return `<label class="checkbox"><input type="checkbox" data-vis="${esc(d.clave)}" ${sel ? "checked" : ""}> ${esc(NOMBRE_DISP[d.tipo]||d.tipo)} ${esc(d.tag)}${d.leyenda ? ` <span class="muted">(${esc(String(d.leyenda).toLowerCase())})</span>` : ""}</label>`; }).join("") : '<span class="muted">La puerta no tiene dispositivos.</span>'}</div><div class="muted" style="font-size:11.5px">Los que no tienen grado de protección propio para el ambiente (p. ej. IP66 a la intemperie).</div></div>` : ""}
+      </div>
       <div id="mec-res"></div>`;
     const res = $("#mec-res", el);
     if(sinCargas) res.innerHTML = `<div class="notice mt-2">El tablero ${esc(t.tag)} aún no tiene cargas: agrégalas en el listado de cargas para armar el arreglo.</div>`;
@@ -168,6 +181,11 @@ const ED = {
         </tbody></table></div>
         <p class="muted mt-1" style="font-size:12px">Dimensiones referenciales de catálogo: verificar con el plano dimensional del código exacto antes de fabricar. Pídele cambios a Copito, por ejemplo: ${ctl ? `«Cambia el gabinete de ${esc(t.tag)} a 800x1000x300», «Mueve PS1 a la derecha», «Intercambia CR3 con CR4» o «Pon ventilación forzada en ${esc(t.tag)}»` : `«Cambia el gabinete de ${esc(t.tag)} a 1200x2000x600», «Entrada de cables superior en ${esc(t.tag)}» o «Ventilación forzada en ${esc(t.tag)}»`}.</p>`;
     }
+    // accesorios: lock out y luces en el tablero; techo, caperuzas y visor en su configuración mecánica
+    const rehacer = ()=>{ cambio(); res.innerHTML = spinner("Actualizando el arreglo…"); setTimeout(()=>ED.mecanico(el, p, cambio), 30); };
+    $$("[data-acct]", el).forEach(i=>i.onchange = ()=>{ t.accesorios = t.accesorios || {}; t.accesorios[i.dataset.acct] = i.checked; rehacer(); });
+    $$("[data-mkb]", el).forEach(i=>i.onchange = ()=>{ cfg[i.dataset.mkb] = i.checked; rehacer(); });
+    $$("[data-vis]", el).forEach(i=>i.onchange = ()=>{ cfg.visorEquipos = $$("[data-vis]", el).filter(x=>x.checked).map(x=>x.dataset.vis); if(!cfg.visorEquipos.length) cfg.visorEquipos = ["__ninguno__"]; rehacer(); });
     $$("[data-mk]", el).forEach(i=>i.onchange = ()=>{
       const k = i.dataset.mk; let val = i.value.trim();
       if(["ancho","alto","fondo","reserva","tInterior"].includes(k)){ val = val.replace(/[^\d.]/g, ""); if(val!=="" && !(+val>0)){ toast("Ingresa un número", true); i.value = cfg[k]; return; } val = val==="" ? "" : +val; }
@@ -198,7 +216,7 @@ const ED = {
     };
     const render = ()=>{
       const pot = tablerosPotencia(p), ctl = tablerosControl(p);
-      el.innerHTML = `<div class="table-wrap"><table class="ed-table tb-tableros"><thead><tr><th>Tipo</th><th>TAG</th><th>Nombre</th><th>Alimentado desde</th><th>Controlado desde</th><th>Protección</th><th>Accesorios</th><th></th></tr></thead><tbody>
+      el.innerHTML = `<div class="table-wrap"><table class="ed-table tb-tableros"><thead><tr><th>Tipo</th><th>TAG</th><th>Nombre</th><th>Alimentado desde</th><th>Controlado desde</th><th>Protección</th><th></th></tr></thead><tbody>
         ${d.tableros.map((t,i)=>{
           const conAcc = t.tipo!=="control", acc = conAcc ? accesoriosTablero(p, t) : {};
           const ctlInt = t.tipo==="fuerza" || t.tipo==="fuerzacontrol";
@@ -208,7 +226,6 @@ const ED = {
             ${ctlInt ? `<label class="muted" style="font-size:11.5px;margin-top:4px">Control interno</label><select data-c="fuenteServicios" title="Alimentación del control interno (ventilación, luminaria, tomacorriente y tableros de control)"><option value="trafo" ${t.fuenteServicios!=="externa"?"selected":""}>Transformador propio</option><option value="externa" ${t.fuenteServicios==="externa"?"selected":""}>Segunda fuente externa</option></select>${t.fuenteServicios==="externa" ? `<input type="text" data-c="fuenteServiciosDesde" value="${esc(t.fuenteServiciosDesde||"")}" placeholder="Viene de… (ej: TD-02)" style="${ancho(t.fuenteServiciosDesde, 16)}">` : ""}` : ""}</div></td>
           <td class="centro">${esFuerza(t) && t.tipo!=="fuerzacontrol" ? `<select data-c="control"><option value="">${ctl[0] ? esc(ctl[0].tag)+" (por defecto)" : "—"}</option>${ctl.map(x=>`<option value="${x.id}" ${t.control===x.id?"selected":""}>${esc(x.tag)}</option>`).join("")}</select>` : `<span class="muted">—</span>`}</td>
           <td class="centro">${conAcc ? casillas(ACC_PROTECCION, acc) : '<span class="muted">—</span>'}</td>
-          <td class="centro">${conAcc ? casillas(ACC_ACCESORIOS.map(([k, l])=>[k, l, AYUDA_ACC[k]]), acc) : '<span class="muted">—</span>'}</td>
           <td><button class="btn-ghost btn-sm" data-del title="Eliminar">${ICON.trash}</button></td></tr>`; }).join("")}
         </tbody></table></div>
         <div class="row mt-1">${Object.entries(TIPOS_TABLERO).map(([k,T])=>`<button class="btn-sm" data-addt="${k}">${ICON.plus} ${esc(T.nombre)}</button>`).join("")}</div>`;

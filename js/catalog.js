@@ -191,7 +191,9 @@ export function sincronizarEstado(d){
   return true;
 }
 /* documento terminado: emitido o enviado a revisión / aprobado */
-export const docListo = d => !!d && (["Para revisión","Aprobado","Emitido"].includes(d.estado) || !!d.emitida);
+/* listo (fila en verde y requisito cumplido) según el ESTADO que se ve en la lista: si el usuario lo deja «Por elaborar» o
+   «En elaboración», no se pinta en verde aunque tenga una revisión emitida */
+export const docListo = d => !!d && ["Para revisión","Aprobado","Emitido"].includes(d.estado);
 /* requisitos entre los documentos seleccionados del proyecto: si un requisito no se elabora en el proyecto, se toman los
    suyos (p. ej. el listado de cables sin memoria de conductores depende del listado de cargas) */
 export function requisitos(p, id, _vistos){

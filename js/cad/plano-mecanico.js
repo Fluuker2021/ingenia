@@ -408,8 +408,9 @@ function dibujarFrente(v, m, llam){
   v.R(0, 0, W, H, "M-GABINETE");
   if(zocalo){ v.R(0, -zocalo, W, zocalo, "M-GABINETE"); for(const s of m.secciones.slice(1)) v.L(s.x0, -zocalo, s.x0, 0, "M-GABINETE"); llam.push({ x:0, y:-zocalo/2, texto:`ZÓCALO DE ${zocalo} mm` }); }
   // techo (intemperie) y cáncamos de izaje
-  if(m.techo){ v.R(-40, H, W + 80, 30, "M-GABINETE"); v.R(-40, H + 30, W + 80, 25, "M-GABINETE"); llam.push({ x:-40, y:H + 28, texto:"TECHO CON ALERO (INTEMPERIE)" }); }
-  const yE = H + (m.techo ? 55 : 0);
+  if(m.techoTipo==="inclinado"){ v.R(-40, H, W + 80, 30, "M-GABINETE"); v.R(-40, H + 30, W + 80, 60, "M-GABINETE"); v.L(-40, H + 30, W + 40, H + 90, "M-DETALLE"); llam.push({ x:-40, y:H + 60, texto:"TECHO INCLINADO (CAÍDA HACIA ATRÁS)" }); }
+  else if(m.techo){ v.R(-40, H, W + 80, 30, "M-GABINETE"); v.R(-40, H + 30, W + 80, 25, "M-GABINETE"); llam.push({ x:-40, y:H + 28, texto:"TECHO CON ALERO (INTEMPERIE)" }); }
+  const yE = H + (m.techoAlto || 0);
   for(const xe of [80, W - 80]){ v.R(xe - 6, yE, 12, 45, "M-GABINETE"); v.C(xe, yE + 55, 14, "M-GABINETE"); v.C(xe, yE + 55, 7, "M-GABINETE"); }
   llam.push({ x:80, y:yE + 55, texto:"CÁNCAMO DE IZAJE" });
   // puertas con bisagras y manijas
@@ -423,6 +424,12 @@ function dibujarFrente(v, m, llam){
   llam.push({ x:hojasPuerta(m)[0].x1 - 35, y:(m.manijaY ?? 900) + 80, texto:"MANIJA CON CERRADURA Y LLAVE" });
   // dispositivos de puerta
   for(const d of m.puerta) dibujarDispositivo(v, d);
+  // visores (ventana de inspección IP66) sobre los dispositivos elegidos y caperuzas antilluvia de los ventiladores
+  for(const z of m.visores||[]){ v.R(z.x0, z.y0, z.x1 - z.x0, z.y1 - z.y0, "M-EQUIPO"); v.R(z.x0 + 10, z.y0 + 10, z.x1 - z.x0 - 20, z.y1 - z.y0 - 20, "M-DETALLE");
+    for(const yb of [z.y0 + 25, z.y1 - 25]) v.R(z.x0 - 8, yb - 12, 8, 24, "M-DETALLE");
+    llam.push({ x:z.x1, y:z.y1 - 15, texto:"VISOR IP66 (VENTANA DE INSPECCIÓN CON TAPA ABATIBLE)" }); }
+  for(const c of m.caperuzas||[]){ v.R(c.x - c.w/2, c.y - c.h/2, c.w, c.h, "M-EQUIPO"); for(let yy = c.y - c.h/2 + 12; yy < c.y + c.h/2 - 6; yy += 14) v.L(c.x - c.w/2 + 6, yy, c.x + c.w/2 - 6, yy, "M-DETALLE"); }
+  if((m.caperuzas||[]).length){ const c = m.caperuzas[0]; llam.push({ x:c.x + c.w/2, y:c.y + c.h/2 - 10, texto:"CAPERUZA ANTILLUVIA (VENTILADOR / FILTRO)" }); }
   const q = m.puerta.find(d=>d.tipo==="manija"); if(q) llam.push({ x:q.x, y:q.y + 45, texto:"MANIJA DEL INTERRUPTOR PRINCIPAL Q1 (NOTA 4)" });
   if(m.panel){ const p = m.panel; v.R(p.x, p.y, p.w, p.h, "M-OCULTO"); llam.push({ x:p.x, y:p.y + p.h - 20, texto:"PANEL DE OPERACIÓN (VER LÁMINA 3)" }); }
   const fv = m.puerta.find(d=>d.tipo==="ventilador"), fr = m.puerta.find(d=>d.tipo==="rejilla"), aa = m.puerta.find(d=>d.tipo==="aa");
@@ -469,8 +476,11 @@ function dibujarLateral(v, m){
     for(const d of m.puerta.filter(d=>d.tipo==="hmi")){ v.R(D - d.prof, d.y - d.recorteH/2, d.prof, d.recorteH, "M-OCULTO"); v.R(D + 22, d.y - d.h/2, 6, d.h, "M-DETALLE"); }
     for(const d of m.puerta.filter(d=>d.tipo==="ventilador")) v.R(D + 22, d.y - d.h/2, 14, d.h, "M-DETALLE"); }
   else v.R(25, 75, dmax - 25, H - 155, "M-OCULTO");
-  if(m.techo){ v.P([[-40, H], [D + 60, H], [D + 60, H + 30], [-40, H + 55]], "M-GABINETE", null, true); }
-  const yE = H + (m.techo ? 55 : 0);
+  if(m.techo){ v.P([[-40, H], [D + 60, H], [D + 60, H + 30], [-40, H + (m.techoAlto || 55)]], "M-GABINETE", null, true); }
+  // visores y caperuzas vistos de costado: sobresalen de la puerta (la caperuza con su abertura hacia abajo)
+  for(const z of m.visores||[]) v.R(D + 22, z.y0, z.prof, z.y1 - z.y0, "M-DETALLE");
+  for(const c of m.caperuzas||[]) v.P([[D + 22, c.y + c.h/2], [D + 22 + c.prof, c.y + c.h/2 - 20], [D + 22 + c.prof, c.y - c.h/2], [D + 22, c.y - c.h/2]], "M-DETALLE", null, true);
+  const yE = H + (m.techoAlto || 0);
   for(const xe of [80, D - 80]){ v.R(xe - 6, yE, 12, 45, "M-GABINETE"); v.C(xe, yE + 55, 14, "M-GABINETE"); }
 }
 /* isométrica: x (ancho) hacia la derecha-abajo, profundidad hacia la derecha-arriba, y hacia arriba */
@@ -499,8 +509,11 @@ function isometrica(doc, ox, oy, s, m){
   rectIso(pid.x - pid.w/2, pid.y - pid.h/2, pid.x + pid.w/2, pid.y + pid.h/2, "M-EQUIPO");
   for(const { x, y, w, h } of C.senalesRiesgo(m)){ rectIso(x - w/2, y - h/2, x + w/2, y + h/2, "M-SENAL"); const t = w*0.36, yc = y + h*0.16; poly([P(x - t, yc - t*0.8, 0), P(x + t, yc - t*0.8, 0), P(x, yc + t*0.95, 0)], "M-SENAL"); }
   // techo y cáncamos
-  if(m.techo){ poly([P(-40, H + 30, -40), P(W + 40, H + 30, -40), P(W + 40, H + 30, D + 40), P(-40, H + 30, D + 40)]); L(P(-40, H, -40), P(-40, H + 30, -40)); L(P(W + 40, H, -40), P(W + 40, H + 30, -40)); L(P(W + 40, H, D + 40), P(W + 40, H + 30, D + 40)); L(P(-40, H, -40), P(W + 40, H, -40)); L(P(W + 40, H, -40), P(W + 40, H, D + 40)); }
-  const yE = H + (m.techo ? 30 : 0);
+  if(m.techo){ const hf = m.techoTipo==="inclinado" ? 90 : 30;   // alto del techo en el frente (inclinado: cae hacia atrás)
+    poly([P(-40, H + hf, -40), P(W + 40, H + hf, -40), P(W + 40, H + 30, D + 40), P(-40, H + 30, D + 40)]); L(P(-40, H, -40), P(-40, H + hf, -40)); L(P(W + 40, H, -40), P(W + 40, H + hf, -40)); L(P(W + 40, H, D + 40), P(W + 40, H + 30, D + 40)); L(P(-40, H, -40), P(W + 40, H, -40)); L(P(W + 40, H, -40), P(W + 40, H, D + 40)); }
+  for(const z of m.visores||[]) poly([P(z.x0, z.y0, 0), P(z.x1, z.y0, 0), P(z.x1, z.y1, 0), P(z.x0, z.y1, 0)], "M-EQUIPO");
+  for(const c of m.caperuzas||[]) poly([P(c.x - c.w/2, c.y - c.h/2, 0), P(c.x + c.w/2, c.y - c.h/2, 0), P(c.x + c.w/2, c.y + c.h/2, 0), P(c.x - c.w/2, c.y + c.h/2, 0)], "M-EQUIPO");
+  const yE = H + (m.techoTipo==="inclinado" ? 90 : m.techo ? 30 : 0);
   for(const [xe, ee] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ L(P(xe, yE, ee), P(xe, yE + 45, ee)); const pts = []; for(let k=0;k<16;k++){ const a = k*Math.PI/8; pts.push(P(xe + 14*Math.cos(a), yE + 59 + 14*Math.sin(a), ee)); } poly(pts); }
 }
 
@@ -520,7 +533,7 @@ export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
   for(const m of modelos){
     const t = m.tablero, nombre = `${(t.nombre||"").toUpperCase()} ${t.tag}`;
     const lam = (sub)=>{ dibujarLamina(doc, k*PASO_HOJAS, 0, valsDe(k, total, { TITULO2:`${nombre} - ${sub}`, ESCALA:"INDICADA" }), cliente); return k*PASO_HOJAS; };
-    const hTot = m.H + m.zocalo + (m.techo ? 55 : 0) + 70;
+    const hTot = m.H + m.zocalo + (m.techoAlto || 0) + 70;
 
     // ---------- lámina 1: vistas exteriores ----------
     let ox = lam("VISTAS EXTERIORES");

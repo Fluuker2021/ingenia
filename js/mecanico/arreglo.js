@@ -20,6 +20,7 @@ import { valoresDiseno, tempDiseno } from "../modules/criterios.js";
 import * as C from "./componentes.js";
 import { equiposControl } from "../control/equipos.js";
 import { construir as construirControl } from "./arreglo-control.js";
+import { aplicarAccesoriosMecanicos } from "./accesorios.js";
 import { marcasProyecto, modeloEnMarca } from "../engine/marcas.js";
 
 export const CFG_DEF = () => ({ montaje:"auto", ancho:"", alto:"", fondo:"", entrada:"inferior", reserva:"", ventilacion:"auto", mandos:"auto", calefaccion:"auto", tInterior:"",
@@ -787,9 +788,9 @@ export function arregloTablero(p, t, calc){
   const bom = listaMateriales(comps, bloquesB, barras, canaletas, rieles, puerta, fase, pe, aisladores.length*3, cabs, secciones.reduce((a, s)=>a + (s.puertas||1), 0), E.extra);
   // altura de la manija de la puerta: en los murales a media puerta (en uno bajo, 900 mm quedaba fuera de la hoja)
   const manijaY = montaje==="mural" ? Math.round(H/2 - 80) : 900;
-  return { tablero:t, calc, cfg, montaje, W, H, D, zocalo, manijaY, techo: /intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom, ajustes,
+  return aplicarAccesoriosMecanicos({ tablero:t, calc, cfg, montaje, W, H, D, zocalo, manijaY, techo: /intemperie/i.test(v.ambiente||""), ip:ipRecomendado(v), entrada, zonaAcom, ajustes,
     secciones, placas, comps, canaletas, rieles, barras, aisladores, conexiones, bornes:bloquesB, puerta, panel, base, ventilacion:vent, termico:term,
-    fase, pe, filas:filaInfo, criterios, avisos, bom, tension:g.voltage, frecuencia:g.freq, reserva };
+    fase, pe, filas:filaInfo, criterios, avisos, bom, tension:g.voltage, frecuencia:g.freq, reserva }, cfg);
 
   /* --- columna de potencia: disposición relativa de sus equipos --- */
   function disponerColumna(col){

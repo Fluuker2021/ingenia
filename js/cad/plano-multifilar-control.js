@@ -211,6 +211,9 @@ function flecha(P, K, etq, io, x, y, xe, ye, dir){
   P.refEt(xe, ye, etq, K(etq+(io==="s" ? "<" : ">")), dir);
 }
 
+/* tipo y modelo del supresor una sola vez (a la izquierda del primero): repetidos bajo el segundo se encimaban */
+const textoSpd = (s, e) => /^\{(tipo|m1|m2)\}$/.test(s.trim()) && e[4] > 710 ? "" : s;
+
 /* ---------- 1) acometidas ---------- */
 function hAcometidas(c){
   const { P, eq, v, K, est, aux, ps, cb3, c220, nombre } = c;
@@ -243,13 +246,16 @@ function hAcometidas(c){
       a1:`${q}.2`, a2:`${q}.4`, pe:"PE.2", nota:"(NOTA 2)", desc:up(`Alimentación servicios del tablero${serv ? " ("+serv+")" : ""}`) } });
     flecha(P, K, "PE.2", "s", 778, 632, 778, 632.4, "der");
     flecha(P, K, `${q}.2`, "s", 626, 297, 626.45, 296.85, "abajo"); flecha(P, K, `${q}.4`, "s", 658, 297, 658.45, 296.85, "abajo");
-    P.pz("a_spd", 0, { vars:spd });
+    P.pz("a_spd", 0, { vars:spd, texto: textoSpd });
   } else {
     // supresor colgado de la barra estabilizada, a continuación de la distribución
     const xs = dx+440;
     P.linea(dx+320, 664.85, xs, 664.85, BUS.l); P.linea(dx+352, 648.85, xs+32, 648.85, BUS.l);
-    P.pz("a_spd", xs-702, { vars:spd });
-    P.linea(xs+50, 632.85, xs+66, 632.85, BUS.pe); P.texto(xs+66, 630.2, 3.25, "PE", { capa:"EPLAN420", c:7, ha:1, va:3 });
+    P.pz("a_spd", xs-702, { vars:spd, texto: textoSpd });
+    // retorno del supresor a la tierra de protección: símbolo de tierra al final del conductor (no queda abierto)
+    P.linea(xs+50, 632.85, xs+66, 632.85, BUS.pe); P.linea(xs+66, 632.85, xs+66, 626.85, BUS.pe);
+    P.linea(xs+62, 626.85, xs+70, 626.85, SIMB); P.linea(xs+63.5, 624.85, xs+68.5, 624.85, SIMB); P.linea(xs+65, 622.85, xs+67, 622.85, SIMB);
+    P.texto(xs+72, 626.2, 3.25, "PE", { capa:"EPLAN420", c:7, va:2 });
   }
   P.pz("leyenda", 18);
   const notas = ["NOTAS:", P.etapa ? `1. LA ETAPA DE CONTROL (${up(est.tension)}, ${est.fases}, ${v.frecuencia} HZ) SE ALIMENTA DESDE EL CONTROL INTERNO DEL MISMO TABLERO${est.circuito ? ", CIRCUITO "+up(est.circuito) : ""}.` : `1. LA ACOMETIDA DE ${up(est.tension)} (${est.fases}, ${v.frecuencia} HZ) PARA EL ${nombre} ES SUMINISTRADA POR EL CLIENTE.`,
@@ -283,16 +289,18 @@ function hDistribucion(c){
     // columnas de 84 mm (hasta 100 mm si sobra espacio) centradas en el ancho útil; las derivaciones de tierra juntas al final
     const nc = items.filter(x=>x.tipo!=="pe").length, nt = items.length - nc, extra = sigue ? 0 : (nt ? nt*26 + (nc ? 20 : 0) : 0) + 30;
     const p = nc ? Math.min(100, Math.max(84, (ANCHO - extra)/nc)) : 84;
-    let x = X0 + (ANCHO - nc*p - extra)/2, ultL = null, xFin = 750;
+    let x = X0 + (ANCHO - nc*p - extra)/2, ultL = null, xFin = 750, ultOff = 2;
     items.forEach((it, k)=>{
       if(it.tipo==="pe"){ if(k===nc && nc) x += 20; it.x = x+13; x += 26; return; }
       it.x = x + 28 + (p-84)/2; ultL = it.x; x += p;
+      // borne de la barra L de la última columna: las piezas de reserva y luces lo tienen 2 mm a la derecha
+      ultOff = (it.tipo==="res" || it.tipo==="luz") ? 2 : 0;
     });
     if(!sigue) xFin = Math.min(756, Math.max(x + 14, (ultL||0) + 70));
     // barras L, N y PE (continuas entre las flechas de entrada y salida)
     const lastL = ultL!=null ? ultL : 66;
-    P.linea(40, 664.85, sigue ? 756 : lastL+2, 664.85, BUS.l);
-    P.linea(40, 648.85, sigue ? 756 : lastL+34, 648.85, BUS.l);
+    P.linea(40, 664.85, sigue ? 756 : lastL+ultOff, 664.85, BUS.l);
+    P.linea(40, 648.85, sigue ? 756 : lastL+32+ultOff, 648.85, BUS.l);
     P.linea(58, 632.85, sigue ? 728 : xFin-4, 632.85, BUS.pe);
     // flechas de entrada (desde la acometida o la hoja anterior) y de salida a la hoja siguiente
     const eL = i ? `d120:${i}:L` : `${cb3}.2`, eN = i ? `d120:${i}:N` : `${cb3}.4`, ePE = i ? `d120:${i}:PE` : "PE.1";
@@ -311,7 +319,11 @@ function hDistribucion(c){
         flecha(P, K, it.d.pe, "s", it.x, 569, it.x+0.46, 568.85, "abajo"); continue;
       }
       const q = it.c, base = { q:q.tag, qv:amp(q.in), qm:q.modelo, desc:up(q.reserva ? "Reserva" : q.descripcion) };
-      if(it.tipo==="int"){
+      if(it.tipo==="int" && P.revisar && !P.reg.has(K(`${q.tag}.2<`))){
+        // circuito interno sin hoja que lo reciba (alimentación de entradas o salidas digitales sin módulos, servicios sin su
+        // hoja): solo el interruptor y su descripción, sin flechas que no llegan a ninguna hoja
+        P.pz("d_res", it.x - 2, { lineas:{ desc:24 }, vars:base });
+      } else if(it.tipo==="int"){
         const a1 = `${q.tag}.2`, a2 = `${q.tag}.4`;
         P.pz("d_int", it.x, { lineas:{ desc:24 }, vars:Object.assign(base, { a1, a2 }) });
         flecha(P, K, a1, "s", it.x, 295, it.x+0.45, 294.85, "abajo"); flecha(P, K, a2, "s", it.x+32, 295, it.x+32.45, 294.85, "abajo");

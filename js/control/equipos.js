@@ -97,7 +97,8 @@ export function equiposControl(p, t){
     if(c.cfg==="calefaccion") o.extra = { termostato:"TH2", resistencias:["R1"], potencia:+c.potencia||100 };
     circuitos.push(o); });
   // cargas fuera del tablero (instrumentos de campo, controlador de limpieza): en el unifilar quedan fuera de la envolvente
-  const INTERNA = /plc|cpu|hmi|router|switch|entradas|salidas|fuente|ventilaci|luminaria|tomacorriente|m[oó]dulo/i;
+  // (las luces piloto van en la puerta del tablero: son internas)
+  const INTERNA = /plc|cpu|hmi|router|switch|entradas|salidas|fuente|ventilaci|luminaria|tomacorriente|m[oó]dulo|luz|luces|piloto|calefacci/i;
   for(const c of circuitos) c.campo = !c.reserva && !INTERNA.test(c.descripcion||"");
   // supresor de sobretensiones de la acometida auxiliar (o de la estabilizada si no hay auxiliar)
   const spd = { cb:{ tag:cbTag(), tipo:"mcb", polos:2, in:20, modelo:mcbModelo(2, 20), val:"2x20A", desc:"Interruptor del supresor de sobretensiones" }, tags:["SPD"+(off.spd+1),"SPD"+(off.spd+2)], modelo:"OVR T2 40-275 P QS", tipo:"TIPO 2", acometida: conAux ? "aux" : "est" };

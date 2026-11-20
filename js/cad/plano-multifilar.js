@@ -10,7 +10,7 @@
 import { modeloCorto, modeloEnMarca, marcasProyecto } from "../engine/marcas.js";
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS } from "./formato.js";
-import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, ACC_DEF, fusiblesAcometida } from "../datos.js";
+import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, ACC_DEF, fusiblesAcometida, distribucionPrincipal } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
 import { cargarKit, usarKit, pieza } from "./kit.js";
 import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/componentes.js";
@@ -111,7 +111,9 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
   for(const { calc, fuerza, sec, n } of planes){
     const t = calc.tablero, g = calc.g, base = k;   // base: índice de la hoja de acometida del tablero
     const bF = barraFase(calc.mainBreaker || 100), bPE = barraTierra(bF);
-    const barraTxt = s => s.trim()==="20x5 mm" ? `${bF.nombre} mm` : s.trim()==="20x3 mm" ? `${bPE.nombre} mm` : s;
+    // barras de cobre desde 100 A; por debajo, la distribución es en cable (fase y tierra con su calibre)
+    const dist = distribucionPrincipal(calc);
+    const barraTxt = s => !dist.barras && s.trim()==="Barra Cu" ? "Conductor Cu" : s.trim()==="20x5 mm" ? (dist.barras ? `${bF.nombre} mm` : `#${dist.fase}`) : s.trim()==="20x3 mm" ? (dist.barras ? `${bPE.nombre} mm` : `#${dist.tierra}`) : s;
     const lam = (titulo2)=>{ dibujarLamina(doc, k*PASO_HOJAS, 0, valsDe(k, total, { TITULO2: titulo2 }), cliente); return k*PASO_HOJAS; };
     const nombre = `${(t.nombre||"").toUpperCase()} ${t.tag}`;
     // 1) acometida

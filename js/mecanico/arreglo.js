@@ -15,7 +15,7 @@
    Coordenadas: mm, origen en la esquina inferior izquierda del cuerpo del gabinete (sin zócalo), x a la derecha,
    y hacia arriba, z desde la pared posterior hacia la puerta. Todo lo cambiable por el usuario (o por Copito)
    vive en datos(p).mecanico[tablero.id]. */
-import { calcularTablero, datos, ipRecomendado, tablerosPotencia, desdeTxt, accesoriosTablero, fusiblesAcometida } from "../datos.js";
+import { calcularTablero, datos, ipRecomendado, tablerosPotencia, desdeTxt, accesoriosTablero, fusiblesAcometida, distribucionPrincipal } from "../datos.js";
 import { valoresDiseno, tempDiseno } from "../modules/criterios.js";
 import * as C from "./componentes.js";
 import { equiposControl } from "../control/equipos.js";
@@ -591,17 +591,28 @@ export function arregloTablero(p, t, calc){
   }
   // barras L1-L2-L3 con aisladores y bajadas
   const fases = ["L1","L2","L3"];
-  fases.forEach((f, i)=>{ const yb = busY - i*fase.paso; barras.push({ tag:f, fase:f, nombre:fase.nombre, x:busX0, y:yb - fase.ancho/2, w:busX1 - busX0, h:fase.ancho, orient:"h", placa:sQ1.placa.id, seccion:sQ1.id, perforaciones:0 }); });
-  const soportes = []; for(let x = busX0 + 30; x <= busX1 - 20; x += 400) soportes.push(x); if(soportes[soportes.length-1] < busX1 - 60) soportes.push(busX1 - 30);
+  // distribución: barras de cobre desde 100 A; por debajo, repartidor de carga tripolar junto a Q1 y derivaciones en cable
+  const dist = distribucionPrincipal(calc);
+  let rep = null;
+  if(dist.barras) fases.forEach((f, i)=>{ const yb = busY - i*fase.paso; barras.push({ tag:f, fase:f, nombre:fase.nombre, x:busX0, y:yb - fase.ancho/2, w:busX1 - busX0, h:fase.ancho, orient:"h", placa:sQ1.placa.id, seccion:sQ1.id, perforaciones:0 }); });
+  else {
+    const hR = 2*fase.paso + fase.ancho, wR = 90, xR = q1.x + q1.w/2 > (busX0 + busX1)/2 ? Math.max(busX0, q1.x - wR - 25) : Math.min(busX1 - wR, q1.x + q1.w + 25);
+    rep = add({ id:"rep1", tag:"XD1", tipo:"repartidor", desc:`Repartidor de carga tripolar ${Math.max(40, Math.ceil(dist.a/25)*25)} A (distribución en cable ${dist.texto})`, modelo:"Repartidor de carga tripolar en riel DIN", val:`${dist.a} A`, cant:1,
+      x:xR, y:busY - 2*fase.paso - fase.ancho/2, w:wR, h:hR, d:50, z:ZPLACA, montaje:"din", perdidas:2, placa:sQ1.placa.id, seccion:sQ1.id, fuente:"Repartidores de carga modulares (referencial)" });
+  }
+  const soportes = []; if(dist.barras){ for(let x = busX0 + 30; x <= busX1 - 20; x += 400) soportes.push(x); if(soportes[soportes.length-1] < busX1 - 60) soportes.push(busX1 - 30); }
   const aisladores = soportes.map(x=>({ x, y0:busY - 2*fase.paso, y1:busY }));
+  // con repartidor, las conexiones salen de él en cable (en lugar de pletinas desde las barras)
+  const tipoCon = dist.barras ? "pletina" : "cable";
+  const desdeRep = (x, k) => rep ? [[rep.x + rep.w*(k+0.5)/3, busY - k*fase.paso], [x, busY - k*fase.paso]] : [[x, busY - k*fase.paso]];
   // bajadas desde Q1 y hacia cada interruptor de derivación (pletinas flexibles)
   const polos = c => [0,1,2].map(k=>c.x + c.w*(k+0.5)/3);
   // Q1: con entrada inferior entra por abajo y sale por arriba hacia las barras; con entrada superior, al revés
-  polos(q1).forEach((x, k)=>conexiones.push({ tipo:"pletina", fase:fases[k], pts: busY > q1.y ? [[x, q1.y + q1.h], [x, busY - k*fase.paso]] : [[x, q1.y], [x, busY - k*fase.paso]] }));
+  polos(q1).forEach((x, k)=>conexiones.push({ tipo:tipoCon, fase:fases[k], pts: busY > q1.y ? [[x, q1.y + q1.h], ...desdeRep(x, k).reverse()] : [[x, q1.y], ...desdeRep(x, k).reverse()] }));
   if(zonaAcom){ const xz = zonaAcom.x + zonaAcom.w/2;
     conexiones.push({ tipo:"acometida", desc:"Cables de acometida", pts: conPot ? [[q1.x + q1.w/2, zonaAcom.y], [q1.x + q1.w/2, busY > q1.y ? q1.y : q1.y + q1.h]] : [[xz, zonaAcom.y], [xz, q1.y + q1.h + 35], [q1.x + q1.w/2, q1.y + q1.h + 35], [q1.x + q1.w/2, q1.y + q1.h]] }); }
   // derivaciones: los interruptores de las columnas toman de las barras por arriba
-  for(const c of comps.filter(c=>c.rol==="derivacion")) polos(c).forEach((x, k)=>conexiones.push({ tipo:"pletina", fase:fases[k], pts:[[x, busY - k*fase.paso], [x, c.y + c.h]] }));
+  for(const c of comps.filter(c=>c.rol==="derivacion")) polos(c).forEach((x, k)=>conexiones.push({ tipo:tipoCon, fase:fases[k], pts:[...desdeRep(x, k), [x, c.y + c.h]] }));
   // alimentación de los guardamotores (peine) desde las barras por cable
   if(E.dol.length){
     const pein = comps.filter(c=>c.tipo==="peine");
@@ -755,7 +766,8 @@ export function arregloTablero(p, t, calc){
   // ===== 9) criterios de diseño aplicados =====
   criterios.unshift(
     `Gabinete ${montaje==="mural" ? "mural" : "autosoportado"} ${W}x${H}x${D} mm (ancho x alto x fondo)${zocalo ? ` con zócalo de ${zocalo} mm` : ""}, ${ipRecomendado(v)}, ${secs.length} sección(es): ${secs.map(s=>`${s.W} mm ${s.rol==="potencia" ? "de fuerza" : s.rol==="control" ? "de control" : s.rol==="etapa" ? "de la etapa de control" : "fuerza y control"}`).join(", ")}.`,
-    `Flujo de energía de arriba hacia abajo: interruptor general Q1 (${q1.modelo}) arriba, barras de cobre ${fase.nombre} mm (L1-L2-L3 a ${fase.paso} mm entre centros, aisladores cada 400 mm) y derivaciones colgadas de las barras; borneras de salida abajo, junto a la entrada ${entrada} de cables.`,
+    dist.barras ? `Flujo de energía de arriba hacia abajo: interruptor general Q1 (${q1.modelo}) arriba, barras de cobre ${fase.nombre} mm (L1-L2-L3 a ${fase.paso} mm entre centros, aisladores cada 400 mm) y derivaciones colgadas de las barras; borneras de salida abajo, junto a la entrada ${entrada} de cables.`
+      : `Flujo de energía de arriba hacia abajo: interruptor general Q1 (${q1.modelo}) arriba y, por ser menor de 100 A, distribución en cable (${dist.texto}) desde el repartidor de carga XD1 hacia cada derivación (sin barras de cobre); borneras de salida abajo, junto a la entrada ${entrada} de cables.`,
     conPot ? "Fuerza y control en placas separadas: variadores, arrancadores, interruptores en caja moldeada y reactancias en la placa de fuerza; protecciones modulares, guardamotores, contactores y borneras en la placa de control (riel DIN)." : "Una sola placa: zona de fuerza (Q1 y barras) arriba y filas de riel DIN debajo.",
   );
   if(E.dol.length) criterios.push(`Cada guardamotor encima de su contactor en la misma columna (${E.dol.map(d=>d.gm.tag+"/"+d.k.tag).join(", ")}), alimentados con barra tipo peine desde las barras; bornera TBn de cada motor en el orden de los circuitos del multifilar.`);

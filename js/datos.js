@@ -361,6 +361,15 @@ export function calcularTablero(p, t, _depth=0){
   const excede430 = mainBreaker > requiredNEC + 1e-9;
   return { tablero:t, circuits, g, mainBreaker, totalKVA, demandCurrent, requiredNEC, requiredDemand, installedKVA, installedCurrent, mainCond, maxC, sumOthers, fpSistema, fpInstalado, excede430 };
 }
+/* distribución principal del tablero: barras de cobre desde 100 A; por debajo, cable (dimensionado para el interruptor
+   general, con su conductor de tierra). La usan el unifilar, el multifilar y el arreglo mecánico. */
+export function distribucionPrincipal(calc){
+  const a = +(calc && calc.mainBreaker) || 0, minMM2 = (calc && calc.g && calc.g.minMM2) || 0;
+  if(a >= 100) return { barras:true, a };
+  const e = egcFor(a), c = CABLE_TABLE.find(r=>r[2] >= a && r[1] >= Math.max(minMM2, +e[2]||0) - 1e-9) || CABLE_TABLE[CABLE_TABLE.length-1];
+  const g = s => String(s||"").replace(/\s+/g, "");
+  return { barras:false, a, fase:g(c[0]), tierra:g(e[1]), texto:`3x#${g(c[0])} + 1x#${g(e[1])}(T)` };
+}
 /* todos los tableros de potencia con carga (para documentos multi-tablero) */
 export function calcularTodos(p){ return tablerosPotencia(p).map(t=>calcularTablero(p, t)).filter(c=>c.circuits.length); }
 

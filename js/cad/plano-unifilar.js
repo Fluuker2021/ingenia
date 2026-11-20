@@ -7,9 +7,9 @@
 import { modeloCorto, modeloEnMarca, marcasProyecto } from "../engine/marcas.js";
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
-import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, accesoriosTablero, fusiblesAcometida } from "../datos.js";
+import { calcularTablero, calcularTodos, tf, desdeTxt, r2, datos, accesoriosTablero, fusiblesAcometida, distribucionPrincipal } from "../datos.js";
 import { valoresDiseno } from "../modules/criterios.js";
-import { cargarKit, usarKit, pieza, envolver, cajaAcometida, encajar } from "./kit.js";
+import { cargarKit, usarKit, pieza, envolver, cajaAcometida, encajar, tituloTablero } from "./kit.js";
 import { unifilarControlKit } from "./plano-unifilar-control.js";
 
 // geometría del plano de referencia (mm, espacio modelo)
@@ -28,9 +28,29 @@ const esMcb = q => !!(q && (q.mcb || /\bS20\d|MCB/.test(q.model||"")));
 const BARRAS = [[325,"20x5"],[450,"30x5"],[560,"40x5"],[690,"50x5"],[790,"60x5"],[1030,"80x5"],[1250,"100x5"],[2200,"2x100x5"]];
 const barraCu = a => { const b = (BARRAS.find(([i])=>i>=a)||BARRAS[BARRAS.length-1])[1]; return `3xB.Cu ${b} mm + 1xB.Cu 20x3 mm(T)`; };
 
+/* cargas que se conectan DENTRO del tablero (el límite del tablero las encierra): servicios del tablero (ventiladores,
+   calefacción, luminaria, tomacorriente), control interno, PLC, la etapa de control de un tablero de fuerza y control y
+   las reservas. Las demás (motores, instrumentación de campo, controladores externos, otros tableros…) van fuera. */
+const SERVICIOS = /^(ventilacion|calefaccion|luminaria|tomacorriente)$/, APLIC_SERV = new Set(["ventiladores","calefaccion","luminaria","tomacorriente"]);
+export function claseDerivacion(p, t, cfg, texto){
+  if(cfg && SERVICIOS.test(cfg)) return { interno:true };
+  if(cfg && /^tca?:/.test(cfg)) return t && cfg==="tc:"+t.id ? { interno:true } : { tablero:true };
+  if(cfg && /^lt:/.test(cfg)){
+    const r = (datos(p).cargasTrafo||[]).find(x=>"lt:"+x.id===cfg); if(!r) return {};
+    if(r.tipo==="tablero") return { tablero:true };
+    if(r.tipo==="control" || r.tipo==="plc" || r.tipo==="reserva") return { interno:true };
+    if(r.tipo==="general" && APLIC_SERV.has(r.application)) return { interno:true };
+    return {};
+  }
+  if(/^reserva$/i.test(String(texto||"").trim())) return { interno:true };
+  if(!cfg && /\b(plc|control|ventila|lumin|tomacorr|calefac)/i.test(texto||"")) return { interno:true };
+  return {};
+}
+
 /* una columna (o grupo) por circuito del tablero */
-function columnas(calc){
+function columnas(calc, p){
   let nMotor = 0;
+  const tab = calc.tablero;
   return calc.circuits.map(c=>{
     const l = c.load || {}, cable = cableTxt(c);
     const desc = (l.desc || c.descLabel || c.title || "").toUpperCase(), tag = l.tag || "";
@@ -41,11 +61,12 @@ function columnas(calc){
       const ramas = c.items.filter(x=>x.rama || /^QC\d+\./.test(x.devtag||"")).map((x,i)=>{
         const qv = String(x.val||"").split(" · ")[0], a = parseFloat(qv.replace(/^2x/i,"")) || 0, awgN = a > 15 ? 12 : 14;
         const cable = x.cable || `2C#${awgN}AWG+${awgN}AWG(T)`;
-        return { tipo: (x.id || (x.id==null && !x.rama && /tomacorriente/i.test(x.comp))) ? "rama_id" : "rama", externo: /^tca?:/.test(x.cfg||""),
+        return Object.assign({ tipo: (x.id || (x.id==null && !x.rama && /tomacorriente/i.test(x.comp))) ? "rama_id" : "rama", externo: /^tca?:/.test(x.cfg||"") }, claseDerivacion(p, tab, x.cfg, x.destino || x.comp), {
           vars:{ circ:"C"+(i+1), q:x.devtag, qv: qv.toUpperCase(), desc: String(x.destino || x.comp || "").toUpperCase(),
-            cable: `${/^tca?:/.test(x.cfg||"") ? "1-" : ""}${cable} 0.6/1kV`, id: x.id || "ID"+(i+1), idv:"2x25A", idm:"30mA" } };
+            cable: `${/^tca?:/.test(x.cfg||"") ? "1-" : ""}${cable} 0.6/1kV`, id: x.id || "ID"+(i+1), idv:"2x25A", idm:"30mA" } });
       });
-      if(!ramas.length) ramas.push({ tipo:"rama", vars:{ circ:"C1", q:"", qv:"", desc:"RESERVA", cable:"" } });
+      ramas.forEach(r=>{ if(/^RESERVA$/.test(r.vars.desc)){ r.reserva = true; r.interno = false; } });
+      if(!ramas.length) ramas.push({ tipo:"rama", reserva:true, vars:{ circ:"C1", q:"", qv:"", desc:"RESERVA", cable:"" } });
       const va = (String(t.val||"").match(/^[\d.]+\s*k?VA/i)||[""])[0].replace(/\s+/g,"");
       const fs = f.devtags || (f.devtag ? [f.devtag] : []);
       return { tipo:"trafo", n: ramas.length, ramas, externa: !!c.externa, ctrlV: c.ctrlV, ctrlTipo: c.ctrlTipo, desde: (c.load||{}).externaDesde || "",
@@ -67,7 +88,13 @@ function columnas(calc){
     }
     // alimentador o carga general: interruptor, cable y la carga; reserva: solo el interruptor
     const q = item(c, /^ITM/);
-    if(c.esReserva) return { tipo:"col_vfd", mcb: esMcb(q), omitir:["fusible","filtro","vfd","motor"], vars:{ circ:c.tag, q:q.devtag, qv:q.val, cable:"", desc:"RESERVA", tag:"" } };
+    // reserva: solo el interruptor (sin conductor de salida ni carga); «RESERVA» bajo el interruptor, dentro del tablero
+    if(c.esReserva) return { tipo:"col_vfd", reserva:true, mcb: esMcb(q), omitir:["fusible","filtro","vfd","motor"], vars:{ circ:c.tag, q:q.devtag, qv:q.val, cable:"", desc:"RESERVA", tag:"" } };
+    // alimentador a otro tablero: termina en el símbolo de tablero con «HACIA EL TABLERO …»
+    if(l.kind==="feeder"){
+      const h = l._tablero, nom = h ? `HACIA EL ${(h.nombre||"tablero").toUpperCase()} ${h.tag||""}`.trim() : `HACIA EL ${desc || "TABLERO"}${tag ? " "+tag : ""}`.replace(/^HACIA EL HACIA EL/, "HACIA EL");
+      return { tipo:"col_vfd", tablero:true, mcb: esMcb(q), omitir:["fusible","filtro","vfd","motor"], vars:{ circ:c.tag, q:q.devtag, qv:q.val, cable, desc:nom, tag:`${r2(c.installedCurrent,1)} A` } };
+    }
     return { tipo:"col_vfd", mcb: esMcb(q), omitir:["fusible","filtro","vfd","motor"], vars:{ circ:c.tag, q:q.devtag, qv:q.val, cable, desc, tag: tag ? `${tag} · ${r2(c.installedCurrent,1)} A` : `${r2(c.installedCurrent,1)} A` } };
   });
 }
@@ -105,7 +132,7 @@ export async function unifilarKit({ p, valsDe, cliente, id }){
   const v = valoresDiseno(p);
   const doc = new DXFDoc(); usarKit(doc, kit);
   // el control interno con segunda fuente no cuelga de la barra principal: va al final, a la derecha
-  const planes = lista.map(calc=>{ const cols = columnas(calc); return { calc, hojas: repartir([...cols.filter(c=>!c.externa), ...cols.filter(c=>c.externa)]) }; });
+  const planes = lista.map(calc=>{ const cols = columnas(calc, p); return { calc, hojas: repartir([...cols.filter(c=>!c.externa), ...cols.filter(c=>c.externa)]) }; });
   const totalFuerza = planes.reduce((a,x)=>a+x.hojas.length, 0);
   // tablero de fuerza y control: un solo unifilar; su etapa de control sigue a las hojas de fuerza
   const tfcs = lista.map(c=>c.tablero).filter(t=>t && t.tipo==="fuerzacontrol");
@@ -118,9 +145,9 @@ export async function unifilarKit({ p, valsDe, cliente, id }){
     hojas.forEach((cols, ih)=>{
       const ox = k*PASO_HOJAS;
       dibujarLamina(doc, ox, 0, valsDe(k, total, { TITULO2: `${(t.nombre||"").toUpperCase()} ${t.tag}${hojas.length>1 ? ` (${ih+1} DE ${hojas.length})` : ""}` }), cliente);
-      dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera: ih===0, ih, nh: hojas.length });
-      // notas del usuario (primera lámina), debajo de la leyenda y sobre el cajetín
-      if(k===0) notasLamina(doc, ox, 0, datos(p).notas[id || "ele-unifilar"], { y1: 236 });
+      const r = dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera: ih===0, ih, nh: hojas.length });
+      // notas del usuario (primera lámina): en la zona libre que deja la composición (debajo de la leyenda), sobre el cajetín
+      if(k===0) notasLamina(doc, ox, 0, datos(p).notas[id || "ele-unifilar"], r && r.notas ? r.notas : { y1: 236 });
       k++;
     });
   }
@@ -128,101 +155,190 @@ export async function unifilarKit({ p, valsDe, cliente, id }){
   return { dxf: doc.toDXF(), hojas: total, calc: lista[0] };
 }
 
-/* descripción de la carga bajo el motor o la flecha: texto vertical que termina en yIni y baja hacia el pie de
-   la lámina; si no entra, se corta en varias líneas centradas en el eje del circuito */
-function descripcion(doc, x, yIni, textos, s, anchoDisp){
-  const h = 2.5*s, ls = h*1.6667, n = Math.max(6, Math.floor((yIni - PIE)/(h*0.75)));
-  let lineas = textos.filter(Boolean).flatMap(t=>envolver(t, n));
-  const max = Math.max(1, Math.floor((anchoDisp*0.7)/ls)); lineas = lineas.slice(0, max);
-  lineas.forEach((ln, i)=>doc.text(x + (i - (lineas.length-1)/2)*ls, yIni, h, ln, "G-TEX", { rot:90, halign:2, valign:2 }));
+/* ---------------- textos sin cruces ----------------
+   Ancho de un texto en AutoCAD (txt.shx con factor 0,8): ≈ 0,8 × altura por carácter (con margen). Los textos que no
+   entran en su espacio se reparten en 2 o 3 líneas (por palabras; si una palabra no entra, después de «+»). */
+const CAR = 0.8;
+const anchoTxt = (t, h) => String(t||"").length*h*CAR;
+function lineasDe(txt, n){
+  const out = [];
+  // si no entra en una línea y tiene « + », se corta ahí (p. ej. «3xB.Cu 20x5 mm +» / «1xB.Cu 20x3 mm(T)»)
+  const partes = String(txt||"").split("\n").flatMap(pt=>{
+    if(pt.length <= n || !pt.includes(" + ")) return [pt];
+    const k = pt.indexOf(" + "), a = pt.slice(0, k + 2), b = pt.slice(k + 3);
+    return a.length <= n && b.length <= n ? [a, b] : [pt];
+  });
+  for(const parte of partes){
+    const toks = [];
+    for(const w of parte.split(/\s+/).filter(Boolean)){
+      if(w.length <= n){ toks.push([w, " "]); continue; }
+      w.split(/(?<=\+)/).forEach((q, i)=>toks.push([q, i ? "" : " "]));
+    }
+    let cur = "";
+    for(const [w, sep] of toks){ const cand = cur ? cur + sep + w : w; if(cand.length > n && cur){ out.push(cur); cur = w; } else cur = cand; }
+    if(cur) out.push(cur);
+  }
+  return out;
+}
+/* texto en un largo L (mm) y hasta maxLineas: altura reducida (hasta hMin) si aun así no entra */
+export function ajustarLineas(txt, L, h0, maxLineas=2, hMin=h0*0.6){
+  let h = h0, ls;
+  for(;;){ const n = Math.max(4, Math.floor(L/(h*CAR))); ls = lineasDe(txt, n); if((ls.length <= maxLineas && ls.every(l=>l.length <= n)) || h <= hMin) break; h = Math.max(hMin, h*0.92); }
+  return { lineas: ls, h, paso: h*1.6667 };
+}
+/* texto vertical (girado 90°) a la izquierda de un conductor en x: termina en yTop y baja como mucho L; con varias
+   líneas, la última queda junto al conductor (a 4,9 mm) y las anteriores más a la izquierda */
+export function textoVertical(doc, x, yTop, L, txt, s, { maxLineas=2, capa="G-TEX", sep=4.9 }={}){
+  if(!txt) return null;
+  const r = ajustarLineas(txt, L, 2.5*s, maxLineas);
+  r.lineas.forEach((l, i)=>doc.text(x - sep*s - (r.lineas.length - 1 - i)*r.paso, yTop, r.h, l, capa, { rot:90, halign:2 }));
+  return r;
+}
+/* texto horizontal de varias líneas que entra en el ancho W: desde (x, yTop) hacia abajo; ha 0 izquierda, 1 centro */
+function textoBloque(doc, x, yTop, W, txt, h0, { maxLineas=3, ha=0, capa="G-TEX" }={}){
+  const r = ajustarLineas(txt, W, h0, maxLineas);
+  r.lineas.forEach((l, i)=>doc.text(x, yTop - r.h - i*r.paso, r.h, l, capa, ha ? { halign:ha } : {}));
+  r.ancho = Math.max(0, ...r.lineas.map(l=>anchoTxt(l, r.h))); r.alto = r.h + (r.lineas.length - 1)*r.paso;
+  return r;
 }
 
+/* descripción de la carga bajo el motor o la flecha: texto vertical que termina en yIni y baja hacia el pie de
+   la lámina; si no entra, se corta en varias líneas centradas en el eje del circuito. medir: solo calcula (sin dibujar).
+   Devuelve el punto más bajo del texto. */
+function descripcion(doc, x, yIni, textos, s, anchoDisp, medir=false){
+  const h = 2.5*s, ls = h*1.6667, n = Math.max(6, Math.floor((yIni - PIE)/(h*CAR)));
+  let lineas = textos.filter(Boolean).flatMap(t=>envolver(t, n));
+  const max = Math.max(1, Math.floor((anchoDisp*0.7)/ls)); lineas = lineas.slice(0, max);
+  if(!medir) lineas.forEach((ln, i)=>doc.text(x + (i - (lineas.length-1)/2)*ls, yIni, h, ln, "G-TEX", { rot:90, halign:2, valign:2 }));
+  return yIni - Math.max(0, ...lineas.map(l=>anchoTxt(l, h)));
+}
+/* símbolo de tablero (carga que es otro tablero): flecha en el conductor, rectángulo con su mitad superior izquierda
+   rellena y, debajo, «HACIA EL TABLERO …» en líneas horizontales centradas. Devuelve el punto más bajo. */
+function simboloTablero(doc, x, yTop, s, texto, anchoDisp, { flecha=true, capaFlecha="E-FZA-BT-PRI", medir=false }={}){
+  const w = 18*s, h = 8.8*s, xl = x - w/2, xr = x + w/2, yb = yTop - h;
+  const r = ajustarLineas(texto, Math.min(anchoDisp*0.92, 60*s), 2.5*s, 4);
+  const yTxt = yb - 4*s, fondo = yTxt - r.h - (r.lineas.length - 1)*r.paso;
+  if(medir) return fondo;
+  if(flecha) doc.solid([[x - 0.55*s, yTop + 3.5*s], [x + 0.55*s, yTop + 3.5*s], [x, yTop], [x, yTop]], capaFlecha);
+  doc.polyline([[xl, yTop], [xr, yTop], [xr, yb], [xl, yb], [xl, yTop]], "E-SIM");
+  doc.solid([[xl, yTop], [xr, yTop], [xl, yb], [xl, yb]], "E-SIM");
+  r.lineas.forEach((l, i)=>doc.text(x, yTxt - r.h - i*r.paso, r.h, l, "G-TEX", { halign:1 }));
+  return fondo;
+}
+
+/* ---------------- lámina del unifilar ----------------
+   1) se ubican las verticales (circuitos y derivaciones del control interno) en el ancho útil;
+   2) se miden la acometida, sus accesorios, el retorno a tierra y las cargas, y se arma el límite del tablero: arriba y a
+      los lados encierra todo; abajo pasa entre la barra de tierra y los textos de cable de las cargas de fuera, y baja
+      (muesca) alrededor de las cargas que se conectan dentro del tablero, sin cortar ningún dibujo;
+   3) composición: tablero y leyenda lado a lado con márgenes iguales (si el tablero deja libre su zona superior
+      izquierda y la leyenda entra ahí, va ahí); si no entran, se reduce la escala de las verticales;
+   4) se dibuja. Devuelve la zona libre para las notas. */
+const U0 = 2, U1 = 804;                     // ancho útil de la lámina en coordenadas de la referencia
+const ANCHO_LEY = 138.33;                   // ancho de la leyenda (columnas ítem · símbolo · descripción)
 function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
-  const util = LIM_DER - LIM_IZQ;
   const accT = accesoriosTablero(p, t), acc = primera ? accT : {};
-  // todas las verticales de carga (circuitos y derivaciones del control interno) a la misma distancia P; la escala baja
-  // si no entran y la separación crece (hasta FMAX) si sobra espacio, con el conjunto centrado en el ancho útil
-  const N = cols.reduce((a, c)=>a + verticales(c), 0) || 1, W = N*ANCHO_COL;
-  const s = W > util ? util/W : 1;
-  const f = W > util ? 1 : Math.min(util/W, FMAX);
-  const P = ANCHO_COL*f*s;
-  const FX = x => ox + DX + x, FY = y => DY + y;                     // coordenadas del plano de referencia (escala 1)
-  const SY = y => DY + BUS + y*s;                                    // y relativo a la barra, con la escala
-  let borde = LIM_IZQ + (util - N*P)/2;
-  cols.forEach(c=>{
-    const n = verticales(c);
-    if(c.tipo==="trafo"){ c.ramasX = c.ramas.map((_, j)=>borde + (j + 0.5)*P); c.eje = c.ramasX[Math.max(0, Math.min(c.n-1, c.n-2))]; }
-    else c.eje = borde + P/2;
-    c.izq = borde; c.der = borde + n*P; borde += n*P;
-  });
-  // barra principal: de la primera a la última bajada (el control con segunda fuente no cuelga de ella); la acometida
-  // llega al centro de la barra, entre dos verticales (si el centro cae sobre una bajada, se corre media separación)
-  const ejes = cols.filter(c=>!c.externa).map(c=>c.eje);
-  let xAcom = null;
-  if(primera){
-    if(!ejes.length) xAcom = LIM_IZQ + util/2;
-    else if(ejes.length===1) xAcom = ejes[0] + P/2;
-    else {
-      // entre dos verticales: tampoco sobre una derivación del control interno (parecería que la alimenta)
-      const todas = cols.flatMap(c=>c.tipo==="trafo" ? c.ramasX : [c.eje]);
-      xAcom = (Math.min(...ejes) + Math.max(...ejes))/2; if(todas.some(e=>Math.abs(e - xAcom) < P*0.3)) xAcom += P/2;
-    }
+  const dist = distribucionPrincipal(calc);
+  const nLey = (()=>{ const u = usadosDe(cols, acc, primera); return LEY_ORDEN.filter(([k])=>u.has(k)).length; })();
+  const altoLey = -LEY_Y0 + nLey*LEY_FILA;
+
+  // ---- 1-3) geometría con el ancho útil de las verticales; si la composición no entra, se achica y se repite
+  let util = LIM_DER - LIM_IZQ, G = null;
+  for(let it = 0; it < 8; it++){
+    G = geometria(cols, { util, primera, acc, calc, ih, nh });
+    const ancho = G.der - G.izq;
+    const libre = (U1 - U0) - ancho - ANCHO_LEY;
+    // leyenda dentro del tablero: zona libre arriba a la izquierda (sobre la barra, a la izquierda de la acometida)
+    G.leyDentro = null;
+    if(G.zonaLibre){ const z = G.zonaLibre, k = Math.min(1, z.w/ANCHO_LEY, z.h/altoLey); if(k >= 0.85) G.leyDentro = { k, x: z.x0 + (z.w - ANCHO_LEY*k)/2, y: z.y1 - (z.h - altoLey*k)/2 }; }
+    if(G.leyDentro || libre >= 3*8) break;
+    util = Math.max(120, util - (3*8 - libre) - 4);
   }
-  // la acometida y sus accesorios (sobre la barra) no deben salirse del tablero por la derecha
-  const conRet = !!(acc.luces || acc.spd);
-  const xIni = Math.min(...ejes, xAcom ?? Infinity), xFin = Math.max(...ejes, xAcom ?? -Infinity);
-  const derCols = cols.length ? cols[cols.length-1].der : borde;
-  // retorno a tierra de luces piloto y supresor: baja a la derecha, fuera de la barra y de las columnas
-  const xRet = conRet ? Math.max(xAcom + 265.43*s, derCols + 6) : null;
-  const derTablero = Math.max(DER, (xRet ?? derCols) + 10, derCols + 8);
-  const usados = new Set(["tierra"]);
+  // márgenes iguales a la izquierda, entre el tablero y la leyenda y a la derecha
+  const anchoTab = G.der - G.izq;
+  let dxP, leyX = null, leyY = null, leyK = 1;
+  if(G.leyDentro){ dxP = U0 + ((U1 - U0) - anchoTab)/2 - G.izq; }
+  else { const gap = Math.max(8, ((U1 - U0) - anchoTab - ANCHO_LEY)/3); dxP = U0 + gap - G.izq; leyX = G.der + dxP + gap; }
 
-  // tablero (envolvente), título y potencias
-  doc.polyline([[FX(IZQ), SY(FONDO)], [FX(IZQ), FY(BUS+TECHO)], [FX(derTablero), FY(BUS+TECHO)], [FX(derTablero), SY(FONDO)], [FX(IZQ), SY(FONDO)]], "E-EQ");
-  pieza(doc, kit, "titulo", FX(IZQ), FY(BUS+TECHO), { vars:{ tit1:`${t.nombre||"Tablero"} ${t.tag||""}`.toUpperCase(), tit2:`${g.voltage} Vac, 3F+T, ${g.freq}Hz` } });
-  pieza(doc, kit, "pimd", FX(derTablero), FY(BUS+TECHO), { vars:{ pi:`PI: ${r2(calc.installedKVA,1)} kVA`, md:`MD: ${r2(calc.totalKVA,2)} kVA` } });
+  const s = G.s, P = G.P;
+  const FX = x => ox + DX + dxP + x, FY = y => DY + y;                // coordenadas de la referencia (escala 1)
+  const SY = y => DY + BUS + y*s;                                      // y relativo a la barra, con la escala
+  const usados = usadosDe(cols, acc, primera);
 
-  // barra principal y su rotulado (dos líneas sobre la barra, desde su inicio)
+  // ---- límite del tablero: arriba, lados y fondo con muescas (polilínea cerrada)
+  const yTop = FY(BUS+TECHO);
+  const perfil = G.perfil.map(([xa, xb, y])=>[FX(xa), FX(xb), y]);
+  const pts = [[FX(G.izqTab), yTop], [FX(G.derTab), yTop]];
+  for(let i = perfil.length - 1; i >= 0; i--){ const [xa, xb, y] = perfil[i]; pts.push([xb, y], [xa, y]); }
+  pts.push([FX(G.izqTab), yTop]);
+  const lim = []; for(const q of pts){ const u = lim[lim.length-1]; if(!u || Math.abs(u[0]-q[0]) > 0.01 || Math.abs(u[1]-q[1]) > 0.01) lim.push(q); }
+  doc.polyline(lim, "E-EQ");
+  tituloTablero(doc, FX(G.izqTab), yTop, 1, `${t.nombre||"Tablero"} ${t.tag||""}`.toUpperCase(), `${g.voltage} Vac, 3F+T, ${g.freq}Hz`);
+  pieza(doc, kit, "pimd", FX(G.derTab), yTop, { vars:{ pi:`PI: ${r2(calc.installedKVA,1)} kVA`, md:`MD: ${r2(calc.totalKVA,2)} kVA` } });
+
+  // ---- barra (o cable) principal y su rotulado: a un lado de la acometida, donde entre sin cruzar su bajada
+  const xIni = G.xIni, xFin = G.xFin, xAcom = G.xAcom;
   if(isFinite(xIni) && isFinite(xFin)){
     doc.line(FX(xIni), SY(0), FX(xFin), SY(0), "E-FZA-BT-PRI");
-    const hb = 2.5*s;
-    doc.text(FX(xIni) + 3*s, SY(0) + 2.4*s + hb*1.6, hb, `R,S,T ${g.voltage} Vac, 3F, ${g.freq}Hz, ${g.faultLevel} kA`, "G-TEX");
-    doc.text(FX(xIni) + 3*s, SY(0) + 2.4*s, hb, barraCu(calc.mainBreaker), "G-TEX");
+    const hb = 2.5*s, rot1 = `R,S,T ${g.voltage} Vac, 3F, ${g.freq}Hz, ${g.faultLevel} kA`, rot2 = dist.barras ? barraCu(calc.mainBreaker) : dist.texto;
+    const L = G.rotulo;
+    const r = ajustarLineas(`${rot1}\n${rot2}`, L.w, hb, 3);
+    r.lineas.forEach((l, i)=>doc.text(FX(L.x), SY(0) + 2.4*s + (r.lineas.length - 1 - i)*r.paso, r.h, l, "G-TEX"));
     if(!primera) doc.text(FX(xIni)-2, SY(0)+3*s, 2.2*s, `VIENE DE LA HOJA ${ih}`, "G-TEX", { halign:2 });
-    if(ih < nh-1) doc.text(FX(xFin)+2, SY(0)+3*s, 2.2*s, `CONTINÚA EN LA HOJA ${ih+2}`, "G-TEX");
+    // sobre el final de la barra (a la derecha están el retorno a tierra y el límite del tablero)
+    if(ih < nh-1) doc.text(FX(xFin) - 2*s, SY(0) + 3*s, 2.2*s, `CONTINÚA EN LA HOJA ${ih+2}`, "G-TEX", { halign:2 });
   }
 
-  // acometida y accesorios (primera lámina del tablero)
+  // ---- acometida y accesorios (primera lámina del tablero)
   if(primera){
     const ax = FX(xAcom), ay = SY(0);
     usados.add("mccb3");
-    pieza(doc, kit, "acometida", ax, ay, { s, omitir:[[-35, 143, 33, 172]], vars:{ q:"Q1", qv:`3x${calc.mainBreaker}A`, barra: barraCu(calc.mainBreaker), acometida:"" } });
-    // recuadro de procedencia con la forma común de las acometidas (embudo desde sus esquinas) y la tensión de llegada
+    pieza(doc, kit, "acometida", ax, ay, { s, omitir:[[-35, 143, 33, 172]], vars:{ q:"Q1", qv:`3x${calc.mainBreaker}A`, barra:"", acometida:"" } });
+    // barras (o cable) entre la barra principal y Q1: a la izquierda de la bajada, en el largo libre hasta Q1
+    textoVertical(doc, ax, ay + 63*s, 59*s, dist.barras ? barraCu(calc.mainBreaker) : dist.texto, s, { sep:3.1 });
+    // recuadro de procedencia: crece con el texto (y su embudo con él)
     cajaAcometida(doc, ax - 0.7*s, ay + 144.4*s, s, `VIENE DE ${String(desdeTxt(p, t)||"").toUpperCase()}\n3x${g.voltage} Vac + T - ${g.freq} Hz`);
-    // fusibles con la misma numeración del multifilar y del arreglo mecánico
     const fa = fusiblesAcometida(acc);
-    if(acc.luces){ usados.add("fus3").add("luz"); pieza(doc, kit, "acc_lt", ax, ay, { s, vars:{ f:fa.luces.join(","), fv:"1X4A", fm:"E91/32", cable:"3C#14AWG+14AWG(N) 0.6/1kV", dev:"LT1,LT2,LT3", rango:"40-600Vac" } }); }
-    if(acc.spd){ usados.add("fus3").add("spd"); pieza(doc, kit, "acc_spd", ax, ay, { s, vars:{ f:"-FS1", fv:"3x125A", cable:"3C#10AWG+10AWG(T) 0.6/1kV", dev:"SPD1,SPD2,SPD3", tipo:"TIPO 1 y 2", mod: sinMarca(modeloEnMarca(`OVR T1 T2 3L 12.5-${g.voltage>440 ? 600 : 440} P QS`, "", marcasProyecto(p))) } }); }
-    if(acc.releFase){ usados.add("fus3").add("rf"); pieza(doc, kit, "acc_rf", ax, ay, { s, vars:{ f:fa.rf.join(","), fv:"1X2A", fm:"E91/32", cable:"3C#14AWG+14AWG(T) 0.6/1kV", dev:"RF", mod: sinMarca(modeloEnMarca("CM-MPS.41S", "", marcasProyecto(p))) } }); }
+    // texto de cable de cada accesorio: desde su inicio hasta antes de las etiquetas del fusible, en una o dos líneas
+    const cableAcc = (x0, yTope, xFus, etiquetas, sim0, txt) => {
+      const wEt = Math.max(...etiquetas.map(e=>anchoTxt(e, 2.5)));
+      const lim = Math.min(sim0 - 1.5, xFus - wEt/2 - 2) - x0;
+      const r = ajustarLineas(txt, lim*s, 2.5*s, 2);
+      r.lineas.forEach((l, i)=>doc.text(ax + x0*s, ay + yTope*s - r.h + (r.lineas.length - 1 - i)*r.paso, r.h, l, "G-TEX"));
+    };
+    if(acc.luces){ usados.add("fus3").add("luz"); const vv = { f:fa.luces.join(","), fv:"1X4A", fm:"E91/32" };
+      pieza(doc, kit, "acc_lt", ax, ay, { s, vars:Object.assign({ cable:"", dev:"LT1,LT2,LT3", rango:"40-600Vac" }, vv) });
+      cableAcc(13.65, 97.1, 78.37, [vv.f, vv.fv, vv.fm], 71.4, "3C#14AWG+14AWG(N) 0.6/1kV"); }
+    if(acc.spd){ usados.add("fus3").add("spd"); const vv = { f:"-FS1", fv:"3x125A" };
+      pieza(doc, kit, "acc_spd", ax, ay, { s, vars:Object.assign({ cable:"", dev:"SPD1,SPD2,SPD3", tipo:"TIPO 1 y 2", mod: sinMarca(modeloEnMarca(`OVR T1 T2 3L 12.5-${g.voltage>440 ? 600 : 440} P QS`, "", marcasProyecto(p))) }, vv) });
+      cableAcc(8.62, 58.57, 67.56, [vv.f, vv.fv], 60.6, "3C#10AWG+10AWG(T) 0.6/1kV"); }
+    if(acc.releFase){ usados.add("fus3").add("rf"); const vv = { f:fa.rf.join(","), fv:"1X2A", fm:"E91/32" };
+      pieza(doc, kit, "acc_rf", ax, ay, { s, vars:Object.assign({ cable:"", dev:"RF", mod: sinMarca(modeloEnMarca("CM-MPS.41S", "", marcasProyecto(p))) }, vv) });
+      cableAcc(8.5, 29.7, 62.95, [vv.f, vv.fv, vv.fm], 56, "3C#14AWG+14AWG(T) 0.6/1kV"); }
     // retorno a tierra (mismo trazado del plano de referencia, llevado a la derecha de la última columna)
-    if(conRet){
-      const xr = FX(xRet), yT = SY(TIERRA), pts = [];
-      if(acc.luces){ doc.line(ax + 133.9*s, ay + 92.78*s, xr, ay + 92.78*s, "E-TIERRA"); pts.push(ay + 92.78*s); }
-      if(acc.spd){ doc.line(ax + 159.17*s, ay + 33.1*s, ax + 159.17*s, ay + 17.6*s, "E-TIERRA"); doc.line(ax + 159.17*s, ay + 17.6*s, xr, ay + 17.6*s, "E-TIERRA"); pts.push(ay + 17.6*s); }
-      doc.line(xr, Math.max(...pts), xr, yT, "E-TIERRA");
-      if(pts.length > 1) doc.circle(xr, ay + 17.6*s, 0.8*s, "E-TIERRA");
+    if(G.xRet!=null){
+      const xr = FX(G.xRet), yT = SY(TIERRA), pts2 = [];
+      if(acc.luces){ doc.line(ax + 133.9*s, ay + 92.78*s, xr, ay + 92.78*s, "E-TIERRA"); pts2.push(ay + 92.78*s); }
+      if(acc.spd){ doc.line(ax + 159.17*s, ay + 33.1*s, ax + 159.17*s, ay + 17.6*s, "E-TIERRA"); doc.line(ax + 159.17*s, ay + 17.6*s, xr, ay + 17.6*s, "E-TIERRA"); pts2.push(ay + 17.6*s); }
+      doc.line(xr, Math.max(...pts2), xr, yT, "E-TIERRA");
+      if(pts2.length > 1) doc.circle(xr, ay + 17.6*s, 0.8*s, "E-TIERRA");
       doc.circle(xr, yT, 0.8*s, "E-TIERRA");
     }
   }
 
-  // columnas
+  // ---- verticales: textos de cable bajo el límite del tablero, cargas, tableros y descripciones
+  const yCable = SY(FONDO) - 4*s, Lcable = yCable - SY(-262);
+  const fin = (x, cable, desc, tagTxt, yDesc, esTablero, yFin, capa) => {
+    textoVertical(doc, x, yCable, Lcable, cable, s);
+    if(esTablero){ simboloTablero(doc, x, yFin, s, desc, P, { flecha: capa!=null, capaFlecha: capa||"E-FZA-BT-PRI" }); return; }
+    descripcion(doc, x, yDesc, [desc, tagTxt], s, P);
+  };
   for(const c of cols){
     const x = FX(c.eje), y = SY(0);
     if(c.tipo==="trafo"){
       usados.add("itm2");
       const dc = c.ctrlTipo==="Vdc", vC = c.ctrlV || parseFloat(g.ctrlVoltage) || 120;
       if(c.externa){
-        // segunda fuente: la acometida externa llega directo al interruptor general de control (sin fusibles ni transformador)
         pieza(doc, kit, "trafo", x, y, { s, vars:c.vars, omitir:[[-9, -60, 30, 1]] });
         doc.line(x, SY(-36), x, SY(-58.59), "E-FZA-BT-SEC");
         cajaAcometida(doc, x, SY(-36), s, `VIENE DE ${String(c.desde || "SEGUNDA FUENTE").toUpperCase()}\n${vC===220 ? "2x220 Vac + T" : `1x${vC} ${dc ? "Vdc" : "Vac + N + T"}`} - ${g.freq} Hz`, { n:22 });
@@ -232,32 +348,140 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
       }
       const x0 = FX(c.ramasX[0]), x1 = FX(c.ramasX[c.ramasX.length-1]);
       doc.line(Math.min(x0, x), SY(SUB), Math.max(x1, x), SY(SUB), "E-FZA-BT-SEC");
-      // barra del control interno: «R,S 220 VAC, 1F, 60Hz, 10 KA» (fase-fase) o «L,N 120 VAC…» (fase-neutro)
       const sb = dc ? `L+,L- ${vC} VDC` : `${vC >= 200 ? "R,S" : "L,N"} ${vC} VAC, 1F, ${g.freq}Hz, 10 KA`;
-      pieza(doc, kit, "trafo_txt", x0, SY(SUB), { s, vars:{ sb } });
+      // rótulo de la barra secundaria: a un lado de la bajada del transformador (sin cruzarla), en una o dos líneas
+      { const xe = x, xa = Math.min(x0, x), xb = Math.max(x1, x), sig = cols[cols.indexOf(c) + 1];
+        const limDer = sig ? FX(sig.izq) - 3*s : Math.max(xb, FX(G.derTab) - 12);
+        const izqW = xe - 3*s - (xa + 3*s), derW = limDer - (xe + 3*s);
+        const [xt, wt] = izqW >= derW ? [xa + 3*s, izqW] : [xe + 3*s, derW];
+        const r = ajustarLineas(sb, Math.max(20*s, wt), 2.5*s, 2);
+        r.lineas.forEach((l, i)=>doc.text(xt, SY(SUB) + 2.4*s + (r.lineas.length - 1 - i)*r.paso, r.h, l, "G-TEX")); }
       c.ramas.forEach((r,i)=>{
         if(r.tipo==="rama_id") usados.add("id");
-        pieza(doc, kit, r.tipo, FX(c.ramasX[i]), SY(SUB), { s, vars:r.vars, texto: tx => /^ID1\n/.test(tx) ? `${r.vars.id}\n${r.vars.idv}\n${r.vars.idm}` : tx });
-        descripcion(doc, FX(c.ramasX[i]), SY(-271), [r.vars.desc], s, P);
+        const xr = FX(c.ramasX[i]);
+        if(r.reserva){ pieza(doc, kit, r.tipo, xr, SY(SUB), { s, vars:Object.assign({}, r.vars, { cable:"" }), omitir:[[-12, -200, 30, -28.1]] }); descripcion(doc, xr, SY(SUB - 33), ["RESERVA"], s, P); return; }
+        pieza(doc, kit, r.tipo, xr, SY(SUB), { s, vars:Object.assign({}, r.vars, { cable:"" }), texto: tx => /^ID1\n/.test(tx) ? `${r.vars.id}\n${r.vars.idv}\n${r.vars.idm}` : tx });
+        fin(xr, r.vars.cable, r.vars.desc, null, SY(-271), r.tablero, SY(SUB - 164.6), null);
       });
     } else {
       const om = (c.omitir||[]);
       usados.add(c.mcb ? "mcb3" : c.tipo==="col_mcp" ? "gm" : "mccb3");
       if(c.tipo==="col_mcp") usados.add("contactor").add("motor");
       else { for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) usados.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="AS" ? "as" : "vfd", motor:"motor" }[k]); }
-      pieza(doc, kit, c.tipo, x, y, { s, vars:c.vars, omitir: om.map(k=>OMITIR[k]) });
-      descripcion(doc, x, SY(om.includes("motor") ? -271 : -287), [c.vars.desc, c.vars.tag], s, P);
-      // donde se omite un equipo, el conductor continúa
+      if(c.reserva){ pieza(doc, kit, c.tipo, x, y, { s, vars:Object.assign({}, c.vars, { cable:"" }), omitir:[[-25, -300, 25, -29.5]] }); descripcion(doc, x, SY(-34), ["RESERVA"], s, P); continue; }
+      pieza(doc, kit, c.tipo, x, y, { s, vars:Object.assign({}, c.vars, { cable:"" }), omitir: om.map(k=>OMITIR[k]) });
       for(const k of om){ const pz = PUENTES[k]; if(pz) doc.line(x, y+pz[0]*s, x, y+pz[1]*s, "E-FZA-BT-PRI"); }
+      fin(x, c.vars.cable, c.vars.desc, c.tablero ? null : c.vars.tag, SY(om.includes("motor") ? -271 : -287), c.tablero, SY(-267.7), c.tablero ? "E-FZA-BT-PRI" : null);
     }
   }
-  // leyenda: solo los símbolos que aparecen en esta lámina
-  leyenda(doc, kit, FX(656.5), FY(631.8), usados);
 
-  // barra de tierra y pozo a tierra
-  const xT = Math.max(...cols.flatMap(c=>c.tipo==="trafo" ? [c.eje, ...c.ramasX] : [c.eje]), xRet ?? -Infinity, 40);
+  // ---- leyenda: solo los símbolos de esta lámina (dentro del tablero si entra en su zona libre, si no a su derecha)
+  let notas;
+  if(G.leyDentro){ leyX = G.leyDentro.x + dxP; leyY = G.leyDentro.y; leyK = G.leyDentro.k;
+    leyenda(doc, kit, ox + DX + leyX, leyY, usados, leyK);
+    notas = { x0: Math.max(688, G.der + dxP + DX + 4), x1: 829, y0: 108, y1: 236 };
+  } else {
+    leyY = yTop; leyenda(doc, kit, ox + DX + leyX, leyY, usados, 1);
+    const xn = DX + leyX;
+    notas = { x0: xn, x1: Math.min(829, xn + ANCHO_LEY), y0: 108, y1: leyY - altoLey - 8 };
+  }
+
+  // ---- barra de tierra y pozo a tierra
+  const xT = Math.max(...cols.flatMap(c=>c.tipo==="trafo" ? [c.eje, ...c.ramasX] : [c.eje]), G.xRet ?? -Infinity, 40);
   pieza(doc, kit, "tierra", FX(20.8), SY(TIERRA), { s });
   doc.line(FX(20.8), SY(TIERRA), FX(xT), SY(TIERRA), "E-TIERRA");
+  return { notas };
+}
+
+/* símbolos que aparecen en la lámina (para contar las filas de la leyenda antes de dibujarla) */
+function usadosDe(cols, acc, primera){
+  const u = new Set(["tierra"]);
+  if(primera) u.add("mccb3");
+  if(acc.luces) u.add("fus3").add("luz"); if(acc.spd) u.add("fus3").add("spd"); if(acc.releFase) u.add("fus3").add("rf");
+  for(const c of cols){
+    if(c.tipo==="trafo"){ u.add("itm2"); if(!c.externa) u.add("fus1").add("trafo"); if(c.ramas.some(r=>r.tipo==="rama_id")) u.add("id"); continue; }
+    const om = c.omitir||[];
+    u.add(c.mcb ? "mcb3" : c.tipo==="col_mcp" ? "gm" : "mccb3");
+    if(c.tipo==="col_mcp") u.add("contactor").add("motor");
+    else for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) u.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="AS" ? "as" : "vfd", motor:"motor" }[k]);
+  }
+  return u;
+}
+
+/* geometría de la lámina (coordenadas de la referencia, sin desplazamiento horizontal): verticales, acometida, retorno,
+   rótulo de la barra, límite del tablero (con su perfil inferior) y la zona libre arriba a la izquierda */
+function geometria(cols, { util, primera, acc, calc, ih, nh }){
+  const N = cols.reduce((a, c)=>a + verticales(c), 0) || 1, W = N*ANCHO_COL;
+  const s = W > util ? util/W : 1;
+  const f = W > util ? 1 : Math.min(util/W, FMAX);
+  const P = ANCHO_COL*f*s;
+  // verticales desde la izquierda (el tablero se compone después con la leyenda, centrado en la lámina)
+  let borde = LIM_IZQ;
+  const vert = [];
+  cols.forEach(c=>{
+    const n = verticales(c);
+    if(c.tipo==="trafo"){ c.ramasX = c.ramas.map((_, j)=>borde + (j + 0.5)*P); c.eje = c.ramasX[Math.max(0, Math.min(c.n-1, c.n-2))]; c.ramas.forEach((r, j)=>vert.push({ x:c.ramasX[j], r, rama:true })); }
+    else { c.eje = borde + P/2; vert.push({ x:c.eje, r:c, rama:false }); }
+    c.izq = borde; c.der = borde + n*P; borde += n*P;
+  });
+  const ejes = cols.filter(c=>!c.externa).map(c=>c.eje);
+  let xAcom = null;
+  if(primera){
+    if(!ejes.length) xAcom = LIM_IZQ + util/2;
+    else if(ejes.length===1) xAcom = ejes[0] + P/2;
+    else {
+      const todas = cols.flatMap(c=>c.tipo==="trafo" ? c.ramasX : [c.eje]);
+      xAcom = (Math.min(...ejes) + Math.max(...ejes))/2; if(todas.some(e=>Math.abs(e - xAcom) < P*0.3)) xAcom += P/2;
+    }
+  }
+  const conRet = !!(acc.luces || acc.spd);
+  const xIni = Math.min(...ejes, xAcom ?? Infinity), xFin = Math.max(...ejes, xAcom ?? -Infinity);
+  const derCols = cols.length ? cols[cols.length-1].der : borde;
+  const xRet = conRet ? Math.max(xAcom + 265.43*s, derCols + 6) : null;
+  // a la derecha: columnas, retorno a tierra y lo que se extiende de los accesorios (modelo del supresor)
+  const accDer = primera ? xAcom + (acc.spd ? 215 : acc.luces ? 136 : acc.releFase ? 120 : 20)*s : -Infinity;
+  const derTab = Math.max(derCols + 8, (xRet ?? -Infinity) + 10, accDer + 6, IZQ + 150);
+  const izqTab = IZQ;
+
+  // rótulo de la barra: a la izquierda de la bajada de la acometida si entra, si no a su derecha
+  const hb = 2.5*s, txtW = Math.max(anchoTxt(`R,S,T 690 Vac, 3F, 60Hz, 65 kA`, hb), anchoTxt(distribucionPrincipal(calc).barras ? barraCu(calc.mainBreaker) : distribucionPrincipal(calc).texto, hb));
+  let rotulo;
+  // sin acometida en la lámina (continuación): sobre la barra, desde su inicio hacia la derecha
+  if(xAcom==null || !isFinite(xIni)){ const x0 = (isFinite(xIni) ? xIni : LIM_IZQ) + 3*s; rotulo = { x: x0, w: Math.min(120*s, Math.max(txtW, derTab - 12 - x0)) }; }
+  else {
+    const izqW = xAcom - 13*s - (xIni + 3*s), derW = Math.max(xFin, xAcom + 60*s) - (xAcom + 4*s) - (ih < nh-1 ? anchoTxt("CONTINÚA EN LA HOJA 99", 2.2*s) + 6*s : 0);
+    rotulo = izqW >= txtW || izqW >= derW ? { x: xIni + 3*s, w: Math.max(30*s, izqW) } : { x: xAcom + 4*s, w: Math.min(derW, derTab - 10 - (xAcom + 4*s)) };
+  }
+
+  // fondo del límite: entre la barra de tierra y los textos de cable; muescas alrededor de las cargas internas
+  const yBus = DY + BUS, SY = y => yBus + y*s, yFondo = SY(FONDO);
+  const fondoDe = v => {
+    const r = v.r, esTab = !!r.tablero;
+    if(v.rama) return esTab ? simboloTablero(null, 0, SY(SUB - 164.6), s, r.vars.desc, P, { medir:true }) : descripcion(null, 0, SY(-271), [r.vars.desc], s, P, true);
+    if(esTab) return simboloTablero(null, 0, SY(-267.7), s, r.vars.desc, P, { medir:true });
+    return descripcion(null, 0, SY((r.omitir||[]).includes("motor") ? -271 : -287), [r.vars.desc, r.vars.tag], s, P, true);
+  };
+  const perfil = [];
+  let a = izqTab;
+  for(let i = 0; i < vert.length; ){
+    if(!vert[i].r.interno){ i++; continue; }
+    let j = i; while(j + 1 < vert.length && vert[j+1].r.interno) j++;
+    const xl = i > 0 ? (vert[i-1].x + vert[i].x)/2 : Math.max(izqTab + 30, vert[i].x - P/2);
+    const xr = j < vert.length - 1 ? (vert[j].x + vert[j+1].x)/2 : derTab;
+    const y = Math.max(PIE - 3, Math.min(...vert.slice(i, j+1).map(fondoDe)) - 4*s);
+    if(xl > a) perfil.push([a, xl, yFondo]);
+    perfil.push([xl, xr, y]); a = xr; i = j + 1;
+  }
+  if(a < derTab) perfil.push([a, derTab, yFondo]);
+
+  // zona libre dentro del tablero, arriba a la izquierda (para la leyenda): sobre el rótulo de la barra y a la izquierda
+  // de la acometida y de su texto vertical, bajo el título del tablero
+  let zonaLibre = null;
+  if(xAcom!=null){
+    const x0 = izqTab + 6, x1 = xAcom - 16*s, yTopT = DY + BUS + TECHO - 10.8 - 6, y0 = SY(0) + 2.4*s + 3*2.5*s*1.6667 + 4;
+    if(x1 - x0 > 60 && yTopT - y0 > 60) zonaLibre = { x0, x1, w: x1 - x0, y0, y1: yTopT, h: yTopT - y0 };
+  }
+  return { s, f, P, xAcom, xIni, xFin, xRet, izqTab, derTab, izq: izqTab - 2, der: derTab + 2, perfil, rotulo, zonaLibre };
 }
 
 /* ---------------- leyenda ----------------
@@ -292,7 +516,7 @@ function moverE(e, dx, dy, k=1, cx=0, cy=0){
   else if(e[0]==="S"){ for(let i=4; i<12; i+=2){ e2[i] = X(e[i]); e2[i+1] = Y(e[i+1]); } }
   return e2;
 }
-function leyenda(doc, kit, x, y, usados){
+function leyenda(doc, kit, x, y, usados, k=1){
   const pz = kit.piezas.leyenda; if(!pz) return;
   const filas = LEY_ORDEN.filter(([k])=>usados.has(k));
   const ents = [];
@@ -332,5 +556,5 @@ function leyenda(doc, kit, x, y, usados){
     const r = encajar(e[8], anchoDesc, LEY_FILA - 2, e[6], { wf: e[11] || 1 });
     const e2 = e.slice(); e2[8] = r.texto; e2[6] = r.h; return e2;
   });
-  pieza(doc, { piezas:{ _ley:{ e:ajust } } }, "_ley", x, y);
+  pieza(doc, { piezas:{ _ley:{ e:ajust } } }, "_ley", x, y, { s:k });
 }

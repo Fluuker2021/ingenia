@@ -86,10 +86,11 @@ function alturaEnCelda(pz, e, txt){
 /* dibuja la pieza `nombre` con su ancla en (x, y), escala s.
    vars: valores de los marcadores; omitir: rectángulos (coordenadas de la pieza) cuyas primitivas no se dibujan;
    lineas: { clave: n } divide el valor en líneas de n caracteres (el valor también puede traer "\n") */
-export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas={}, quitar=null, texto=null, mover=[] }={}){
+export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas={}, quitar=null, texto=null, mover=[], filtro=null }={}){
   const pz = kit.piezas[nombre]; if(!pz) return;
   for(const e0 of pz.e){
     let e = e0;
+    if(filtro && !filtro(e)) continue;
     if(omitir.length){ const b = caja(e); if(omitir.some(r=>dentro(b, r))) continue; }
     // mover: las entidades dentro de un rectángulo de la pieza se desplazan (dx, dy) — p. ej. la leyenda de conexión
     const mv = mover.length ? mover.find(m=>dentro(caja(e), m.r)) : null;
@@ -126,18 +127,41 @@ export function pieza(doc, kit, nombre, x, y, { s=1, vars={}, omitir=[], lineas=
   }
 }
 
+/* título del tablero en la esquina superior izquierda de su límite: recuadro (lados derecho e inferior) que crece con
+   el nombre del tablero; si el nombre es largo se reparte en dos líneas. El texto nunca sale del recuadro. */
+export function tituloTablero(doc, x, yTop, s, tit1, tit2){
+  const h = 2.5, CAR = 0.8, maxW = 170;
+  let l1 = envolver(String(tit1||""), Math.floor((maxW - 8)/(h*CAR)));
+  if(l1.length === 1 && l1[0].length*h*CAR > 102) l1 = envolver(l1[0], Math.ceil(l1[0].length/2) + 2);
+  const filas = [...l1, String(tit2||"")].filter(Boolean), paso = h*1.6667;
+  const w = Math.max(110.08, Math.max(...filas.map(f=>f.length*h*CAR)) + 8), alto = Math.max(10.83, h + (filas.length - 1)*paso + 4.5);
+  doc.polyline([[x, yTop - alto*s], [x + w*s, yTop - alto*s], [x + w*s, yTop]], "E-EQ");
+  const yc = yTop - alto*s/2, y0 = yc + (filas.length - 1)*paso*s/2;
+  filas.forEach((f, i)=>doc.text(x + w*s/2, y0 - i*paso*s, h*s, f, "G-TEX", { halign:1, valign:2 }));
+  return { w: w*s, alto: alto*s };
+}
+
 /* recuadro de procedencia de una acometida («VIENE DEL TABLERO…»): rectángulo de 64,17 × 18,13 mm con el embudo que
    baja desde sus dos esquinas inferiores hasta la punta (yPunta), donde empieza el conductor. Es la forma de la
    acometida de 220 Vac del unifilar de control de referencia y se usa igual en todas las acometidas de los unifilares.
    El texto va centrado en el recuadro, en líneas de hasta n caracteres («\n» separa la procedencia de la tensión). */
 export const ACOMETIDA = { x0:-32.22, x1:31.95, embudo:8, alto:18.13 };
 export function cajaAcometida(doc, x, yPunta, s, texto, { n=26, h=2.5, capa="G-VARIOS" }={}){
-  const { x0, x1, embudo, alto } = ACOMETIDA;
+  // el recuadro (y su embudo, como un solo bloque) crece con el texto: primero se ensancha para que entre en 3 líneas
+  // como mucho; si aun así hacen falta más, crece en alto. El texto nunca sale del recuadro.
+  const partes = String(texto||"").split("\n"), CAR = 0.8;
+  let filas = partes.flatMap(f=>envolver(f, n)), nn = n;
+  while(filas.length > 3 && nn < 44){ nn += 2; filas = partes.flatMap(f=>envolver(f, nn)); }
+  const ht = h*s, paso = ht*1.6667;
+  const anchoTxt = Math.max(...filas.map(f=>f.length*h*CAR));
+  const w = Math.max(ACOMETIDA.x1 - ACOMETIDA.x0, anchoTxt + 6), alto = Math.max(ACOMETIDA.alto, h + (filas.length - 1)*h*1.6667 + 6);
+  const xc = (ACOMETIDA.x0 + ACOMETIDA.x1)/2, x0 = xc - w/2, x1 = xc + w/2, embudo = ACOMETIDA.embudo*Math.max(1, Math.min(1.6, w/(ACOMETIDA.x1 - ACOMETIDA.x0)));
   const X = v=>x + v*s, yb = yPunta + embudo*s, yt = yb + alto*s;
   doc.polyline([[X(x0), yt], [X(x1), yt], [X(x1), yb], [X(x0), yb], [X(x0), yt]], capa);
   doc.polyline([[X(x0), yb], [x, yPunta], [X(x1), yb]], capa);
-  const filas = String(texto||"").split("\n").flatMap(f=>envolver(f, n)), ht = h*s, paso = ht*1.6667, cx = X((x0 + x1)/2), cy = (yb + yt)/2, y0 = cy + (filas.length - 1)*paso/2;
+  const cx = X(xc), cy = (yb + yt)/2, y0 = cy + (filas.length - 1)*paso/2;
   filas.forEach((f, i)=>doc.text(cx, y0 - i*paso, ht, f, "G-TEX", { halign:1, valign:2 }));
+  return { x0:X(x0), x1:X(x1), y0:yPunta, y1:yt };
 }
 
 /* caja de una pieza en coordenadas relativas a su ancla: [x0, y0, x1, y1] (para ubicar imágenes de equipos) */

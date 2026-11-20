@@ -13,9 +13,9 @@
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS, notasLamina } from "./formato.js";
 import { tablerosControl, tc as tcPrincipal, datos } from "../datos.js";
-import { cargarKit, usarKit, pieza, envolver, cajaAcometida } from "./kit.js";
+import { cargarKit, usarKit, pieza, envolver, cajaAcometida, tituloTablero } from "./kit.js";
 import { equiposControl } from "../control/equipos.js";
-import { repartirEquilibrado } from "./plano-unifilar.js";
+import { repartirEquilibrado, textoVertical } from "./plano-unifilar.js";
 
 // geometría del plano de referencia (mm)
 const Y0 = 516.67, Y24 = 405.03, Y120 = 414.07, Y220 = 414.34, YT = 338.70, YFONDO = 194.2, YMUESCA = 311.3, YTECHO = 631.8;
@@ -86,8 +86,8 @@ export async function unifilarControlKit({ p, valsDe, cliente, id, tableros:list
     hojas.forEach((segs, ih)=>{
       const ox = (kIni + k)*PASO_HOJAS;
       dibujarLamina(doc, ox, 0, valsDe(k, total, { TITULO2: `${may(t.nombre||"Tablero de control")} ${t.tag}${etapa ? " - ETAPA DE CONTROL" : ""}${hojas.length>1 ? ` (${ih+1} DE ${hojas.length})` : ""}` }), cliente);
-      dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh: hojas.length, hojaDe: i => kIni + k0 + i + 1 });
-      if(k===0 && !etapa) notasLamina(doc, ox, 0, datos(p).notas[id || "ins-unifilar-tc"], { y1: 296 });
+      const r = dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh: hojas.length, hojaDe: i => kIni + k0 + i + 1 });
+      if(k===0 && !etapa) notasLamina(doc, ox, 0, datos(p).notas[id || "ins-unifilar-tc"], r && r.notas ? r.notas : { y1: 296 });
       k++;
     });
   }
@@ -117,7 +117,8 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
   const W = segs.reduce((a, sg)=>a + anchoSeg(sg), 0) + GAP*Math.max(0, segs.length-1);
   const s = W > util ? Math.max(SMIN, util/W) : 1;
   const f = W > util ? 1 : Math.min(util/W, FMAX);
-  const FX = x => ox + DX + x;                    // x ya calculada en la referencia (escala incluida)
+  let dxP = 0;
+  const FX = x => ox + DX + dxP + x;              // x ya calculada en la referencia (escala incluida) + composición
   // la escala se aplica alrededor de la barra de cada grupo; las alturas relativas se conservan
   Y = y => DY + YC + (y - YC)*s;
   const primera = ih===0;
@@ -144,17 +145,24 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
 
   // envolvente con muescas: las cargas de campo quedan fuera del tablero
   const der = Math.max(...segs.map(sg=>sg.x1)) + 6*s;
-  const xDer = Math.max(der, primera && g220 && g220.alim ? g220.ejes[0] + (RET_SPD + 12)*s : 0, 120.9 + 20);
+  // retorno a tierra del supresor: a la derecha del último circuito de 220 Vac y de sus rótulos (sin cruzarlos)
+  const xRetSpd = primera && g220 && g220.alim && g220.cols.length ? Math.max(g220.ejes[0] + RET_SPD*s, g220.ejes[g220.ejes.length-1] + 15*s) : null;
+  const xDer = Math.max(der, xRetSpd!=null ? xRetSpd + 12*s : 0, 120.9 + 20);
   const muescas = [];
   for(const sg of segs){ const p = PASO[sg.bus]*f*s; let ini = null;
     sg.cols.forEach((c, i)=>{ if(c.c.campo){ if(ini==null) ini = i; } if(ini!=null && (!c.c.campo || i===sg.cols.length-1)){ const fin = c.c.campo ? i : i-1; muescas.push([sg.ejes[ini] - p/2 + 0.3, sg.ejes[fin] + p/2 - 0.3]); ini = null; } }); }
   const yF = Y(YFONDO), yM = Y(YMUESCA), yTop = Y(YTECHO);
+  // composición: tablero y leyenda lado a lado con márgenes iguales (izquierda, entre ambos y derecha)
+  const ANCHO_LEY = 138.33, ALTO_LEY = 120.7, U0 = 2, U1 = 804;
+  const gap = ((U1 - U0) - (xDer - IZQ) - ANCHO_LEY)/3;
+  let leyX = 660.58;
+  if(gap >= 8){ dxP = U0 + gap - IZQ; leyX = xDer + dxP + gap; }
   const env = [[FX(IZQ), yF], [FX(IZQ), yTop], [FX(xDer), yTop], [FX(xDer), yF]];
   for(const [a, b] of muescas.sort((m, n)=>n[0]-m[0])) env.push([FX(b), yF], [FX(b), yM], [FX(a), yM], [FX(a), yF]);
   env.push([FX(IZQ), yF]);
   doc.polyline(env, "E-EQ");
-  pieza(doc, kit, "titulo", FX(IZQ), yTop, { s, vars:{ tit1:`${may(t.nombre||"Tablero de control")} ${t.tag}`, tit2:`${may(eq.vEst)}, 1F+N+T, ${eq.v.frecuencia}Hz` } });
-  pieza(doc, kit, "leyenda", FX(660.58), DY + 549.79);
+  tituloTablero(doc, FX(IZQ), yTop, s, `${may(t.nombre||"Tablero de control")} ${t.tag}`, `${may(eq.vEst)}, 1F+N+T, ${eq.v.frecuencia}Hz`);
+  pieza(doc, kit, "leyenda", ox + DX + leyX, yTop);
 
   // barra principal y acometida estabilizada
   if(primera && xs.length){
@@ -163,7 +171,10 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
     doc.line(FX(b0), Y(Y0), FX(b1), Y(Y0), "E-CONTROL");
     // el recuadro de procedencia de la referencia (más ancho y con el embudo hacia adentro) se reemplaza por la forma
     // común de todas las acometidas: embudo desde las esquinas del recuadro y la tensión de llegada en el texto
-    pieza(doc, kit, "acom120", FX(xA), Y(Y0), { s, omitir:[[-45, 144, 45, 172]], vars:{ acometida:"", q:a.q.tag, qv:amp(a.q.in), cable:`${a.cable} 0.6/1kV` } });
+    pieza(doc, kit, "acom120", FX(xA), Y(Y0), { s, omitir:[[-45, 144, 45, 172]], vars:{ acometida:"", q:a.q.tag, qv:amp(a.q.in), cable:"" } });
+    // cable de la acometida: en el tramo que llega desde el recuadro de procedencia hasta MCB1 (sin cruzar el interruptor)
+    // (dentro del tablero: entre su borde superior y MCB1, sin cruzar el límite)
+    { const yTope = yTop - 3*s, yMin = Y(Y0) + 80*s; textoVertical(doc, FX(xA), yTope, Math.max(20*s, yTope - yMin), `${a.cable} 0.6/1kV`, s, { sep:3.2 }); }
     cajaAcometida(doc, FX(xA), Y(Y0) + 144.7*s, s, `VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""}\n${tensionAcom(eq.vEst, 1)} + N + T - ${eq.v.frecuencia} Hz`);
     rotuloBarra(doc, FX(b0), FX(b1), FX(xA), Y(Y0), `L,N ${may(eq.vEst)}, 1F+N+T, ${eq.v.frecuencia}Hz, ${Math.min(10, +eq.v.icc||10)} KA`, s);
     if(xF!=null){ const fu = eq.fuente; pieza(doc, kit, "fuente", FX(xF), Y(Y0), { s, vars:{ circ:fu.circuito || "C1", q:fu.cb.tag, qv:amp(fu.cb.in), ps:fu.ps.tag, psa:`${fu.ps.a}A`, psv:"24VDC", q2:fu.cbOut.tag, q2v:amp(fu.cbOut.in) } }); }
@@ -174,7 +185,10 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
   if(primera && g220 && g220.alim && g220.cols.length && eq.acometidas[1]){
     const a = eq.acometidas[1], sp = eq.spd;
     cajaAcometida(doc, FX(g220.ejes[0]), YB("220") + 247.03*s, s, `VIENE DEL ${may(a.desde)}${a.circuito ? " CIRCUITO "+may(a.circuito) : ""}\n2x220 Vac + T - ${eq.v.frecuencia} Hz`);
-    pieza(doc, kit, "acom220", FX(g220.ejes[0]), YB("220"), { s, omitir:[[-35, 246, 35, 274]], vars:{ acometida:"",
+    const x2 = FX(g220.ejes[0]), y2 = YB("220");
+    doc.polyline([[x2 + 30.21*s, y2 + 53.23*s], [FX(xRetSpd), y2 + 53.23*s], [FX(xRetSpd), Y(YT)]], "E-TIERRA");
+    doc.circle(x2 + 30.21*s, y2 + 53.23*s, 0.75*s, "E-TIERRA");
+    pieza(doc, kit, "acom220", FX(g220.ejes[0]), YB("220"), { s, omitir:[[-35, 246, 35, 274]], filtro: e=>e[1]!=="E-TIERRA", vars:{ acometida:"",
       q:a.q.tag, qv:amp(a.q.in), qs:sp.cb.tag, qsv:amp(sp.cb.in), spd:sp.tags.join(","), spdt:sp.tipo, spdm:sp.modelo, cable:`${a.cable} 0.6/1kV` } });
   }
 
@@ -198,8 +212,10 @@ function dibujarHoja(doc, kit, ox, { t, eq, segs, ih, nh, hojaDe }){
   }
 
   // barra de tierra (de la puesta a tierra a la última derivación o al retorno del supresor)
-  const ult = Math.max(...segs.flatMap(sg=>sg.ejes), primera && g220 && g220.alim && g220.cols.length ? g220.ejes[0] + RET_SPD*s : -Infinity);
+  const ult = Math.max(...segs.flatMap(sg=>sg.ejes), xRetSpd ?? -Infinity);
   pieza(doc, kit, "tierra", FX(X_TIERRA), Y(YT), { s });
   doc.line(FX(X_TIERRA), Y(YT), FX(ult), Y(YT), "E-TIERRA");
+  // zona para las notas: debajo de la leyenda
+  return { notas: { x0: DX + leyX, x1: Math.min(829, DX + leyX + ANCHO_LEY), y0: 108, y1: yTop - ALTO_LEY - 8 } };
 }
 

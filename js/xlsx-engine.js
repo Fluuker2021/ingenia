@@ -312,8 +312,14 @@ function encerrarTablas(ws, r0){
   const poner = (y, x, lado, b) => { const cell = ws.getCell(y, x), bo = Object.assign({}, cell.border || {}); if(bo[lado] && bo[lado].style) return; bo[lado] = b; cell.style = Object.assign({}, cell.style, { border: bo }); };
   for(const q of cuadros){
     const b = { style: (q.estilo && q.estilo.style) || "thin", color: q.estilo && q.estilo.color };
-    for(let y=q.r1; y<=q.r2; y++){ poner(y, q.c1, "left", b); poner(y, q.c2, "right", b); }
-    for(let x=q.c1; x<=q.c2; x++) if(!oculta(x)){ poner(q.r1, x, "top", b); poner(q.r2, x, "bottom", b); }
+    // el marco sigue el contorno real de cada fila (celdas con borde): bajo una tabla con un bloque de totales a la
+    // derecha, el espacio vacío a su izquierda no queda encerrado
+    const conBorde = y => { const xs = []; for(let x=q.c1; x<=q.c2; x++) if(!oculta(x) && borde(y, x)) xs.push(x); return xs; };
+    const filas = []; for(let y=q.r1; y<=q.r2; y++) filas.push(conBorde(y));
+    for(let y=q.r1; y<=q.r2; y++){ const xs = filas[y - q.r1]; if(!xs.length) continue;
+      poner(y, xs[0], "left", b); poner(y, xs[xs.length-1], "right", b);
+      const abajo = y < q.r2 ? new Set(filas[y - q.r1 + 1]) : new Set();
+      for(const x of xs){ if(y===q.r1) poner(y, x, "top", b); if(!abajo.has(x)) poner(y, x, "bottom", b); } }
   }
 }
 

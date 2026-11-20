@@ -7,7 +7,7 @@ import { renderEditor } from "./modules/tablas.js";
 import { datos, nuevaCarga, derivarIO, derivarCircuitosControl, circuitosControl, dimensionarCircuito, instrumentos, sistemaTag, uidc, APPLICATIONS,
   TIPOS_TABLERO, nuevoTablero, tableros, tablerosPotencia, tablerosControl, tableroPorId, esControl, esFuerza, tf, tc, desdeTxt, aplicarTipicos, REGIMENES,
   calcularTablero, CLASES_CABLE, CANALIZACIONES, cablesFuerza, ipRecomendado, r2, accesoriosTablero, ACC_PROTECCION, ACC_ACCESORIOS, calcularTodos, controlInterno,
-  TIPOS_CARGA_TRAFO, APLIC_CARGA_TRAFO, UNIDADES_CARGA_TRAFO, nuevaCargaTrafo, vaCargaTrafo } from "./datos.js";
+  TIPOS_CARGA_TRAFO, APLIC_CARGA_TRAFO, UNIDADES_CARGA_TRAFO, nuevaCargaTrafo, vaCargaTrafo, aplicarPotenciaTrafo, aplicarPotenciaTipica } from "./datos.js";
 import { camposHD, camposHDEq } from "./docs.js";
 import { filosofiaDe, filosofiaAuto, guardarTabla, guardarTexto, guardarAreas, filosofiaOps, arquitecturaSVG, TEXTOS_FIL, TIPOS_ALARMA, TIPOS_INTERLOCK } from "./modules/filosofia.js";
 import { EQUIPOS_PROCESO, recomendarInstrumentos } from "./modules/proceso.js";
@@ -338,10 +338,16 @@ const ED = {
     const opsRel = f => [...new Set([...SECUNDARIOS, f.application].filter(o=>/^[\d.]+\|V(ac|dc)$/.test(o||"")))].map(o=>[o, relLabel(o)]);
     const sincronizarRel = f => { if(f.kind==="control" && !/\|/.test(f.application||"")) f.application = `${parseFloat(f.secundario)||v1}|${f.secundarioTipo||t1}`; };
     d.cargas.forEach(sincronizarRel);
+    // potencia: la típica de su tipo y aplicación mientras el usuario no la cambie (las anteriores, distintas del valor por
+    // defecto de 10, se consideran fijadas por el usuario)
+    d.cargas.forEach(l=>{ l.man = l.man || {}; if(l.man.power==null) l.man.power = +l.power!==10; });
     tablaEditable(wrap, { filas: d.cargas, onChange: cambio, vacio:"Sin cargas. Agrega la primera fila.",
       nuevo: ()=>nuevaCarga("motor", def.id),
       extraBotones: `<button class="btn-sm" data-tip title="Vuelve a proponer FDP, EFF, FU y FS típicos en todas las cargas">Restablecer valores típicos</button>`,
       onCell: (f, k)=>{ if(["fp","effPct","fu","fs"].includes(k)){ f.man = f.man||{}; f.man[k] = true; } if(k==="kind" && (f.kind==="general" || f.kind==="reserva")){ f.powerUnit = "kw"; if(!(f.man||{}).fp) f.fp = 0.9; }
+        if(k==="power" || k==="powerUnit"){ f.man = f.man||{}; f.man.power = true; }
+        if(k==="kind" || k==="application") aplicarPotenciaTipica(f);
+        if(k==="kind" && (f.kind==="control" || f.kind==="reserva")) f.diferencial = false;
         if(k==="kind" && f.kind==="reserva" && !f.desc) f.desc = "Reserva";
         // transformador de control: toma la tensión de control y los circuitos del primer transformador automático del tablero
         // transformador: alimenta solo las cargas de su cuadro «Cargas de los transformadores» (los servicios del tablero
@@ -352,7 +358,7 @@ const ED = {
         if(k==="application" && f.kind==="control"){ const [n, ti] = String(f.application).split("|"); f.secundario = +n; f.secundarioTipo = ti; }
         if(["power","powerUnit","regimen","kind"].includes(k)) aplicarTipicos(f);
         if(k==="kind" || k==="starter") normalizarArranque(f); },
-      clase: (f, k)=>["fp","effPct","fu","fs"].includes(k) && !(f.man||{})[k] ? "tipico" : "",
+      clase: (f, k)=>["fp","effPct","fu","fs","power"].includes(k) && !(f.man||{})[k] ? "tipico" : "",
       columnas:[
         { k:"tablero", t:"Tablero", op: opsT, w:100 },
         { k:"tag", t:"TAG", w:110 }, { k:"desc", t:"Nombre de la carga", w:180, izq:true },
@@ -366,6 +372,8 @@ const ED = {
         { k:"regimen", t:"Régimen", op: REGIMENES.map(r=>[r.v, r.label]), w:120 },
         { k:"fp", t:"FDP", n:true, w:58 }, { k:"effPct", t:"EFF (%)", n:true, w:60 }, { k:"fu", t:"FU", n:true, w:52 }, { k:"fs", t:"FS", n:true, w:52 },
         { k:"fases", t:"Fases", op:[["3","3F"],["1","1F"]], w:60 },
+        // protección diferencial propia de la carga (algunos clientes la piden por carga y no en la distribución principal)
+        { k:"diferencial", t:"Prot. diferencial", chk:true, ro: f=>f.kind==="control" || f.kind==="reserva" ? "N.A." : null },
         { calc:(f)=>{ const c = corrienteDe(f); return c ? r2(c,2) : "—"; }, k:"_in", t:"In (A) calculada" },
       ] });
     /* cuadro «Cargas de los transformadores»: solo si el listado tiene cargas de tipo «Transformador» */
@@ -385,9 +393,14 @@ const ED = {
       const aplicDe = r => r.tipo==="motor" ? apps : APLIC_CARGA_TRAFO[r.tipo] || [["na","N.A."]];
       // aplicación válida para su tipo (las filas anteriores con «Iluminación» / «Tomacorrientes» pasan a la lista nueva)
       d.cargasTrafo.forEach(r=>{ r.application = ({ iluminacion:"luminaria", tomacorrientes:"tomacorriente" })[r.application] || r.application;
-        const a = aplicDe(r); if(!a.some(o=>o[0]===r.application)) r.application = a.some(o=>o[0]==="otro") ? "otro" : a[0][0]; });
-      tablaEditable(cont, { filas: d.cargasTrafo, vacio:"Sin cargas en los transformadores. Agrega la primera fila.",
+        const a = aplicDe(r); if(!a.some(o=>o[0]===r.application)) r.application = a.some(o=>o[0]==="otro") ? "otro" : a[0][0];
+        // potencia típica mientras no se cambie (las filas anteriores con el valor por defecto de 100 VA la toman)
+        if(r.manPot==null) r.manPot = !(+r.power===100 && r.powerUnit==="va");
+        aplicarPotenciaTrafo(r);
+        if(r.diferencial==null) r.diferencial = r.tipo==="general" && r.application==="tomacorriente"; });
+      tablaEditable(cont, { filas: d.cargasTrafo, vacio:"Sin cargas en los transformadores. Agrega la primera fila.", mover:true,
         nuevo: ()=>nuevaCargaTrafo(trafos[0].id),
+        clase: (r, k)=>k==="power" && !r.manPot ? "tipico" : "",
         onChange: ()=>{ cambio(); setTimeout(()=>{
           // se recalcula el listado (potencia del transformador) conservando el campo en edición de este cuadro
           const a = document.activeElement, tr = a && cont.contains(a) ? a.closest("tr[data-i]") : null, foco = tr ? { i: tr.dataset.i, c: a.dataset.c } : null;
@@ -395,8 +408,10 @@ const ED = {
           if(foco){ const x = $(`[data-ctrafo] tr[data-i="${foco.i}"] [data-c="${foco.c}"]`, wrap); if(x) x.focus({ preventScroll:true }); }
         }); },
         onCell: (r, k)=>{
-          if(k==="tipo"){ const a = aplicDe(r); if(!a.some(o=>o[0]===r.application)) r.application = a.some(o=>o[0]==="otro") ? "otro" : a[0][0];
-            const u = UNIDADES_CARGA_TRAFO(r); if(!u.some(o=>o[0]===r.powerUnit)) r.powerUnit = u[0][0]; }
+          if(k==="power" || k==="powerUnit") r.manPot = true;
+          if(k==="tipo"){ const a = aplicDe(r); if(!a.some(o=>o[0]===r.application)) r.application = a.some(o=>o[0]==="otro") ? "otro" : a[0][0]; }
+          if(k==="tipo" || k==="application"){ aplicarPotenciaTrafo(r); r.diferencial = r.tipo==="general" && r.application==="tomacorriente"; }
+          if(k==="tipo"){ const u = UNIDADES_CARGA_TRAFO(r); if(!u.some(o=>o[0]===r.powerUnit)) r.powerUnit = u[0][0]; }
         },
         columnas:[
           { k:"trafo", t:"TAG", op: opsTr, w:150 },
@@ -405,6 +420,7 @@ const ED = {
           { k:"application", t:"Aplicación", op: aplicDe, w:180 },
           { k:"power", t:"Potencia", n:true, w:70 },
           { k:"powerUnit", t:"Unidad", op: UNIDADES_CARGA_TRAFO, w:70 },
+          { k:"diferencial", t:"Prot. diferencial", chk:true },
           { calc: r=>vaCargaTrafo(r), k:"_va", t:"S (VA)" },
         ] });
     }

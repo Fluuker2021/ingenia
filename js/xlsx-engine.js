@@ -346,6 +346,13 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
   for(const t of trabajos){
     const H = new Hoja(t.ws);
     // formato Ingenia: bloque de encabezado estándar (Cliente / Proyecto / Fecha / P&ID / Revisión) en cada hoja de listado
+    // bloques del formato que no aplican (p. ej. la lista de cargas estabilizada): filas desde la que contiene «desde»
+    // hasta la anterior a la que contiene «hasta», con sus combinaciones y fórmulas desplazadas
+    for(const q of [].concat((t.tablas||{}).__quitar || [])){
+      const fila = re => { let n = null; t.ws.eachRow({ includeEmpty:false }, (row, rn)=>{ if(n==null) row.eachCell({ includeEmpty:false }, cell=>{ if(n==null && re.test(textoCelda(cell.value).trim())) n = rn; }); }); return n; };
+      const r1 = fila(q.desde), r2 = fila(q.hasta);
+      if(r1 && r2 && r2 > r1) H.shift(r1, -(r2 - r1));
+    }
     const enc = estandar && t.man && t.man.encabezado ? encabezadoEstandar(H, t.man.encabezado) : null;
     const grupos = anclasDe(t.ws).sort((a,b)=>b.filas[0].rn - a.filas[0].rn);
     for(const g of grupos) rellenarTabla(H, g, t.tablas[g.nombre] || [], t.scal);

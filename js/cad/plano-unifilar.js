@@ -51,7 +51,9 @@ export function claseDerivacion(p, t, cfg, texto){
 function columnas(calc, p){
   let nMotor = 0;
   const tab = calc.tablero;
-  return calc.circuits.map(c=>{
+  // protección diferencial propia de una carga (relé con toroide en su salida)
+  return calc.circuits.map(c=>{ const col = columna(c); if(col && col.tipo!=="trafo" && c.diferencial) Object.assign(col, { dif: c.diferencial }); return col; });
+  function columna(c){
     const l = c.load || {}, cable = cableTxt(c);
     const desc = (l.desc || c.descLabel || c.title || "").toUpperCase(), tag = l.tag || "";
     if(c.kind==="control"){
@@ -96,7 +98,7 @@ function columnas(calc, p){
       return { tipo:"col_vfd", tablero:true, mcb: esMcb(q), omitir:["fusible","filtro","vfd","motor"], vars:{ circ:c.tag, q:q.devtag, qv:q.val, cable, desc:nom, tag:`${r2(c.installedCurrent,1)} A` } };
     }
     return { tipo:"col_vfd", mcb: esMcb(q), omitir:["fusible","filtro","vfd","motor"], vars:{ circ:c.tag, q:q.devtag, qv:q.val, cable, desc, tag: tag ? `${tag} · ${r2(c.installedCurrent,1)} A` : `${r2(c.installedCurrent,1)} A` } };
-  });
+  }
 }
 // cada circuito ocupa una «vertical» de ancho ANCHO_COL y el control interno una por derivación: todas las verticales de
 // carga quedan a la misma distancia (simetría)
@@ -366,11 +368,15 @@ function dibujarHoja(doc, kit, ox, { p, calc, t, g, v, cols, primera, ih, nh }){
     } else {
       const om = (c.omitir||[]);
       usados.add(c.mcb ? "mcb3" : c.tipo==="col_mcp" ? "gm" : "mccb3");
+      if(c.dif) usados.add("rd");
       if(c.tipo==="col_mcp") usados.add("contactor").add("motor");
       else { for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) usados.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="AS" ? "as" : "vfd", motor:"motor" }[k]); }
       if(c.reserva){ pieza(doc, kit, c.tipo, x, y, { s, vars:Object.assign({}, c.vars, { cable:"" }), omitir:[[-25, -300, 25, -29.5]] }); descripcion(doc, x, SY(-34), ["RESERVA"], s, P); continue; }
       pieza(doc, kit, c.tipo, x, y, { s, vars:Object.assign({}, c.vars, { cable:"" }), omitir: om.map(k=>OMITIR[k]) });
       for(const k of om){ const pz = PUENTES[k]; if(pz) doc.line(x, y+pz[0]*s, x, y+pz[1]*s, "E-FZA-BT-PRI"); }
+      // protección diferencial de la carga: toroide en el conductor, bajo el interruptor, con el relé y su sensibilidad
+      if(c.dif){ const yT = SY(c.tipo==="col_mcp" ? -60 : -41); doc.circle(x, yT, 2.6*s, "E-SIM");
+        doc.text(x + 4*s, yT + 0.6*s, 2.2*s, c.dif.tag, "G-TEX"); doc.text(x + 4*s, yT - 3.2*s, 2.2*s, c.dif.sens, "G-TEX"); }
       fin(x, c.vars.cable, c.vars.desc, c.tablero ? null : c.vars.tag, SY(om.includes("motor") ? -271 : -287), c.tablero, SY(-267.7), c.tablero ? "E-FZA-BT-PRI" : null);
     }
   }
@@ -402,6 +408,7 @@ function usadosDe(cols, acc, primera){
     if(c.tipo==="trafo"){ u.add("itm2"); if(!c.externa) u.add("fus1").add("trafo"); if(c.ramas.some(r=>r.tipo==="rama_id")) u.add("id"); continue; }
     const om = c.omitir||[];
     u.add(c.mcb ? "mcb3" : c.tipo==="col_mcp" ? "gm" : "mccb3");
+    if(c.dif) u.add("rd");
     if(c.tipo==="col_mcp") u.add("contactor").add("motor");
     else for(const k of ["fusible","filtro","vfd","motor"]) if(!om.includes(k)) u.add({ fusible:"fus3", filtro:"filtro", vfd: c.vars.vfdtxt==="AS" ? "as" : "vfd", motor:"motor" }[k]);
   }
@@ -493,7 +500,7 @@ const LEY_ORDEN = [
   ["itm2", { fila:1 }], ["mccb3", { fila:2 }], ["mcb3", { fila:2, desc:"INTERRUPTOR TERMOMAGNÉTICO TRIFÁSICO (MCB)" }],
   ["gm", { pieza:"col_mcp", y:[-37.4, -21.1], capa:/^I-SIM$/, desc:"GUARDAMOTOR (INTERRUPTOR DE PROTECCIÓN DE MOTOR)" }],
   ["contactor", { pieza:"col_mcp", y:[-93.9, -81.7], capa:/^E-SIM$/, desc:"CONTACTOR TRIPOLAR" }],
-  ["id", { fila:3 }], ["fus1", { fila:4 }], ["fus3", { fila:5 }], ["luz", { fila:6 }], ["spd", { fila:7 }], ["rf", { fila:8 }],
+  ["id", { fila:3 }], ["rd", { toroide:true, desc:"PROTECCIÓN DIFERENCIAL (RELÉ CON TOROIDE)" }], ["fus1", { fila:4 }], ["fus3", { fila:5 }], ["luz", { fila:6 }], ["spd", { fila:7 }], ["rf", { fila:8 }],
   ["vfd", { fila:9 }], ["as", { fila:9, desc:"ARRANCADOR SUAVE", sim:{ VFD:"AS" } }], ["filtro", { fila:11 }], ["motor", { fila:10 }],
   ["trafo", { fila:12 }], ["tierra", { fila:13 }],
 ];
@@ -539,6 +546,10 @@ function leyenda(doc, kit, x, y, usados, k=1){
         if(e[0]==="T" && def.sim && def.sim[String(e[8])]){ e2 = e2.slice(); e2[8] = def.sim[String(e[8])]; }
         ents.push(e2);
       }
+    } else if(def.toroide){
+      // conductor con el toroide del relé diferencial
+      ents.push(["L", "E-FZA-BT-PRI", null, null, 27.84, yC + 6.5, 27.84, yC - 6.5], ["C", "E-SIM", null, null, 27.84, yC, 2.6]);
+      ents.push(["T", "G-TEX", null, null, 90.97, yC, 2.5, 0, def.desc, 1, 2, 1]);
     } else if(def.pieza){
       // símbolo tomado de otra pieza: centrado en la celda del símbolo, reducido si no entra en la fila
       const src = kit.piezas[def.pieza]; if(!src) return;

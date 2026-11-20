@@ -75,17 +75,8 @@ export function tablasCargas(p, t){
     if(c.esGeneral) return { tag:l.tag||"-", descripcion:l.desc||(c.esReserva ? "Reserva" : "Carga general"), hp:"-", kw: r2(c.powerKWelec,3), fp:c.fp, eff:1, fu:c.fu, fs:c.fs, kv: g.voltage/1000, fases:c.fases, _in: r2(c.installedCurrent,2), _si: r2(c.installedKVA,3), _md: r2(c.installedKVA*c.fu*c.fs,3) };
     return { tag:l.tag||"-", descripcion:l.desc||"Alimentador", hp:"-", kw: r2(c.installedKVA*0.85,2), fp:0.85, eff:1, fu:c.fu, fs:c.fs, kv:g.voltage/1000, fases:3, _in: r2(c.installedCurrent,2), _si: r2(c.installedKVA,2), _md: r2(c.installedKVA*c.fu*c.fs,2) };
   });
-  // cargas estabilizadas de 120 Vac: tableros de control alimentados desde este tablero (o el principal si es el primero)
-  const ctl = tablerosControl(p).filter(x=> x.tipo==="fuerzacontrol" ? x.id===calc.tablero.id : (x.desde ? x.desde===calc.tablero.id : calc.tablero.id===tf(p).id));
-  // lista de cargas estabilizadas (120 Vac) agrupada como en el formato de referencia: fuente 24 Vdc, entradas
-  // digitales, salidas digitales e instrumentos (FDP típicos 0,90 / 0,95 / 0,95 / 0,87)
-  const grupos = new Map();
-  for(const c of ctl.flatMap(x=>circuitosControl(p, x)).filter(c=>c.barra==="120 Vac" && +c.potencia>0)){
-    const k = /fuente/i.test(c.descripcion) ? ["Fuente de 24 Vdc",0.9] : /entradas digitales/i.test(c.descripcion) ? ["Entradas digitales",0.95] : /salidas digitales/i.test(c.descripcion) ? ["Salidas digitales",0.95] : /controlador de limpieza/i.test(c.descripcion) ? ["Controlador de limpieza",0.9] : ["Instrumentos",0.87];
-    const gk = grupos.get(k[0]) || { descripcion:k[0], fp:k[1], w:0 }; gk.w += +c.potencia||0; grupos.set(k[0], gk);
-  }
-  const cc = [...grupos.values()].map((x,i)=>({ n:i+1, descripcion:x.descripcion, fp:x.fp, fu:1, fs:1, kw: r2(x.w/1000,3) }));
-  return { calc, cargas, cargas_control: cc };
+  // (sin «lista de cargas estabilizada»: las cargas de control las define el usuario en sus transformadores)
+  return { calc, cargas };
 }
 
 /* cargas de un tablero de control agrupadas por barra (24 Vdc, 120 Vac, 220 Vac), con su circuito, protección y cable */
@@ -292,12 +283,10 @@ export async function payloadExcel(p, id, org){
     const calcs = calcularTodos(p);
     const lista = calcs.length ? calcs.map(c=>c.tablero) : [tf(p)];
     const notas = notasDe(p, base, [
-      `La tensión estabilizada de ${tensionEstabilizada(v)} será suministrada por el cliente / tablero de distribución indicado.`,
-      `Los equipos alimentados mediante tensión estabilizada de ${tensionEstabilizada(v)} se encuentran instalados en el tablero de control asociado.`,
       "Corrientes calculadas a partir de la potencia instalada (S = P / (η·cos φ)); la máxima demanda aplica FU y FS por carga." ]);
     const instancias = lista.map((t, k)=>{
       const tb = tablasCargas(p, t);
-      return { nombre: lista.length>1 ? nombreHoja("LISTADO "+t.tag) : "LISTADO", scal:{ tablero_titulo: `${sistemaNombre(p) ? sistemaNombre(p)+" - " : ""}${t.nombre||"Tablero"} ${t.tag||""}`.toUpperCase() }, tablas:{ cargas: tb.cargas, cargas_control: tb.cargas_control, notas } };
+      return { nombre: lista.length>1 ? nombreHoja("LISTADO "+t.tag) : "LISTADO", scal:{ tablero_titulo: `${sistemaNombre(p) ? sistemaNombre(p)+" - " : ""}${t.nombre||"Tablero"} ${t.tag||""}`.toUpperCase() }, tablas:{ cargas: tb.cargas, notas, __quitar:[{ desde:/^LISTA DE CARGAS ESTABILIZADA/i, hasta:/^FDP: Factor de potencia/i }] } };
     });
     Object.assign(scal, { tension_control: tensionEstabilizada(v), tensiones: v.tensionControlTipo==="Vdc" ? `${v.tension} Vac / ${v.tensionControl} Vdc` : `${v.tension}/${v.tensionControl} Vac`, kv: (+v.tension||460)/1000 });
     // tableros de control: sus cargas por barra, como en la tabla de circuitos (alimentan el unifilar del tablero de control)

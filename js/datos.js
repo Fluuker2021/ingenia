@@ -170,7 +170,28 @@ export const APLIC_CARGA_TRAFO = {
   general: [["ventiladores","Ventiladores"],["calefaccion","Calefacción"],["luminaria","Luminaria"],["tomacorriente","Tomacorriente"],["otro","Otro"]],
 };
 export const UNIDADES_CARGA_TRAFO = r => r.tipo==="motor" ? [["hp","HP"],["kw","kW"],["w","W"]] : [["va","VA"],["w","W"],["kva","kVA"],["kw","kW"]];
-export function nuevaCargaTrafo(trafo=""){ return { id: uidc("LT"), trafo, desc:"", tipo:"control", application:"otro", power:100, powerUnit:"va" }; }
+/* potencia típica (referencial) de una carga de transformador según su tipo y aplicación: se propone mientras el usuario
+   no la cambie (manPot = false); en la tabla se ve en cursiva como los demás valores típicos */
+const POT_TRAFO = { control:[150,"va"], plc:[150,"va"], instrumentacion:[100,"va"], tablero:[500,"va"], reserva:[100,"va"] };
+const POT_TRAFO_GENERAL = { ventiladores:[200,"va"], calefaccion:[100,"w"], luminaria:[40,"w"], tomacorriente:[180,"va"], otro:[100,"va"] };
+const POT_TRAFO_MOTOR = { "ventilador-axial":0.25, "faja-transportadora":1, "compresor-piston":1 };
+export function potenciaTipicaTrafo(r){
+  if(r.tipo==="motor") return [POT_TRAFO_MOTOR[r.application] ?? 0.5, "hp"];
+  if(r.tipo==="general") return POT_TRAFO_GENERAL[r.application] || POT_TRAFO_GENERAL.otro;
+  return POT_TRAFO[r.tipo] || [100, "va"];
+}
+export function aplicarPotenciaTrafo(r){ if(!r.manPot){ const [pw, u] = potenciaTipicaTrafo(r); r.power = pw; r.powerUnit = u; } return r; }
+export function nuevaCargaTrafo(trafo=""){ return aplicarPotenciaTrafo({ id: uidc("LT"), trafo, desc:"", tipo:"control", application:"na", power:150, powerUnit:"va", manPot:false, diferencial:false }); }
+/* potencia típica de una carga del listado según su tipo y aplicación (se propone mientras el usuario no la cambie) */
+const POT_MOTOR = { "ventilador-centrifugo":50, "valvula-rotativa":2, "bomba-centrifuga":15, "compresor-piston":25, "ventilador-axial":10, "faja-transportadora":20, molino:100, chancadora:150, agitador:10, otro:10 };
+export function potenciaTipica(l){
+  if(l.kind==="motor") return [POT_MOTOR[l.application] ?? 10, "hp"];
+  if(l.kind==="general") return [5, "kw"];
+  if(l.kind==="feeder") return [30, "kw"];
+  if(l.kind==="reserva") return [10, "kw"];
+  return null;
+}
+export function aplicarPotenciaTipica(l){ l.man = l.man || {}; const t = !l.man.power && potenciaTipica(l); if(t){ l.power = t[0]; l.powerUnit = t[1]; } return l; }
 /* potencia aparente (VA) de una carga de transformador: motores con η·FDP ≈ 0,85·0,80; el resto con FDP 0,9 */
 export function vaCargaTrafo(r){
   const x = +r.power || 0, u = r.powerUnit, k = r.tipo==="motor" ? 0.85*0.8 : 0.9;
@@ -236,7 +257,7 @@ export function controlInterno(p, t){
     // cargas que el usuario asignó al transformador (cuadro «Cargas de los transformadores»)
     for(const r of cargasDeTrafo(p, l)){
       const nom = r.desc || (TIPOS_CARGA_TRAFO.find(x=>x[0]===r.tipo)||[,"Carga"])[1];
-      ramas.push(rama({ label:nom, destino:nom.toUpperCase(), va:vaCargaTrafo(r), min:2, cfg:"lt:"+r.id, externo: r.tipo==="tablero" || r.tipo==="motor" || r.tipo==="instrumentacion", id: r.tipo==="general" && r.application==="tomacorriente" }, vs, false));
+      ramas.push(rama({ label:nom, destino:nom.toUpperCase(), va:vaCargaTrafo(r), min:2, cfg:"lt:"+r.id, externo: r.tipo==="tablero" || r.tipo==="motor" || r.tipo==="instrumentacion", id: r.diferencial!=null ? !!r.diferencial : (r.tipo==="general" && r.application==="tomacorriente") }, vs, false));
     }
     grupos.push({ v:vs, tipo: dc ? "Vdc" : "Vac", ramas, fuente:"trafo", desde:"", loadId:l.id });
   }
@@ -245,8 +266,12 @@ export function controlInterno(p, t){
   const ramasCtl = resto.filter(enV1).map(d=>rama(d, v1, true));
   const ramasSrv = v2 ? resto.filter(d=>!enV1(d)).map(d=>rama(d, v2, true)) : [];
   const fuente = t.fuenteServicios==="externa" ? "externa" : "trafo";
-  if(ramasCtl.length || (!v2 && !propios.length)) grupos.push({ v:v1, tipo: dc1 ? "Vdc" : "Vac", ramas:ramasCtl, fuente: !v2 ? fuente : "trafo", desde: t.fuenteServiciosDesde || "" });
-  if(v2 && ramasSrv.length) grupos.push({ v:v2, tipo:"Vac", ramas:ramasSrv, fuente, desde: t.fuenteServiciosDesde || "" });
+  // con transformadores definidos por el usuario en el listado de cargas, el control interno sale solo de ellos (y de las
+  // cargas que les asignó): no se agrega el control interno automático
+  if(!propios.length){
+    if(ramasCtl.length || !v2) grupos.push({ v:v1, tipo: dc1 ? "Vdc" : "Vac", ramas:ramasCtl, fuente: !v2 ? fuente : "trafo", desde: t.fuenteServiciosDesde || "" });
+    if(v2 && ramasSrv.length) grupos.push({ v:v2, tipo:"Vac", ramas:ramasSrv, fuente, desde: t.fuenteServiciosDesde || "" });
+  }
   /* circuitos disponibles (para elegirlos en el listado de cargas) */
   grupos.disponibles = disp.map(d=>({ cfg:d.cfg, label:d.label, va:d.va }));
   // nombres comunes a todos los entregables: fusibles después de los de la acometida, transformadores después del de la
@@ -278,7 +303,12 @@ export function tagsPotenciaTFC(p, t){
 export function circuitoHaciaControl(p, x, cual="est"){
   const clave = (cual==="aux" ? "tca:" : "tc:") + x.id;
   for(const t of tablerosPotencia(p)) for(const g of controlInterno(p, t)){ const r = g.ramas.find(r=>r.cfg===clave); if(r) return r.cb; }
-  return "";
+  // transformadores del usuario: la etapa de control de un tablero de fuerza y control sale de su carga «PLC» (o «Control
+  // interno»); un tablero de control, de la carga «Tablero externo» que lo nombra
+  const filas = datos(p).cargasTrafo || [];
+  const busca = pred => { for(const t of tablerosPotencia(p)) for(const g of controlInterno(p, t)) for(const r of g.ramas){ const f = /^lt:/.test(r.cfg||"") && filas.find(z=>"lt:"+z.id===r.cfg); if(f && pred(f, t)) return r.cb; } return ""; };
+  if(cual==="est" && x.tipo==="fuerzacontrol") return busca((f, t)=>t.id===x.id && f.tipo==="plc") || busca((f, t)=>t.id===x.id && f.tipo==="control");
+  return busca(f=>f.tipo==="tablero" && x.tag && String(f.desc||"").toUpperCase().includes(String(x.tag).toUpperCase()));
 }
 /* cargas de un tablero: las asignadas + (tablero de distribución) un alimentador por cada tablero aguas abajo + (tablero
    de fuerza) su control interno: un transformador de control por tensión (si el usuario agregó cargas «Transformador de
@@ -334,6 +364,9 @@ export function calcularTablero(p, t, _depth=0){
     }
     // modelos en la marca confirmada por el usuario (panel «Marcas de los equipos»)
     if(c) for(const it of c.items||[]) if(it.model) it.model = modeloEnMarca(it.model, it.val, mr);
+    // protección diferencial propia de la carga (pedido del cliente): relé diferencial con su toroide en la salida
+    if(c && l.diferencial && l.kind!=="control" && l.kind!=="reserva"){ c.diferencial = { tag:"RD"+(String(c.tag).replace(/\D/g, "") || c.tag), sens: l.kind==="motor" ? "300mA" : "30mA" };
+      c.items.push({ comp:"Protección diferencial (relé con toroide)", devtag:c.diferencial.tag, model:"Relé diferencial electrónico + transformador toroidal", val:c.diferencial.sens, src:null }); }
     if(c){ c.load = l; c.cargaTag = l.tag || c.tag; c.descLabel = c.descLabel || l.desc || c.title; c.tablero = t; circuits.push(c); }
   });
   let mainBreaker = 0, totalKVA = 0, demandCurrent = 0, requiredNEC = 0, requiredDemand = 0, installedKVA = 0, installedCurrent = 0, maxC = 0, sumOthers = 0, fpSistema = 0, fpInstalado = 0;

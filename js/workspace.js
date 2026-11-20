@@ -106,7 +106,7 @@ function vistaCargas(body, p, id){
       `<div class="xl-band">${esc(`${datos(p).sistema.nombre ? datos(p).sistema.nombre+" - " : ""}${t.nombre} ${t.tag}`.toUpperCase())}</div>` +
       tablaHTML([["ÍTEM","#"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["HP","hp"],["kW","kw"],["In (A)","_in"],["FDP","fp"],["EFF","eff"],["FU","fu"],["FS","fs"],["Potencia instalada (kVA)","_si"],["Máxima demanda (kVA)","_md"]], filas, tot) +
       `<div class="stat-row mt-2"><div class="stat"><div class="k">Potencia instalada</div><div class="v">${r2(c.installedKVA,1)} kVA</div></div><div class="stat"><div class="k">Máxima demanda</div><div class="v">${r2(c.totalKVA,1)} kVA</div></div><div class="stat"><div class="k">I máxima demanda</div><div class="v">${r2(c.demandCurrent,1)} A</div></div><div class="stat"><div class="k">Interruptor general</div><div class="v">3x${c.mainBreaker} A</div></div></div>` +
-      (tb.cargas_control.length ? `<h3 class="ed-sub mt-2">Lista de cargas estabilizada</h3>` + tablaHTML([["ÍTEM","n"],["DESCRIPCIÓN","descripcion"],["FDP","fp"],["FU","fu"],["FS","fs"],["P (kW)","kw"]], tb.cargas_control) : "") + `</div>`;
+      `</div>`;
   }).concat(tablerosControl(p).map(t=>({ t, filas: cargasTableroControl(p, t) })).filter(x=>x.filas.length).map(({ t, filas })=>{
     // tableros de control: cargas por barra (la misma tabla que usa su unifilar)
     const tot = `<tr class="xl-total"><td colspan="4" style="text-align:right">POTENCIA TOTAL</td><td class="num">${filas.reduce((a, f)=>a + (+f.potencia||0), 0)} W</td><td colspan="3"></td></tr>`;

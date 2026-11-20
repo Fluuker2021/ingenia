@@ -130,6 +130,7 @@ export async function pdfExcel(buffer){
   const PDF = await jsPDF();
   const wb = new window.ExcelJS.Workbook(); await wb.xlsx.load(buffer);
   let doc = null;
+  const paginasHF = [];   // encabezado y pie de cada página (los del Excel), para dibujarlos al final con «Página X de N»
   for(const ws of wb.worksheets){
     if(ws.state && ws.state!=="visible") continue;
     const R = rangoUsado(ws);
@@ -166,6 +167,7 @@ export async function pdfExcel(buffer){
     for(const filas of paginas){
       if(!doc) doc = new PDF({ orientation: apaisado ? "landscape" : "portrait", unit:"mm", format:[Math.min(PW, PH), Math.max(PW, PH)], compress:true });
       else doc.addPage([Math.min(PW, PH), Math.max(PW, PH)], apaisado ? "landscape" : "portrait");
+      paginasHF.push({ hf: ws.headerFooter || {}, PW, PH, M, mg });
       const yFila = {}; { let y = 0; for(const r of filas){ yFila[r] = y; y += rh[r]||0; } }
       const X = x=>M.l + dx + x*k, Y = y=>M.t + y*k;
       const enPag = new Set(filas);
@@ -221,7 +223,37 @@ export async function pdfExcel(buffer){
     }
   }
   if(!doc) doc = new PDF();
+  encabezadosYPies(doc, paginasHF);
   return doc.output("arraybuffer");
+}
+/* encabezado y pie de página del Excel («Documento elaborado por … · Página X de N»): la primera página (carátula) no
+   lleva nada; desde la segunda, con la numeración del documento completo */
+function seccionesHF(t){
+  const out = { L:[], C:[], R:[] }; let cur = "C";
+  const limpio = String(t||"").replace(/&"[^"]*"/g, "").replace(/&K[0-9A-Fa-f]{6}/g, "").replace(/&\d+/g, "");
+  const re = /&([LCR])/g; let i = 0, m;
+  const push = txt => { if(txt) out[cur].push(txt); };
+  while((m = re.exec(limpio))){ push(limpio.slice(i, m.index)); cur = m[1]; i = re.lastIndex; }
+  push(limpio.slice(i));
+  const r = {}; for(const k of ["L","C","R"]){ const x = out[k].join(""); r[k] = { bold:/&B/.test(x), txt: x.replace(/&[BIUS]/g, "") }; }
+  return r;
+}
+function encabezadosYPies(doc, paginas){
+  const N = doc.getNumberOfPages();
+  for(let i = 2; i <= N; i++){
+    const pg = paginas[i-1]; if(!pg) continue;
+    doc.setPage(i);
+    const n = t => t.replace(/&P/g, String(i)).replace(/&N/g, String(N)).replace(/&&/g, "&").trim();
+    const hdr = (pg.mg.header ?? 0.31)*25.4, ftr = (pg.mg.footer ?? 0.31)*25.4;
+    for(const [clave, y] of [["oddHeader", hdr + 3], ["oddFooter", pg.PH - ftr - 1]]){
+      const sec = seccionesHF(pg.hf[clave]);
+      for(const [k, x, al] of [["L", pg.M.l, "left"], ["C", pg.PW/2, "center"], ["R", pg.PW - pg.M.r, "right"]]){
+        const t = n(sec[k].txt); if(!t) continue;
+        doc.setFont("helvetica", sec[k].bold ? "bold" : "normal"); doc.setFontSize(8); doc.setTextColor(23, 25, 29);
+        doc.text(t, x, y, { align: al });
+      }
+    }
+  }
 }
 function textoCelda(doc, cell, txt, x, y, w, h, k){
   const f = cell.font || {}, al = cell.alignment || {};

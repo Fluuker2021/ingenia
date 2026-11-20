@@ -11,7 +11,7 @@ import { renderEditores } from "./editores.js";
 import { esPro, pantallaPro } from "./plan.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, instrumentos, r2, tableros, tablerosControl, tf, cablesFuerza, CANALIZACIONES } from "./datos.js";
 import { aciCercano } from "./cad/formato.js";
-import { parseDXF, boundsOf, colorCapa } from "./dxf.js";
+import { parseDXF, boundsOf, colorCapa, rgbACI } from "./dxf.js";
 import { seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { ENTREGABLES } from "./catalog.js";
 import { montarBarraCopito } from "./copito-docs.js";
@@ -195,7 +195,7 @@ async function vistaPlano(body, state, p, id){
       else if(e.t==="C"){ ctx.beginPath(); ctx.arc(X(e.cx),Y(e.cy),e.r*s,0,Math.PI*2); ctx.stroke(); }
       else if(e.t==="A"){ ctx.beginPath(); ctx.arc(X(e.cx),Y(e.cy),e.r*s,-e.a2*Math.PI/180,-e.a1*Math.PI/180); ctx.stroke(); }
       else if(e.t==="P"){ ctx.beginPath(); e.pts.forEach((q,i)=>i?ctx.lineTo(X(q[0]),Y(q[1])):ctx.moveTo(X(q[0]),Y(q[1]))); if(e.closed) ctx.closePath(); ctx.stroke(); }
-      else if(e.t==="S"){ ctx.beginPath(); const o=[e.pts[0],e.pts[1],e.pts[3],e.pts[2]]; o.forEach((q,i)=>i?ctx.lineTo(X(q[0]),Y(q[1])):ctx.moveTo(X(q[0]),Y(q[1]))); ctx.closePath(); ctx.fill(); }
+      else if(e.t==="S"){ ctx.fillStyle = e.c>0 && e.c<256 ? rgbACI(e.c) : "#1b2a3c"; ctx.beginPath(); const o=[e.pts[0],e.pts[1],e.pts[3],e.pts[2]]; o.forEach((q,i)=>i?ctx.lineTo(X(q[0]),Y(q[1])):ctx.moveTo(X(q[0]),Y(q[1]))); ctx.closePath(); ctx.fill(); }
       else if(e.t==="T" && e.text){
         const fs = e.h*s*1.15; if(fs<1.2) continue;
         ctx.save(); ctx.translate(X(e.x),Y(e.y)); ctx.rotate(-(e.rot||0)*Math.PI/180); ctx.font = `${fs}px "IBM Plex Sans Condensed", Arial Narrow, Arial, sans-serif`;
@@ -312,16 +312,49 @@ async function logoPNG(dataURL){
   if(!dataURL) return null;
   return new Promise(res=>{ const im = new Image(); im.onload = ()=>{ const c = document.createElement("canvas"); c.width = im.naturalWidth; c.height = im.naturalHeight; c.getContext("2d").drawImage(im,0,0); res({ dataURL: c.toDataURL("image/png"), aspect: im.naturalWidth/Math.max(1,im.naturalHeight) }); }; im.onerror = ()=>res(null); im.src = dataURL; });
 }
-/* logo → raster por tramos de color ACI para dibujarlo con SOLID en el DXF R12 */
-async function logoRaster(dataURL, maxW=150, maxH=56){
+/* logo → raster por tramos de color ACI para dibujarlo con SOLID en el DXF R12 (que no admite imágenes).
+   Resolución alta (≈ 6 px/mm en el recuadro del cajetín) y colores llevados a los colores principales del logo: los
+   bordes suavizados (antialias) no se convierten en puntos de colores sueltos, así el logo se ve nítido en AutoCAD. */
+export async function logoRaster(dataURL, maxW=640, maxH=220){
   if(!dataURL) return null;
   return new Promise(res=>{ const im = new Image(); im.onload = ()=>{
-    const k = Math.min(maxW/im.naturalWidth, maxH/im.naturalHeight, 1); const w = Math.max(1, Math.round(im.naturalWidth*k)), h = Math.max(1, Math.round(im.naturalHeight*k));
-    const c = document.createElement("canvas"); c.width = w; c.height = h; const ctx = c.getContext("2d"); ctx.drawImage(im, 0, 0, w, h);
-    const px = ctx.getImageData(0, 0, w, h).data; const runs = [];
+    const k = Math.min(maxW/im.naturalWidth, maxH/im.naturalHeight, 4); const w = Math.max(1, Math.round(im.naturalWidth*k)), h = Math.max(1, Math.round(im.naturalHeight*k));
+    const c = document.createElement("canvas"); c.width = w; c.height = h; const ctx = c.getContext("2d");
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high"; ctx.drawImage(im, 0, 0, w, h);
+    const px = ctx.getImageData(0, 0, w, h).data;
+    // color de cada píxel sobre fondo blanco (las transparencias se mezclan con el blanco del cajetín)
+    const rgb = i => { const a = px[i+3]/255; return [px[i]*a + 255*(1-a), px[i+1]*a + 255*(1-a), px[i+2]*a + 255*(1-a)]; };
+    const blanco = ([r, g, b]) => r>232 && g>232 && b>232;
+    // colores principales: histograma en cubos de 16 niveles; los más frecuentes (hasta 10) forman la paleta
+    const cuenta = new Map();
+    for(let i=0;i<px.length;i+=4){ const q = rgb(i); if(blanco(q)) continue; const kk = (q[0]>>4)<<8 | (q[1]>>4)<<4 | (q[2]>>4); cuenta.set(kk, (cuenta.get(kk)||0) + 1); }
+    const total = [...cuenta.values()].reduce((a, n)=>a + n, 0) || 1;
+    const pal = [...cuenta.entries()].sort((a, b)=>b[1] - a[1]).filter(([, n])=>n/total > 0.004).slice(0, 10)
+      .map(([kk])=>[((kk>>8)&15)*16 + 8, ((kk>>4)&15)*16 + 8, (kk&15)*16 + 8]);
+    const d2 = (a, b) => 2*(a[0]-b[0])**2 + 4*(a[1]-b[1])**2 + 3*(a[2]-b[2])**2;
+    const aciPal = pal.map(q=>aciCercano(...q)), memo = new Map();
+    const colorDe = q => {
+      if(blanco(q)) return 0;
+      const kk = (q[0]>>3)<<10 | (q[1]>>3)<<5 | (q[2]>>3); if(memo.has(kk)) return memo.get(kk);
+      // el más cercano entre el blanco del fondo y los colores principales (los bordes suavizados van a uno de ellos)
+      let best = 0, bd = d2(q, [255, 255, 255]);
+      pal.forEach((pc, j)=>{ const dd = d2(q, pc); if(dd < bd){ bd = dd; best = aciPal[j]; } });
+      if(!pal.length) best = aciCercano(...q);
+      memo.set(kk, best); return best;
+    };
+    const colorDe_ = i => col[i];
+    // blancos: el fondo exterior (conectado con el borde de la imagen) queda vacío; los blancos interiores (letras o
+    // detalles blancos sobre el color del logo) se rellenan con blanco verdadero (ACI 255), si no en AutoCAD con fondo
+    // negro se verían negros
+    const col = new Uint8Array(w*h); for(let i=0;i<w*h;i++) col[i] = colorDe(rgb(i*4));
+    const fondo = new Uint8Array(w*h), pila = [];
+    for(let x=0;x<w;x++){ pila.push(x, (h-1)*w + x); } for(let y=0;y<h;y++){ pila.push(y*w, y*w + w - 1); }
+    while(pila.length){ const i = pila.pop(); if(fondo[i] || col[i]) continue; fondo[i] = 1; const x = i % w, y = (i - x)/w;
+      if(x > 0) pila.push(i - 1); if(x < w - 1) pila.push(i + 1); if(y > 0) pila.push(i - w); if(y < h - 1) pila.push(i + w); }
+    for(let i=0;i<w*h;i++) if(!col[i] && !fondo[i]) col[i] = 255;
+    const runs = [];
     for(let y=0;y<h;y++){ let cur = null;
-      for(let x=0;x<w;x++){ const i = (y*w+x)*4; const a = px[i+3], r = px[i], g = px[i+1], b = px[i+2];
-        const col = (a<128 || (r>232 && g>232 && b>232)) ? 0 : aciCercano(r, g, b);
+      for(let x=0;x<w;x++){ const col = colorDe_(y*w+x);
         if(cur && cur[3]===col && col){ cur[2] = x; continue; }
         if(cur && cur[3]) runs.push(cur); cur = col ? [y, x, x, col] : null; }
       if(cur && cur[3]) runs.push(cur); }

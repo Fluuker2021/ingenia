@@ -5,7 +5,7 @@
    - Word: cada página del documento (docx-preview) se dibuja en A4; las secciones largas se cortan en una línea en
      blanco y repiten su encabezado y su pie de página.
    Las librerías (jsPDF, JSZip, docx-preview, html2canvas) se cargan solo al pedir el primer PDF. */
-import { parseDXF, colorCapa } from "./dxf.js";
+import { parseDXF, colorCapa, rgbACI } from "./dxf.js";
 
 const cargadas = {};
 function script(src){
@@ -50,7 +50,7 @@ export async function pdfPlano(dxf, hojas=1){
         for(let i=0; i<=n; i++){ const t = (a1 + (a2 - a1)*i/n)*Math.PI/180, x = X(e.cx + e.r*Math.cos(t)), y = Y(e.cy + e.r*Math.sin(t)); if(px!=null) doc.line(px, py, x, y); px = x; py = y; }
       }
       else if(e.t==="P"){ const pts = e.closed ? [...e.pts, e.pts[0]] : e.pts; for(let i=1; i<pts.length; i++) doc.line(X(pts[i-1][0]), Y(pts[i-1][1]), X(pts[i][0]), Y(pts[i][1])); }
-      else if(e.t==="S"){ const q = [e.pts[0], e.pts[1], e.pts[3], e.pts[2]].map(p=>[X(p[0]), Y(p[1])]); doc.triangle(q[0][0], q[0][1], q[1][0], q[1][1], q[2][0], q[2][1], "F"); doc.triangle(q[0][0], q[0][1], q[2][0], q[2][1], q[3][0], q[3][1], "F"); }
+      else if(e.t==="S"){ if(e.c>0 && e.c<256){ const [r, g, b] = rgbACI(e.c).match(/\d+/g).map(Number); doc.setFillColor(r, g, b); colorAct = null; } const q = [e.pts[0], e.pts[1], e.pts[3], e.pts[2]].map(p=>[X(p[0]), Y(p[1])]); doc.triangle(q[0][0], q[0][1], q[1][0], q[1][1], q[2][0], q[2][1], "F"); doc.triangle(q[0][0], q[0][1], q[2][0], q[2][1], q[3][0], q[3][1], "F"); }
       else if(e.t==="T" && e.text) textoPlano(doc, e, X, Y);
     }
   }

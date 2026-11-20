@@ -74,7 +74,8 @@ function toPrimitive0(e){
   }
   if(t==="SOLID"||t==="TRACE"){
     const pts=[[num(get(e,10)),num(get(e,20))],[num(get(e,11)),num(get(e,21))],[num(get(e,12)),num(get(e,22))],[num(get(e,13)),num(get(e,23))]];
-    return [{t:"S", pts, layer, space}];
+    // color propio del relleno (logos del cajetín, en colores ACI); 256 = por capa
+    return [{t:"S", pts, layer, space, c: parseInt(get(e,62,"256"),10)}];
   }
   if(t==="TEXT"){
     // con justificación (72/73) la posición válida es el punto de alineación (11/21)
@@ -198,7 +199,7 @@ export function drawPreview(canvas, flat, opts={}){
     else if(p.t==="C"){ ctx.beginPath(); ctx.arc(X(p.cx),Y(p.cy),p.r*sc,0,Math.PI*2); ctx.stroke(); }
     else if(p.t==="A"){ ctx.beginPath(); ctx.arc(X(p.cx),Y(p.cy),p.r*sc, -p.a2*Math.PI/180, -p.a1*Math.PI/180); ctx.stroke(); }
     else if(p.t==="P"){ ctx.beginPath(); p.pts.forEach((q,i)=> i? ctx.lineTo(X(q[0]),Y(q[1])) : ctx.moveTo(X(q[0]),Y(q[1]))); if(p.closed) ctx.closePath(); ctx.stroke(); }
-    else if(p.t==="S"){ ctx.beginPath(); const o=[p.pts[0],p.pts[1],p.pts[3],p.pts[2]]; o.forEach((q,i)=> i? ctx.lineTo(X(q[0]),Y(q[1])) : ctx.moveTo(X(q[0]),Y(q[1]))); ctx.closePath(); ctx.fill(); }
+    else if(p.t==="S"){ if(p.c>0 && p.c<256) ctx.fillStyle = rgbACI(p.c); ctx.beginPath(); const o=[p.pts[0],p.pts[1],p.pts[3],p.pts[2]]; o.forEach((q,i)=> i? ctx.lineTo(X(q[0]),Y(q[1])) : ctx.moveTo(X(q[0]),Y(q[1]))); ctx.closePath(); ctx.fill(); }
     else if(p.t==="T" && p.text){
       const fs = Math.max(4, p.h*sc);
       ctx.save(); ctx.translate(X(p.x),Y(p.y)); ctx.rotate(-(p.rot||0)*Math.PI/180); ctx.font = `${fs}px Inter, Arial, sans-serif`; ctx.fillText(p.text, 0, 0); ctx.restore();
@@ -231,6 +232,16 @@ export function parseCTB(arrayBuffer, pako){
   return { tipo: head==="PIACTB" ? "ctb" : "stb", estilos, pesos, descripcion: (txt.match(/description="([^"]*)"/)||[])[1]||"" };
 }
 
+/* color ACI de un relleno con color propio (logos), como en AutoCAD */
+const ACI_BASE = {1:[255,0,0],2:[255,255,0],3:[0,255,0],4:[0,255,255],5:[0,0,255],6:[255,0,255],7:[0,0,0],8:[128,128,128],9:[192,192,192],250:[51,51,51],251:[91,91,91],252:[132,132,132],253:[173,173,173],254:[214,214,214],255:[255,255,255]};
+export function rgbACI(i){
+  let c = ACI_BASE[i];
+  if(!c){ const h = (Math.floor((i-10)/10)*15) % 360, sub = i%10, val = [1,1,0.65,0.65,0.5,0.5,0.3,0.3,0.15,0.15][sub], sat = sub%2 ? 0.5 : 1;
+    const k = val*sat, x = k*(1-Math.abs((h/60)%2-1)), m = val-k;
+    const [r,g,b] = h<60?[k,x,0]:h<120?[x,k,0]:h<180?[0,k,x]:h<240?[0,x,k]:h<300?[x,0,k]:[k,0,x];
+    c = [Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255)]; }
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+}
 /* color de cada capa en la vista previa de los planos de Ingenia (y en su descarga en PDF) */
 const COLOR_CAPA = { "I-SE-ANALO":"#1d6fb8","I-PROTOCOL":"#1d6fb8","I-FZA-AC":"#b8336a","E-FZA-BT-PRI":"#b8336a","E-FZA":"#b8336a","I-FZA-DC":"#7a4fbf","I-TIERRA":"#2e8b57","E-TIERRA":"#2e8b57","I-CONTROL":"#c27c0e","E-CONTROL":"#c27c0e",
   "M-COBRE":"#c0661f","M-TIERRA":"#2e8b57","M-CABLE":"#a23b72","M-COTA":"#1d6fb8","M-ETIQUETA":"#9a6a00","M-SENAL":"#c99a00","M-CANALETA":"#7b8490","M-RIEL":"#8a93a0","M-PLACA":"#7b8490","M-DETALLE":"#5b6573","M-OCULTO":"#9aa3ae" };

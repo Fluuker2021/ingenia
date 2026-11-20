@@ -901,7 +901,8 @@ class DXFDoc{
       if(t==="C") return "0\nCIRCLE\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n40\n"+dxfNum(e[3]);
       if(t==="A") return "0\nARC\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n40\n"+dxfNum(e[3])+"\n50\n"+dxfNum(e[4])+"\n51\n"+dxfNum(e[5]);
       if(t==="T"){ const tx = dxfEsc(e[5]); if(!tx.trim()) return ""; return "0\nTEXT\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n40\n"+dxfNum(e[3])+"\n1\n"+tx.slice(0,250)+(e[4]?"\n50\n"+dxfNum(e[4]):"")+"\n41\n"+dxfNum(DXF_ANCHO_TEXTO); }
-      if(t==="S") return "0\nSOLID\n8\n0\n62\n0\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n11\n"+dxfNum(e[3])+"\n21\n"+dxfNum(e[4])+"\n31\n0.0\n12\n"+dxfNum(e[5])+"\n22\n"+dxfNum(e[6])+"\n32\n0.0\n13\n"+dxfNum(e[7])+"\n23\n"+dxfNum(e[8])+"\n33\n0.0";
+      // SOLID con color propio en e[9] (logos del cajetín); sin él, BYBLOCK como los demás
+      if(t==="S") return "0\nSOLID\n8\n0\n62\n"+(e[9]!=null ? e[9] : 0)+"\n10\n"+dxfNum(e[1])+"\n20\n"+dxfNum(e[2])+"\n30\n0.0\n11\n"+dxfNum(e[3])+"\n21\n"+dxfNum(e[4])+"\n31\n0.0\n12\n"+dxfNum(e[5])+"\n22\n"+dxfNum(e[6])+"\n32\n0.0\n13\n"+dxfNum(e[7])+"\n23\n"+dxfNum(e[8])+"\n33\n0.0";
       if(t==="P"){
         const closed = e[1];
         const pts = [];

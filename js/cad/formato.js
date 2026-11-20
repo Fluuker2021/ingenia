@@ -3,7 +3,10 @@
    cuadrícula A–H / 1–5, tabla de revisiones, planos de referencia, bloque de aprobación del contratista y
    rótulo principal), con la marca del cliente retirada y los campos convertidos en datos del proyecto.
    Con plantillas del cliente: su formato y su cajetín DXF, rellenando los textos marcados {{…}}. */
-import { DXF_BLOCKS, dxfTrunc, DXF_CAR } from "../engine/tablero-core.js";
+import { DXF_BLOCKS, dxfTrunc } from "../engine/tablero-core.js";
+/* ancho por carácter para encajar textos en las celdas del cajetín: el de AutoCAD con txt.shx y factor 0,8 (≈ 0,8 × altura
+   en mayúsculas anchas, «/», «Ñ»…), con margen, para que ningún rótulo ni dato llegue a la línea de su celda */
+const DXF_CAR = 0.8;
 
 /* los rótulos fijos de los bloques del cajetín no deben pasar a la celda vecina: si el texto (con el ancho real que
    tendrá en AutoCAD) llega a la línea vertical siguiente, se reduce su altura */
@@ -31,17 +34,25 @@ function centrarRotulos(bloque, filtro = () => true){
     if(e[0]==="L"){ if(Math.abs(e[1]-e[3]) < 0.01) v.push([e[1], Math.min(e[2], e[4]), Math.max(e[2], e[4])]); else if(Math.abs(e[2]-e[4]) < 0.01) h.push([e[2], Math.min(e[1], e[3]), Math.max(e[1], e[3])]); }
     if(e[0]==="P") for(let i=2;i+3<e.length;i+=2){ const [x1, y1, x2, y2] = e.slice(i, i+4); if(Math.abs(x1-x2) < 0.01) v.push([x1, Math.min(y1, y2), Math.max(y1, y2)]); else if(Math.abs(y1-y2) < 0.01) h.push([y1, Math.min(x1, x2), Math.max(x1, x2)]); }
   }
-  return bloque.map(e=>{
-    if(e[0]!=="T" || e[4] || !filtro(e)) return e;
+  // 1) celda de cada rótulo y la altura con la que entra
+  const celdas = bloque.map(e=>{
+    if(e[0]!=="T" || e[4] || !filtro(e)) return null;
     const [, x, y, hh, , txt] = e, w = String(txt).length*hh*DXF_CAR, px = x + Math.min(w/2, 2), py = y + hh/2;
     const izq = v.filter(([vx, a, b])=>vx <= px + 0.01 && a <= py && b >= py).reduce((m, l)=>Math.max(m, l[0]), -Infinity);
     const der = v.filter(([vx, a, b])=>vx > px && a <= py && b >= py).reduce((m, l)=>Math.min(m, l[0]), Infinity);
     const aba = h.filter(([hy, a, b])=>hy <= py && a <= px && b >= px).reduce((m, l)=>Math.max(m, l[0]), -Infinity);
     const arr = h.filter(([hy, a, b])=>hy > py && a <= px && b >= px).reduce((m, l)=>Math.min(m, l[0]), Infinity);
-    if(![izq, der, aba, arr].every(isFinite) || der - izq > 120 || arr - aba > 20) return e;
-    const h2 = Math.min(hh, (der - izq - 1.2)/(String(txt).length*DXF_CAR), (arr - aba)*0.5);
-    const w2 = String(txt).length*h2*DXF_CAR;
-    return ["T", (izq + der)/2 - w2/2, (aba + arr)/2 - h2/2, h2, 0, txt];
+    if(![izq, der, aba, arr].every(isFinite) || der - izq > 120 || arr - aba > 20) return null;
+    return { izq, der, aba, arr, txt, h: Math.min(hh, (der - izq - 1.6)/(String(txt).length*DXF_CAR), (arr - aba)*0.5) };
+  });
+  // 2) los rótulos de una misma columna (mismas líneas a los lados) forman un grupo y llevan una sola altura: la del que
+  // menos entra (si uno se achica para no salirse de su celda, se achica todo el grupo, como en un cajetín ordenado)
+  const clave = c => `${c.izq.toFixed(1)}|${c.der.toFixed(1)}`, hGrupo = {};
+  for(const c of celdas) if(c) hGrupo[clave(c)] = Math.min(hGrupo[clave(c)] ?? Infinity, c.h);
+  return bloque.map((e, i)=>{
+    const c = celdas[i]; if(!c) return e;
+    const h2 = hGrupo[clave(c)], w2 = String(c.txt).length*h2*DXF_CAR;
+    return ["T", (c.izq + c.der)/2 - w2/2, (c.aba + c.arr)/2 - h2/2, h2, 0, c.txt];
   });
 }
 /* texto de un dato en su celda: altura reducida hasta que entre en el ancho disponible (y recortado si aún no entra) */
@@ -197,17 +208,31 @@ export function aciCercano(r, g, b){
   for(const [i,R,G,B] of _aci){ if(i===7) continue; const d = 2*(R-r)**2 + 4*(G-g)**2 + 3*(B-b)**2; if(d<bd){ bd = d; best = i; } }
   return best;
 }
-/* raster = { w, h, runs:[[fila, x0, x1, aci]] } (fila 0 = arriba) */
+/* raster = { w, h, runs:[[fila, x0, x1, aci]] } (fila 0 = arriba). El logo se define una sola vez como bloque (en
+   píxeles, con los tramos iguales de filas seguidas unidos en un solo rectángulo) y se inserta escalado en cada lámina:
+   el DXF no repite miles de rellenos por hoja y AutoCAD lo maneja como un solo objeto. */
+const bloquesLogo = new WeakMap(); let nLogo = 0;
+function bloqueLogo(raster){
+  if(bloquesLogo.has(raster)) return bloquesLogo.get(raster);
+  const key = "LOGO" + (++nLogo), ents = [];
+  const cerrar = r => ents.push(["S", r.x0, raster.h - r.f1 - 1, r.x1 + 1, raster.h - r.f1 - 1, r.x0, raster.h - r.f0, r.x1 + 1, raster.h - r.f0, r.c]);
+  // tramos de la fila anterior (que pueden seguir en la actual) y de la fila en curso
+  let antes = new Map(), filaAntes = null, ahora = new Map(), fila = null;
+  const pasar = () => { for(const [k, r] of antes) if(ahora.get(k)!==r) cerrar(r); antes = ahora; filaAntes = fila; ahora = new Map(); };
+  for(const [f, x0, x1, c] of raster.runs){
+    if(f!==fila){ if(fila!==null) pasar(); fila = f; }
+    const k = `${x0}|${x1}|${c}`, prev = antes.get(k);
+    if(prev && filaAntes===f - 1){ prev.f1 = f; ahora.set(k, prev); } else ahora.set(k, { f0:f, f1:f, x0, x1, c });
+  }
+  pasar(); for(const r of antes.values()) cerrar(r);
+  DXF_BLOCKS[key] = ents; bloquesLogo.set(raster, key);
+  return key;
+}
 export function dibujarLogo(doc, raster, x, y, w, h){
   if(!raster || !raster.runs || !raster.runs.length) return;
   const s = Math.min(w/raster.w, h/raster.h);
   const ox = x + (w - raster.w*s)/2, oy = y + (h - raster.h*s)/2;
-  const L = doc._layer("G-LOGO");
-  const n = v => (Math.round(v*1000)/1000).toFixed(3);
-  for(const [r, x0, x1, c] of raster.runs){
-    const yb = oy + (raster.h-1-r)*s, yt = yb + s, xa = ox + x0*s, xb = ox + (x1+1)*s;
-    doc.entities.push("0\nSOLID\n8\n"+L+"\n62\n"+c+"\n10\n"+n(xa)+"\n20\n"+n(yb)+"\n30\n0.0\n11\n"+n(xb)+"\n21\n"+n(yb)+"\n31\n0.0\n12\n"+n(xa)+"\n22\n"+n(yt)+"\n32\n0.0\n13\n"+n(xb)+"\n23\n"+n(yt)+"\n33\n0.0");
-  }
+  doc.insertBlock(bloqueLogo(raster), ox, oy, "G-LOGO", s, s);
 }
 
 /* NOTAS del usuario en la lámina, siempre en zona libre y nunca sobre el cajetín: por defecto en la columna derecha,

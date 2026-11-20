@@ -76,7 +76,8 @@ function menuLateral(seg, id, tab){
   const p = seg==="proyecto" && id ? S.proyecto(id) : null;
   if(p) p.visto = Date.now();
   const sec = tab==="doc" ? "documentos" : (tab||"resumen");
-  const ps = state.proyectos.slice().sort((a,b)=>(b.visto||Date.parse(b.creado)||0)-(a.visto||Date.parse(a.creado)||0));
+  // proyectos en orden alfabético (fijo: abrir uno no lo mueve arriba)
+  const ps = state.proyectos.slice().sort((a,b)=>String(a.nombre||"").localeCompare(String(b.nombre||""), "es", { sensitivity:"base", numeric:true }));
   const enlace = (href, ic, txt, activo, extra="") => `<a class="item ${activo?"active":""}" href="${href}" ${extra}>${ic||""}<span class="txt">${txt}</span></a>`;
   const grupo = (key, ic, txt, hijos, n) => `<div class="grp ${navAb[key]?"open":""}"><button class="item grp-h" data-grp="${key}" aria-expanded="${!!navAb[key]}">${IC.chev}${ic}<span class="txt">${txt}</span>${n!=null?`<span class="cnt">${n}</span>`:""}</button><div class="grp-b">${hijos}</div></div>`;
   const proyecto = q => {

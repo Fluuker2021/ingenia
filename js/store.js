@@ -105,4 +105,19 @@ export function blobToDataURL(blob){ return new Promise(res=>{ const r=new FileR
 
 // ---------- respaldo ----------
 export function exportarRespaldo(){ return JSON.stringify(load(), null, 2); }
-export function importarRespaldo(json){ const data = JSON.parse(json); state = Object.assign(defaults(), data); state.migVac = 0; migrar(state); save(); return state; }
+/* importar un respaldo: los proyectos del archivo se SUMAN a los de la cuenta (los que tienen el mismo identificador se
+   actualizan con los del archivo); nada de lo que ya está se borra. La organización se toma del archivo si aquí no hay. */
+export function importarRespaldo(json){
+  const data = JSON.parse(json);
+  if(!data || !Array.isArray(data.proyectos)) throw new Error("Archivo no válido");
+  const s = load(), nuevos = Object.assign(defaults(), data);
+  nuevos.migVac = 0; migrar(nuevos); retirarEntregables(nuevos);
+  let agregados = 0, actualizados = 0;
+  for(const p of nuevos.proyectos){
+    const i = s.proyectos.findIndex(x=>x.id===p.id);
+    if(i >= 0){ s.proyectos[i] = p; actualizados++; } else { s.proyectos.push(p); agregados++; }
+  }
+  if(!(s.org && s.org.nombre) && nuevos.org) s.org = nuevos.org;
+  save();
+  return { agregados, actualizados, total: s.proyectos.length };
+}

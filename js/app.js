@@ -137,8 +137,10 @@ function screenProyectos(){
         <div class="card-pie"><div class="row between" style="font-size:12px"><span class="muted">${n} documentos</span><span class="mono">${emit}/${n} emitidos</span></div>
         <div class="progress mt-1"><span style="width:${n?Math.round(100*emit/n):0}%"></span></div></div>
       </div></div>`; }).join("")}</div>`
-    : `<div class="empty"><p><strong>Aún no hay proyectos.</strong></p><p>Ingresa los datos del proyecto, el sistema eléctrico, los tableros y los documentos a elaborar; luego trabajas cada documento.</p><button class="btn-accent" id="nuevo2">${ICON.plus} Nuevo proyecto</button></div>`);
+    : `<div class="empty"><p><strong>Aún no hay proyectos.</strong></p><p>Ingresa los datos del proyecto, el sistema eléctrico, los tableros y los documentos a elaborar; luego trabajas cada documento.</p><div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap"><button class="btn-accent" id="nuevo2">${ICON.plus} Nuevo proyecto</button><button id="traer">${ICON.upload} Traer mis proyectos de otro equipo</button></div>
+      <p class="muted" style="font-size:12.5px;margin-top:12px">Los proyectos se guardan en el navegador donde se crearon. En ese equipo: Configuración → Respaldo de datos → Exportar respaldo; aquí, importa ese archivo.</p></div>`);
   $$("#nuevo,#nuevo2").forEach(b=>b.onclick = ()=>modalProyecto());
+  { const t = document.getElementById("traer"); if(t) t.onclick = ()=>importarProyectos(); }
   $$("[data-open]").forEach(c=>c.onclick = ()=>location.hash = "#/proyecto/"+c.dataset.open);
 }
 
@@ -532,6 +534,18 @@ function screenOrganizacion(){
 }
 
 /* ================= respaldo ================= */
+/* trae los proyectos de otro equipo (archivo de respaldo .json exportado allá) sin borrar los de aquí */
+function importarProyectos(){
+  const i = document.createElement("input"); i.type = "file"; i.accept = ".json,application/json,text/plain";
+  i.onchange = async ()=>{
+    if(!i.files || !i.files[0]) return;
+    try{ const r = S.importarRespaldo(await i.files[0].text());
+      toast(`Respaldo importado: ${r.agregados} proyecto(s) agregado(s)${r.actualizados ? `, ${r.actualizados} actualizado(s)` : ""}`);
+      setTimeout(()=>location.reload(), 900);
+    }catch(e){ toast("El archivo no es un respaldo de Ingenia", true); }
+  };
+  i.click();
+}
 function screenRespaldo(){
   main.innerHTML = topbar({ crumbs:[{label:"Configuración"},{label:"Respaldo de datos"}], title:"Respaldo de datos", sub:"Los proyectos se guardan en este navegador. Exporta un respaldo para llevarlos a otro equipo." }) + html`
     <div class="grid-2">
@@ -540,12 +554,12 @@ function screenRespaldo(){
         <button class="btn-primary" id="bk-exp">${ICON.download} Exportar respaldo</button>
       </div></div>
       <div class="card" style="margin-top:0"><div class="card-head"><h2>Importar</h2></div><div class="card-body">
-        <p class="muted">Reemplaza los datos actuales de este navegador.</p>
+        <p class="muted">Suma los proyectos del respaldo a los de tu cuenta en este navegador (no borra nada; los que ya existen se actualizan).</p>
         <button id="bk-imp">${ICON.upload} Importar respaldo</button>
       </div></div>
     </div>`;
   $("#bk-exp").onclick = ()=>X.descargar(S.exportarRespaldo(), "ingenia_respaldo_"+hoy()+".json", "application/json");
-  $("#bk-imp").onclick = ()=>{ const i=document.createElement("input"); i.type="file"; i.accept=".json"; i.onchange=async()=>{ if(!(await confirmar("Importar respaldo", "Se reemplazarán los proyectos y la configuración de este navegador.", "Importar"))) return; try{ S.importarRespaldo(await i.files[0].text()); location.reload(); }catch(e){ toast("Archivo no válido", true); } }; i.click(); };
+  $("#bk-imp").onclick = ()=>importarProyectos();
 }
 
 /* ================= formatos estándar ================= */

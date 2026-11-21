@@ -17,12 +17,15 @@ import { seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDes
 import { ENTREGABLES } from "./catalog.js";
 import { listadoEquipos } from "./modules/equipos-lista.js";
 import { montarBarraCopito } from "./copito-docs.js";
+import { cargarBase } from "./mecanico/biblioteca.js";
 
 const FMT = { xlsx:"Excel", docx:"Word", dxf:"DXF (AutoCAD)", proceso:"Datos de proceso" };
 
 export async function screenDocumento(main, state, p, id, tab, topbar){
   const e0 = entregable(id), def = defDoc(id), e = e0 && Object.assign({}, e0, { nombre: nombreEntregable(id, p), finalidad: finalidadEntregable(id, p) });
   if(!e || !def){ location.hash = `#/proyecto/${p.id}/documentos`; return; }
+  // biblioteca de componentes del usuario (medidas y vistas de los equipos): antes de armar arreglos y planos
+  await cargarBase();
   S.sincronizarDocumentos(p, ENTREGABLES);
   if(!p.documentos[id]){
     if(e.interno){ p.documentos[id] = { rev:"A", fecha:new Date().toISOString().slice(0,10), estado:"Por elaborar", titulo:e.nombre.toUpperCase() }; S.save(); }
@@ -454,6 +457,7 @@ async function logoCliente(p){ if(!p.plantillas || !p.plantillas.logo_cliente) r
 
 /* archivo nativo del documento: { datos, ext, mime } (DXF, Excel o Word); hojas: láminas del plano */
 export async function generarArchivo(state, p, id, tablero){
+  await cargarBase();
   const def = defDoc(id), e = Object.assign({}, entregable(id), { nombre: nombreEntregable(id, p) });
   const org = await orgConLogo(state);
   const di = docInfo(p, id);

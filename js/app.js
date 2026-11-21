@@ -569,6 +569,7 @@ function screenRespaldo(){
    plantilla y el arreglo usa sus medidas en todos los proyectos. */
 async function screenBiblioteca(){
   const B = await import("./mecanico/biblioteca.js");
+  await B.cargarBase();
   const { separarMarca, marcaPorFamilia } = await import("./modules/equipos-lista.js");
   const { arregloTablero } = await import("./mecanico/arreglo.js"), { arregloControl } = await import("./mecanico/arreglo-control.js");
   const { marcasProyecto } = await import("./engine/marcas.js"), { calcularTablero } = await import("./datos.js");
@@ -604,6 +605,18 @@ async function screenBiblioteca(){
         inp.click(); });
       const q2 = $("[data-quitar]", tr); if(q2) q2.onclick = async ()=>{ if(await confirmar("¿Quitar este componente de la biblioteca? Los planos vuelven a usar el dibujo de su familia.")){ B.eliminar(id); render(); } };
     });
+    // biblioteca base: los componentes del usuario (Componentes 3d.dxf), con sus tres vistas
+    const base = B.componentesBase().filter(e=>!q || `${e.id} ${e.familia} ${e.marca} ${e.modelo} ${e.desc}`.toLowerCase().includes(q));
+    const CONF = { CATALOGO:"Catálogo", MEDIDO_CAD:"Medido en CAD", NOMINAL:"Nominal", ESTIMADO:"Estimado", NORMA:"Norma" };
+    $("#bib-base").innerHTML = `<h2 class="ed-sub mt-2">Componentes del usuario (${B.componentesBase().length}) <span class="muted" style="font-size:12.5px;font-weight:400">— vistas frontal, lateral e isométrica de «Componentes 3d»; el plano usa la del modelo seleccionado</span></h2>
+      <div class="table-wrap"><table class="ed-table"><thead><tr><th>ID</th><th class="izq">Familia</th><th>Marca</th><th class="izq">Modelo</th><th>Ancho × alto × fondo (mm)</th><th>Montaje</th><th>Medidas</th><th></th></tr></thead><tbody>
+      ${base.map(e=>`<tr data-base="${esc(e.id)}"><td class="mono nw" style="font-size:12px">${esc(e.id)}</td><td class="izq muted" style="font-size:12px;white-space:normal">${esc(String(e.familia).replace(/^\w+ - /, ""))}</td><td>${esc(e.marca)}</td><td class="izq" style="white-space:normal">${esc(e.modelo)}</td>
+        <td class="nw">${+e.w} × ${+e.h} × ${+e.d}</td><td style="font-size:12px">${esc(e.montaje)}</td><td style="font-size:12px">${esc(CONF[e.confianza] || e.confianza)}</td><td><button class="btn-sm" data-ver>Ver vistas</button></td></tr>
+        <tr data-vistas="${esc(e.id)}" hidden><td colspan="8"><div class="row" style="gap:14px;flex-wrap:wrap;justify-content:center">${["frente","perfil","iso"].map(k=>`<figure style="margin:0;text-align:center"><canvas width="260" height="260" data-cv="${k}" style="border:1px solid var(--border);border-radius:6px"></canvas><figcaption class="muted" style="font-size:12px">${{ frente:"Frontal", perfil:"Lateral", iso:"Isométrica" }[k]}</figcaption></figure>`).join("")}</div></td></tr>`).join("")}
+      </tbody></table></div>`;
+    $$("#bib-base tr[data-base] [data-ver]").forEach(b=>b.onclick = ()=>{
+      const id = b.closest("tr").dataset.base, fila = $(`#bib-base tr[data-vistas="${CSS.escape(id)}"]`), e = B.componentesBase().find(x=>x.id===id);
+      fila.hidden = !fila.hidden; if(!fila.hidden) $$("canvas[data-cv]", fila).forEach(cv=>B.dibujarVistaCanvas(cv, e.vistas[cv.dataset.cv])); });
   };
   main.innerHTML = topbar({ crumbs:[{label:"Configuración"},{label:"Biblioteca de componentes"}], title:"Biblioteca de componentes", sub:"Plantillas por marca y modelo: medidas reales y vistas frontal y de perfil (DXF). El plano mecánico y el 3D las usan en todos tus proyectos." }) + html`
     <div class="card"><div class="card-body">
@@ -611,7 +624,8 @@ async function screenBiblioteca(){
       <div class="row" style="gap:8px;flex-wrap:wrap"><input id="bib-q" type="search" placeholder="Buscar marca, modelo o familia" style="max-width:320px">
         <button id="bib-nuevo">+ Agregar componente</button></div>
     </div></div>
-    <div id="bib-lista" class="mt-2"></div>`;
+    <div id="bib-lista" class="mt-2"></div>
+    <div id="bib-base" class="mt-2"></div>`;
   $("#bib-q").oninput = render;
   $("#bib-nuevo").onclick = ()=>{
     const marca = prompt("Marca del componente (p. ej. ABB, Siemens, Phoenix Contact):"); if(marca==null) return;

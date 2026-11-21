@@ -22,9 +22,9 @@ import { equiposControl } from "../control/equipos.js";
 import { construir as construirControl } from "./arreglo-control.js";
 import { aplicarAccesoriosMecanicos } from "./accesorios.js";
 import { marcasProyecto, modeloEnMarca } from "../engine/marcas.js";
-import { medidasDe } from "./biblioteca.js";
+import { medidasComp } from "./biblioteca.js";
 /* medidas de la biblioteca de componentes (las del DXF del fabricante o las fijadas por el usuario) sobre las de catálogo */
-export function conPlantilla(c){ const b = c && c.modelo ? medidasDe("", c.modelo) : null; if(b){ c.w = b.w; c.h = b.h; if(b.d) c.d = b.d; c.plantilla = b.plantilla; } return c; }
+export function conPlantilla(c){ const b = c && c.modelo ? medidasComp(c) : null; if(b){ if(c.tipo==="guardamotor" && /\+\s*HK1/i.test(c.modelo) && b.w < c.w) b.w += C.AUX_LATERAL; c.w = b.w; c.h = b.h; if(b.d) c.d = b.d; c.plantilla = b.plantilla; } return c; }
 
 export const CFG_DEF = () => ({ montaje:"auto", ancho:"", alto:"", fondo:"", entrada:"inferior", reserva:"", ventilacion:"auto", mandos:"auto", calefaccion:"auto", tInterior:"",
   canaleta:"", ladoControl:"izq", q1Lado:"auto", panelSeccion:"auto", panelAltura:0, mover:[] });
@@ -441,7 +441,7 @@ export function arregloTablero(p, t, calc){
     // se evalúan todas las alturas normalizadas y se elige el gabinete con MENOS cuerpos, luego el más angosto y luego el
     // más bajo (antes se tomaba la primera altura en que entraba, aunque una más alta ahorrara un cuerpo)
     let elegido = null;
-    const puntaje = r => r.secs.length*1e6 + r.secs.reduce((a, s)=>a + s.W, 0)*10 + r.H/100;
+    const puntaje = r => (r.secs.length - (r.mixto ? 1 : 0))*1e6 + r.secs.reduce((a, s)=>a + s.W, 0)*10 + r.H/100;
     for(const Hc of (fijoH ? [fijoH] : GAB.altos)){
       const pH = C.placaDe(montaje, 800, Hc).h;
       // control: ancho menor en que quepa (altura ≤ placa; si la sección es única, comparte con la zona superior)
@@ -473,6 +473,24 @@ export function arregloTablero(p, t, calc){
           if(potsB){ const rB = { H:Hc, secs:[...se, { rol:"control", W:scQ.W, ctrl:scQ }, ...potsB.map(x=>({ rol:"potencia", W:x.W, pot:x }))] };
             if(!r || puntaje(rB) < puntaje(r)) r = rB; }
         }
+        // criterio de los planos del usuario (p. ej. 9101-TFC-001): control y fuerza en UN cuerpo de 1000 / 1200 mm, sobre la
+        // misma placa: la zona de control (filas DIN con sus canaletas) a un lado y la de fuerza (Q1, barras, derivaciones,
+        // variadores con su subcolumna) al otro; las dos hojas de la puerta son iguales. Se prueba antes de pasar a dos cuerpos.
+        if(montaje==="piso" && !fijoW){
+          for(const Wb of [1000, 1200]){
+            const pl = C.placaDe(montaje, Wb, Hc);
+            if(colsPot.some(c=>c.alto > pl.h - zonaSupPot)) break;
+            const acom = ANCHO_ACOM, wpz = colsPot.reduce((a, c)=>a + c.ancho, 0) + 2*MARGEN + 30 + acom;
+            const wcz = pl.w - wpz, u = utilDe(wcz);
+            if(u < 200) continue;
+            const a = altoCtrl(u); if(a.alto > pl.h) continue;
+            const Wc = pl.mx + wcz;
+            const rM = { H:Hc, mixto:{ Wb }, secs:[...se, { rol:"control", W:Wc, ctrl:{ W:Wc, util:u, filas:a.filas, alto:a.alto }, zona:true },
+              { rol:"potencia", W:Wb - Wc, pot:{ W:Wb - Wc, cols:colsPot, util:wpz - 2*MARGEN - 30 - acom, acom:true }, zona:true }] };
+            if(!r || puntaje(rM) < puntaje(r)) r = rM;
+            break;
+          }
+        }
         if(!r) continue;
       }
       if(!elegido || puntaje(r) < puntaje(elegido)) elegido = r;
@@ -489,6 +507,7 @@ export function arregloTablero(p, t, calc){
     sel = { H:Hc, secs: conPot ? [...se, { rol:"control", W:800, ctrl:{ W:800, util:u, filas:a.filas, alto:a.alto } }, { rol:"potencia", W:1200, pot:{ W:1200, cols:colsPot, util:1200-100-2*(MARGEN+ductV.w)-20 } }] : [...se, { rol:"mixta", W:800, ctrl:{ W:800, util:u, filas:a.filas, alto:a.alto } }] };
   }
   H = sel.H; secs = sel.secs;
+  const mixto = sel.mixto || null;
   if(cfg.ladoControl==="der" && secs.length > 1){ const sc = secs.filter(x=>x.rol!=="potencia"); secs = secs.filter(x=>!sc.includes(x)).concat(sc); }
   let W = secs.reduce((a, s)=>a + s.W, 0);
   if(fijoW && fijoW > W){ const extra = fijoW - W; secs[secs.length-1].W += extra; W = fijoW; }
@@ -501,13 +520,30 @@ export function arregloTablero(p, t, calc){
 
   // ===== 4) posición de secciones, placas y componentes =====
   let xs = 0;
+  // cuerpos físicos: con el cuerpo mixto, las zonas de control y de fuerza (dos secciones lógicas) comparten cuerpo, placa y
+  // puerta de dos hojas; cada sección lógica trabaja sobre su parte de la placa
+  const zonas = secs.filter(s=>s.zona), fisicas = [];
+  let nPl = 0;
   secs.forEach((s, i)=>{
-    s.id = "S"+(i+1); s.x0 = xs; s.x1 = xs + s.W; xs += s.W;
-    const pl = C.placaDe(montaje, s.W, H);
-    s.placa = { id:"PM"+(i+1), x:s.x0 + pl.mx, y:pl.my, w:pl.w, h:pl.h, nombre:`PLACA DE MONTAJE ${i+1}` };
-    placas.push(s.placa);
-    s.puertas = s.W >= 1000 ? 2 : 1;
-    secciones.push({ id:s.id, rol:s.rol, x0:s.x0, x1:s.x1, W:s.W, puertas:s.puertas, placa:s.placa.id, bisagra: i===secs.length-1 && secs.length>1 ? "der" : "izq" });
+    s.x0 = xs; s.x1 = xs + s.W; xs += s.W;
+    if(s.zona && zonas[0]!==s){ s.id = zonas[0].id + "b"; return; }
+    s.id = "S"+(fisicas.length + 1);
+    const Wf = s.zona ? mixto.Wb : s.W, x0f = s.x0;
+    fisicas.push({ s, x0:x0f, W:Wf });
+  });
+  fisicas.forEach((f, i)=>{
+    const pl = C.placaDe(montaje, f.W, H);
+    const placa = { id:"PM"+(++nPl), x:f.x0 + pl.mx, y:pl.my, w:pl.w, h:pl.h, nombre:`PLACA DE MONTAJE ${nPl}` };
+    placas.push(placa);
+    const puertas = f.W >= 1000 ? 2 : 1;
+    secciones.push({ id:f.s.id, rol: f.s.zona ? "mixta" : f.s.rol, x0:f.x0, x1:f.x0 + f.W, W:f.W, puertas, placa:placa.id, bisagra: i===fisicas.length-1 && fisicas.length>1 ? "der" : "izq", zonas: f.s.zona ? zonas.map(z=>({ rol:z.rol, x0:z.x0, x1:z.x1 })) : undefined });
+    // secciones lógicas de este cuerpo: su parte de la placa
+    for(const s of (f.s.zona ? zonas : [f.s])){
+      const xa = Math.max(s.x0, placa.x), xb = Math.min(s.x1, placa.x + placa.w);
+      s.placa = s.zona ? { id:placa.id, x:xa, y:placa.y, w:xb - xa, h:placa.h, nombre:placa.nombre } : placa;
+      s.puertas = s.zona ? 1 : puertas;
+      s.fisica = secciones[secciones.length-1];
+    }
   });
   const add = c => { comps.push(c); return c; };
   const ductos = (s, x, y, w, h, orient, d) => canaletas.push({ placa:s.placa.id, x, y, w, h, orient, nombre:d.nombre, prof:d.h });
@@ -648,10 +684,12 @@ export function arregloTablero(p, t, calc){
     busX0 = (q1EnCtrl ? pc.x : sPot[0].placa.x) + 40; busX1 = ultima.x + ultima.w - MARGEN - ductV.w - 20;
     sPot.forEach((s, si)=>{
       const pl = s.placa;
-      // canaleta vertical de control (mando de variadores y arrancadores) a la derecha de cada placa de fuerza
-      ductos(s, pl.x + pl.w - MARGEN - ductV.w, pl.y + 70, ductV.w, filaQ - (pl.y + 70), "v", ductV);
+      // canaleta vertical de control (mando de variadores y arrancadores) a la derecha de cada placa de fuerza; en el cuerpo
+      // mixto el mando va por la canaleta vertical de la zona de control, que está al lado (como en los planos del usuario)
+      const dV = s.zona ? 0 : ductV.w;
+      if(!s.zona) ductos(s, pl.x + pl.w - MARGEN - ductV.w, pl.y + 70, ductV.w, filaQ - (pl.y + 70), "v", ductV);
       const conAcom = !q1EnCtrl && s===sQ1;
-      const xa = pl.x + MARGEN + 10 + (conAcom && q1Izq ? ANCHO_ACOM : 0), xb = pl.x + pl.w - MARGEN - ductV.w - 20 - (conAcom && !q1Izq ? ANCHO_ACOM : 0);
+      const xa = pl.x + MARGEN + 10 + (conAcom && q1Izq ? ANCHO_ACOM : 0), xb = pl.x + pl.w - MARGEN - dV - 20 - (conAcom && !q1Izq ? ANCHO_ACOM : 0);
       const wcols = s.pot.cols.reduce((a, c)=>a + c.ancho, 0);
       let x = xa + Math.max(0, (xb - xa - wcols)/2);
       const yBornes = pl.y + 75;
@@ -714,7 +752,10 @@ export function arregloTablero(p, t, calc){
   }
 
   // ===== 5) puerta: mando del Q1, panel de operación, teclados de variadores, ventilación =====
-  const yPanel = Math.min(H - 150, 1650 - zocalo + panelAlt);
+  // cuerpo físico de una sección lógica (con el cuerpo mixto, las dos zonas comparten cuerpo y puerta)
+  const fisDe = id => { const x = secs.find(q=>q.id===id); return x ? (x.fisica || x) : null; };
+  // altura del panel de operación (planos del usuario: el dispositivo más alto a ~1,40 m de la base del cuerpo)
+  const yPanel = Math.min(H - 150, 1550 - zocalo + panelAlt);
   puerta.push({ tag:"Q1", tipo:"manija", desc: acc.lockout ? "Manija del interruptor general con bloqueo por candado (lock out / tag out)" : "Manija del interruptor general", modelo:C.MANIJA.modelo, lockout: !!acc.lockout, x:q1.x + q1.w/2, y:q1.y + q1.h/2, w:C.MANIJA.w, h:C.MANIJA.h, seccion:sQ1.id });
   // panel de operación (criterio de los planos de referencia): luces de fase en su propia fila arriba; debajo UNA FILA POR
   // EQUIPO con sus mandos juntos (el variador ocupa dos: [L/R, arrancar, parar, reset] y [velocidad, falla, encendido,
@@ -732,16 +773,17 @@ export function arregloTablero(p, t, calc){
       } else filasOp.push([{ tipo:"pulsador", color:"verde", leyenda:`ARRANCAR ${tg}`, tag:"PB-"+tg+"A" }, { tipo:"pulsador", color:"rojo", leyenda:`PARAR ${tg}`, tag:"PB-"+tg+"P" }, { tipo:"luz", color:"verde", leyenda:`${tg} ENCENDIDO`, tag:"LE-"+tg }, { tipo:"luz", color:"ambar", leyenda:`${tg} EN FALLA`, tag:"LF-"+tg }]);
     }
   }
-  const sPanel = cfg.panelSeccion==="potencia" && sPot.length ? sPot[0] : sCtrl;
-  const pasoX = 80, pasoY = 80, colsP = Math.max(3, ...filasOp.map(f=>f.length));
+  const sPanel = fisDe((cfg.panelSeccion==="potencia" && sPot.length ? sPot[0] : sCtrl).id);
+  // paso de los dispositivos de puerta: 60 mm entre columnas (placa de leyenda de 50 mm) y 80 mm entre filas (planos del usuario)
+  const pasoX = 60, pasoY = 80, colsP = Math.max(3, ...filasOp.map(f=>f.length));
   const panelW = colsP*pasoX + 40, panelH = Math.max(1, filasOp.length)*pasoY + 10;
   let panelY0 = yPanel - panelH;
   if(panelY0 < 700) panelY0 = 700;
   // posición libre en la puerta: sin cruzar la junta de una puerta doble, la manija de Q1 ni los teclados de los variadores
   const dobleP = sPanel.W >= 1000, midP = sPanel.x0 + sPanel.W/2;
   const obst = [];
-  if(sPanel===sQ1) obst.push([q1.x + q1.w/2, q1.y + q1.h/2, 90 + 60, 90 + 60]);
-  for(const c of comps.filter(c=>c.tipo==="variador" && c.seccion===sPanel.id)) obst.push([c.x + c.w/2, yPanel - 90, C.PANEL_VFD.w + 40, C.PANEL_VFD.h + 40]);
+  if(sPanel===fisDe(sQ1.id)) obst.push([q1.x + q1.w/2, q1.y + q1.h/2, 90 + 60, 90 + 60]);
+  for(const c of comps.filter(c=>c.tipo==="variador" && fisDe(c.seccion)===sPanel)) obst.push([c.x + c.w/2, yPanel - 90, C.PANEL_VFD.w + 40, C.PANEL_VFD.h + 40]);
   const libre = cx => !(dobleP && Math.abs(cx - midP) < panelW/2 + 25) && cx - panelW/2 > sPanel.x0 + 40 && cx + panelW/2 < sPanel.x1 - 40
     && !obst.some(([ox, oy, ow, oh])=>Math.abs(ox - cx) < (ow + panelW)/2 && Math.abs(oy - (panelY0 + panelH/2)) < (oh + panelH)/2);
   const cands = (dobleP ? [0.25, 0.75, 0.2, 0.8] : [0.5, 0.3, 0.7, 0.25, 0.75]).map(f=>sPanel.x0 + sPanel.W*f);
@@ -755,7 +797,7 @@ export function arregloTablero(p, t, calc){
   const panel = { x:pcx2 - panelW/2, y:panelY0, w:panelW, h:panelH, seccion:sPanel.id };
   // teclados de los variadores en la puerta de su sección, alineados con el variador
   for(const c of comps.filter(c=>c.tipo==="variador")){
-    const s = secs.find(x=>x.id===c.seccion);
+    const s = fisDe(c.seccion);
     let px = c.x + c.w/2, py = yPanel - 90;
     if(s.W >= 1000 && Math.abs(px - (s.x0 + s.W/2)) < C.PANEL_VFD.w/2 + 25) px = px < s.x0 + s.W/2 ? s.x0 + s.W/2 - C.PANEL_VFD.w/2 - 40 : s.x0 + s.W/2 + C.PANEL_VFD.w/2 + 40;
     if(panel && panel.seccion===s.id && Math.abs(px - (panel.x + panel.w/2)) < (panel.w + C.PANEL_VFD.w)/2 + 20) py = panel.y - C.PANEL_VFD.h/2 - 40;
@@ -784,8 +826,8 @@ export function arregloTablero(p, t, calc){
       // lo que disipa su superficie lleva su ventilación; el caudal se reparte en sus hojas de puerta (uno por hoja, centrado)
       // y el marco del ventilador sale del caudal de la hoja, con un mínimo según el tamaño del cuerpo y sin pasar del
       // ancho de la hoja. El cuerpo con el interruptor general suma las pérdidas de barras y conexiones.
-      const porSec = secs.map(s=>{
-        const ps = comps.filter(c=>c.seccion===s.id).reduce((a, c)=>a + (c.perdidas||0)*(c.cant||1), 0) + (s===sQ1 ? (calc.mainBreaker||0)*0.35 : 0);
+      const porSec = secciones.map(s=>{
+        const ps = comps.filter(c=>fisDe(c.seccion)===s || (fisDe(c.seccion)||{}).id===s.id).reduce((a, c)=>a + (c.perdidas||0)*(c.cant||1), 0) + (fisDe(sQ1.id).id===s.id ? (calc.mainBreaker||0)*0.35 : 0);
         const as = A*s.W/W, ds = k*as*dT;
         return { s, ps, ds, q: ps > 0 ? Math.ceil(fAlt*Math.max(ps - ds, ps*0.25)/dT) : 0 };
       });
@@ -795,22 +837,26 @@ export function arregloTablero(p, t, calc){
       const qSum = conV.reduce((a, x)=>a + x.q, 0); if(qSum < term.caudal) conV.forEach(x=>x.q = Math.ceil(x.q*term.caudal/Math.max(1, qSum)));
       const marcoMin = C.marcoMinimoVentilador(montaje, Math.max(...secs.map(s=>s.W)), H);
       const secV = conV.map(x=>{
-        const hojasN = x.s.puertas || 1, anchoH = x.s.W/hojasN;
-        const vf = C.ventiladoresHoja(x.q/hojasN, anchoH, C.marcoMinimoVentilador(montaje, x.s.W, H));
+        const hojasN = x.s.puertas || 1, anchoH = x.s.W/hojasN, mMin = C.marcoMinimoVentilador(montaje, x.s.W, H);
+        // puerta de dos hojas y un solo ventilador alcanza: ventilación CRUZADA (planos del usuario): entrada abajo en una hoja
+        // y salida arriba en la otra, el aire barre todo el cuerpo en diagonal
+        const uno = hojasN===2 ? C.ventiladoresHoja(x.q, anchoH, mMin) : null;
+        if(uno && uno.n===1){ const renov = Math.round(uno.caudal/((x.s.W*H*D)/1e9)); return { ...x, hojas:hojasN, vf:uno, renov, diagonal:true, nV:1 }; }
+        const vf = C.ventiladoresHoja(x.q/hojasN, anchoH, mMin);
         const renov = Math.round(vf.caudal*vf.n*hojasN/((x.s.W*H*D)/1e9));
-        return { ...x, hojas:hojasN, vf, renov };
+        return { ...x, hojas:hojasN, vf, renov, nV:vf.n*hojasN };
       });
-      term.modo = "forzada"; term.ventiladores = secV.reduce((a, x)=>a + x.vf.n*x.hojas, 0);
+      term.modo = "forzada"; term.ventiladores = secV.reduce((a, x)=>a + x.nV, 0);
       const vf0 = secV[0].vf;
       vent = { tipo:"ventilador", n:term.ventiladores, ...vf0, secciones:secV };
       criterios.push(`Pérdidas ${term.perdidas} W > disipación natural ${term.disipacion ?? 0} W: ventilación forzada ${term.caudal} m³/h a ${alt} m s.n.m. (factor ${term.fAlt}, caudal = factor × (pérdidas − disipación) / ΔT, IEC/TR 60890).`);
-      criterios.push(`Ventiladores según el tamaño del tablero: ${secV.map(x=>`cuerpo ${x.s.id.slice(1)} de ${x.s.W} mm (${x.hojas} hoja${x.hojas>1?"s":""}, ${Math.round(x.ps)} W de pérdidas): ${x.vf.n*x.hojas} ventilador${x.vf.n*x.hojas>1?"es":""} de ${x.vf.marco} x ${x.vf.marco} mm, ${x.vf.caudal} m³/h con filtro (${x.renov} renovaciones de aire por hora)`).join("; ")}. Marco mínimo por tamaño de cuerpo: ${marcoMin} mm en ${montaje==="mural" ? "murales" : "autosoportados"} (un ventilador chico no renueva el aire de toda la altura) y máximo el ancho de la hoja menos 140 mm (bisagra y manija); un ventilador centrado por hoja, entrada abajo y salida arriba con filtro del mismo tamaño.`);
+      criterios.push(`Ventiladores según el tamaño del tablero: ${secV.map(x=>`cuerpo ${x.s.id.slice(1)} de ${x.s.W} mm (${x.hojas} hoja${x.hojas>1?"s":""}, ${Math.round(x.ps)} W de pérdidas): ${x.nV} ventilador${x.nV>1?"es":""} de ${x.vf.marco} x ${x.vf.marco} mm, ${x.vf.caudal} m³/h con filtro${x.diagonal ? ", ventilación cruzada (entrada abajo en una hoja y salida arriba en la otra)" : ""} (${x.renov} renovaciones de aire por hora)`).join("; ")}. Marco mínimo por tamaño de cuerpo: ${marcoMin} mm en ${montaje==="mural" ? "murales" : "autosoportados"} (un ventilador chico no renueva el aire de toda la altura) y máximo el ancho de la hoja menos 140 mm (bisagra y manija); un ventilador centrado por hoja, entrada abajo y salida arriba con filtro del mismo tamaño.`);
     }
   }
   if(cfg.ventilacion==="natural" && vent && vent.tipo==="ventilador"){ vent = null; term.modo = "natural (indicado por el usuario)"; avisos.push("Ventilación natural por indicación del usuario aunque el balance térmico pide ventilación forzada."); }
   else if(cfg.ventilacion==="auto" && !acc.ventilacion && vent && vent.tipo==="ventilador") avisos.push("El balance térmico pide ventilación forzada: marca «Ventilación» en los accesorios del tablero para que el unifilar y el multifilar incluyan el circuito de los ventiladores.");
   if(vent){
-    const sV = comps.filter(c=>c.tipo==="variador").length ? secs.find(s=>s.id===comps.find(c=>c.tipo==="variador").seccion) : sCtrl;
+    const sV = fisDe(comps.filter(c=>c.tipo==="variador").length ? comps.find(c=>c.tipo==="variador").seccion : sCtrl.id);
     if(vent.tipo==="ventilador"){
       // criterio: cada ventilador CENTRADO en su hoja de puerta (en una sección de dos hojas, nunca sobre la junta); si una
       // hoja lleva más de uno, van en columna sobre su eje
@@ -824,7 +870,19 @@ export function arregloTablero(p, t, calc){
       for(const sv of (vent.secciones || [{ s:sV, hojas:sV.puertas||1, vf:{ ...vent, n:1 } }])){
         const s = sv.s, vf = sv.vf, hojasV = s.puertas===2 ? [[s.x0, s.x0 + s.W/2], [s.x0 + s.W/2, s.x1]] : [[s.x0, s.x1]];
         const libreV = (x, y) => { const r = vf.marco*fCap/2 + 25; return !ocupado.some(o=>x + r > o[0] && x - r < o[2] && y + r > o[1] && y - r < o[3]); };
-        const yEnt = alturas(Math.max(250, vf.marco*fCap/2 + 90), H*0.45, 25), ySal = alturas(H - Math.max(230, vf.marco*fCap/2 + 90), H*0.55, -25);
+        // entrada a ~0,15 H y salida a ~0,85 H (planos del usuario: centros a 305 y 1695 mm en 2000 mm), lo más cerca posible
+        const yEnt = alturas(Math.max(300, vf.marco*fCap/2 + 140), H*0.45, 25), ySal = alturas(H - Math.max(300, vf.marco*fCap/2 + 140), H*0.55, -25);
+        if(sv.diagonal){
+          // la entrada en la hoja contraria al variador (su aire caliente sube y sale por la otra hoja), si no a la izquierda
+          const dv = comps.find(c=>c.tipo==="variador" && fisDe(c.seccion)===s), mid = (s.x0 + s.x1)/2;
+          const [hE, hS] = dv && dv.x + dv.w/2 < mid ? [hojasV[1], hojasV[0]] : [hojasV[0], hojasV[1]];
+          const xE = (hE[0] + hE[1])/2, xS = (hS[0] + hS[1])/2; i++;
+          const yE = yEnt.find(y=>libreV(xE, y)) ?? yEnt[0], yS = ySal.find(y=>libreV(xS, y)) ?? ySal[0];
+          const rr = vf.marco*fCap/2 + 20; ocupado.push([xE - rr, yE - rr, xE + rr, yE + rr], [xS - rr, yS - rr, xS + rr, yS + rr]);
+          puerta.push({ tag:"FV"+i, tipo:"ventilador", desc:"Ventilador con filtro (entrada de aire)", modelo:vf.modelo, x:xE, y:yE, w:vf.marco, h:vf.marco, recorte:vf.recorte, seccion:s.id });
+          puerta.push({ tag:"FS"+i+"S", tipo:"rejilla", desc:"Filtro de salida de aire", modelo:`Filtro de salida ${vf.marco}x${vf.marco} mm`, x:xS, y:yS, w:vf.marco, h:vf.marco, recorte:vf.recorte, seccion:s.id });
+          continue;
+        }
         for(const [a, b] of hojasV){
           const x = (a + b)/2;
           for(let q=0; q<vf.n; q++){
@@ -842,6 +900,10 @@ export function arregloTablero(p, t, calc){
     }
     else puerta.push({ tag:"AA1", tipo:"aa", desc:"Aire acondicionado de puerta", modelo:vent.modelo, x:sV.x0 + sV.W/2, y:H/2, w:vent.w, h:vent.h, seccion:sV.id });
   }
+
+  // los dispositivos de puerta van en la puerta del cuerpo físico (con el cuerpo mixto, sus dos zonas comparten puerta)
+  for(const d of puerta){ const f = fisDe(d.seccion); if(f) d.seccion = f.id; }
+  if(panel){ const f = fisDe(panel.seccion); if(f) panel.seccion = f.id; }
 
   // ===== 7) base / placa pasacables =====
   const cabs = [];
@@ -878,7 +940,7 @@ export function arregloTablero(p, t, calc){
 
   // ===== 9) criterios de diseño aplicados =====
   criterios.unshift(
-    `Gabinete ${montaje==="mural" ? "mural" : "autosoportado"} ${W}x${H}x${D} mm (ancho x alto x fondo)${zocalo ? ` con zócalo de ${zocalo} mm` : ""}, ${ipRecomendado(v)}, ${secs.length} sección(es): ${secs.map(s=>`${s.W} mm ${s.rol==="potencia" ? "de fuerza" : s.rol==="control" ? "de control" : s.rol==="etapa" ? "de la etapa de control" : "fuerza y control"}`).join(", ")}.`,
+    `Gabinete ${montaje==="mural" ? "mural" : "autosoportado"} ${W}x${H}x${D} mm (ancho x alto x fondo)${zocalo ? ` con zócalo de ${zocalo} mm` : ""}, ${ipRecomendado(v)}, ${secciones.length} cuerpo(s): ${secciones.map(f=>f.zonas ? `${f.W} mm con control y fuerza en la misma placa (zona de control de ${Math.round(f.zonas[0].x1 - f.zonas[0].x0)} mm y zona de fuerza de ${Math.round(f.zonas[1].x1 - f.zonas[1].x0)} mm, puerta de dos hojas)` : `${f.W} mm ${f.rol==="potencia" ? "de fuerza" : f.rol==="control" ? "de control" : f.rol==="etapa" ? "de la etapa de control" : "fuerza y control"}`).join(", ")}.`,
     dist.barras ? `Flujo de energía de arriba hacia abajo: interruptor general Q1 (${q1.modelo}) arriba, barras de cobre ${fase.nombre} mm (L1-L2-L3 a ${fase.paso} mm entre centros, aisladores cada 400 mm) y derivaciones colgadas de las barras; borneras de salida abajo, junto a la entrada ${entrada} de cables.`
       : `Flujo de energía de arriba hacia abajo: interruptor general Q1 (${q1.modelo}) arriba y, por ser menor de 100 A, distribución en cable (${dist.texto}) desde el repartidor de carga XD1 hacia cada derivación (sin barras de cobre); borneras de salida abajo, junto a la entrada ${entrada} de cables.`,
     conPot ? "Fuerza y control en placas separadas: variadores, arrancadores, interruptores en caja moldeada y reactancias en la placa de fuerza; protecciones modulares, guardamotores, contactores y borneras en la placa de control (riel DIN)." : "Una sola placa: zona de fuerza (Q1 y barras) arriba y filas de riel DIN debajo.",
@@ -898,7 +960,7 @@ export function arregloTablero(p, t, calc){
   const mr = marcasProyecto(p);
   for(const c of [...comps, ...puerta]) if(c.modelo) c.modelo = modeloEnMarca(c.modelo, c.val || "", mr);
   // plantilla del modelo final (marca confirmada) si tiene las mismas medidas que se usaron en el arreglo
-  for(const c of comps){ if(c.plantilla) continue; const b = medidasDe("", c.modelo); if(b && Math.abs(b.w - c.w) < 2 && Math.abs(b.h - c.h) < 2) c.plantilla = b.plantilla; }
+  for(const c of comps){ if(c.plantilla) continue; const b = medidasComp(c); if(b && Math.abs(b.w - c.w) < 2 && Math.abs(b.h - c.h) < 2) c.plantilla = b.plantilla; }
   const bom = listaMateriales(comps, bloquesB, barras, canaletas, rieles, puerta, fase, pe, aisladores.length*3, cabs, secciones.reduce((a, s)=>a + (s.puertas||1), 0), E.extra);
   // altura de la manija de la puerta: en los murales a media puerta (en uno bajo, 900 mm quedaba fuera de la hoja)
   const manijaY = montaje==="mural" ? Math.round(H/2 - 80) : 900;

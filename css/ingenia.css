@@ -686,10 +686,12 @@ body.con-login .app, body.con-login .mobilebar, body.con-login .cp-btn{visibilit
 .login-marca{position:relative; overflow:hidden; background:radial-gradient(120% 90% at 0% 0%, #2A2E35 0%, var(--grafito) 60%); color:#E7EAEE; padding:40px 56px; display:flex; flex-direction:column;}
 .login-marca::after{content:""; position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size:28px 28px; pointer-events:none;}
 .login-marca > *{position:relative; z-index:1;}
-.login-marca-top .marca{font-size:24px; color:#fff;}
-.login-marca-top .marca span,.login-logo .marca span{color:var(--amarillo);}
-.login-marca-cuerpo{margin:auto 0; max-width:520px;}
-.login-marca h1{color:#fff; font-size:clamp(26px, 2.6vw, 38px); line-height:1.18; letter-spacing:-.01em; margin-bottom:26px;}
+/* la marca es el protagonista del panel: logotipo grande y el lema debajo como subtítulo (jerarquía marca → lema → puntos) */
+.login-marca-cuerpo{margin:auto 0; max-width:560px;}
+.login-marca-logo .marca{display:block; font-size:clamp(56px, 6.4vw, 104px); letter-spacing:-.005em; margin-left:-.05em; color:#fff;}
+.login-marca-logo .marca span,.login-logo .marca span{color:var(--amarillo);}
+.login-marca-logo::after{content:""; display:block; width:56px; height:4px; border-radius:2px; background:var(--amarillo); margin:clamp(20px, 2.2vw, 30px) 0 clamp(18px, 2vw, 26px);}
+.login-marca h1{color:#E7EAEE; font-family:var(--sans); font-size:clamp(19px, 1.65vw, 25px); font-weight:500; line-height:1.4; letter-spacing:-.005em; margin:0 0 28px; max-width:30ch;}
 .login-puntos{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:12px; font-size:15px; color:#C9CED6;}
 .login-puntos li{display:flex; gap:12px; align-items:center;}
 .login-puntos li::before{content:""; width:8px; height:8px; border-radius:2px; background:var(--amarillo); flex:none; box-shadow:0 0 0 4px rgba(255,199,0,.12);}

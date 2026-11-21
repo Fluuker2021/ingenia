@@ -136,8 +136,8 @@ export function exigirSesion(){
       const t = TXT[idioma()];
       raiz.innerHTML = `
       <section class="login-marca" aria-hidden="false">
-        <div class="login-marca-top">${LOGO}</div>
         <div class="login-marca-cuerpo">
+          <div class="login-marca-logo">${LOGO}</div>
           <h1>${t.lema}</h1>
           <ul class="login-puntos"><li>${t.p1}</li><li>${t.p2}</li><li>${t.p3}</li></ul>
         </div>

@@ -1,6 +1,6 @@
 /* Ingenia — definición de cada entregable generable: qué datos usa, qué plantilla por defecto aplica,
    cómo se previsualiza y cómo se arma el archivo final (Excel / Word / DXF). */
-import { entregable, DISCIPLINAS } from "./catalog.js";
+import { entregable, DISCIPLINAS, nombreEntregable, esTituloPorDefecto } from "./catalog.js";
 import * as S from "./store.js";
 import { esc } from "./ui.js";
 import { valoresDiseno, tensionControlTxt, tensionEstabilizada, tempDiseno, condicionesSitio, seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
@@ -14,6 +14,7 @@ import { GENERADORES, dxfBytes } from "./cad/planos.js";
 import { valoresCajetin } from "./cad/formato.js";
 import { parseDXF, toCompact, boundsOf } from "./dxf.js";
 import { ENTREGABLES } from "./catalog.js";
+import { listadoEquipos } from "./modules/equipos-lista.js";
 import { textosNormas } from "./modules/normas.js";
 
 const BASE = "assets/plantillas/";
@@ -28,14 +29,16 @@ export function docInfo(p, id){
   const last = d.revisiones[d.revisiones.length-1];
   d.rev = last.rev; d.fecha = last.fecha; d.emitido = last.descripcion;
   // los documentos se identifican por su nombre: no se usa codificación
-  const out = Object.assign({ titulo:(e.nombre||"").toUpperCase() }, d, { codigo:"" });
+  const out = Object.assign({ titulo: nombreEntregable(id, p).toUpperCase() }, d, { codigo:"" });
+  // título guardado igual al nombre por defecto (quizá con otro tipo de tablero): toma el nombre según los tableros actuales
+  if(esTituloPorDefecto(id, d.titulo)) out.titulo = nombreEntregable(id, p).toUpperCase();
   // planos: si el usuario no definió referencias, se proponen desde los documentos relacionados del proyecto
   if(!Array.isArray(d.referencias) && REL_PLANOS[id]) out.referencias = referenciasSugeridas(p, id);
   return out;
 }
 const REL_PLANOS = { "ele-multifilar":["ele-unifilar","ele-cargas"], "ele-mecanico":["ele-unifilar","ele-multifilar"], "ele-arreglo":["ele-equipos","ele-unifilar"], "ins-pid":["ins-instrumentos"], "ins-multifilar-tc":["ins-io","ins-unifilar-tc"], "ins-mecanico-tc":["ins-unifilar-tc","ins-multifilar-tc"], "ins-arreglo":["ins-instrumentos","ins-pid"], "ins-lazo":["ins-io","ins-instrumentos","ins-multifilar-tc"], "ins-arquitectura":["ins-io","ins-instrumentos"], "ins-unifilar-tc":["ins-multifilar-tc","ins-instrumentos"], "ele-unifilar":["ele-cargas"], "ins-bloques":["ele-unifilar","ins-unifilar-tc"] };
 export function referenciasSugeridas(p, id){
-  const refs = (REL_PLANOS[id]||[]).filter(r=>p.documentos[r]).slice(0,5).map(r=>({ codigo:"", titulo:(p.documentos[r].titulo||entregable(r).nombre).toUpperCase() }));
+  const refs = (REL_PLANOS[id]||[]).filter(r=>p.documentos[r]).slice(0,5).map(r=>({ codigo:"", titulo:(esTituloPorDefecto(r, p.documentos[r].titulo) ? nombreEntregable(r, p) : p.documentos[r].titulo).toUpperCase() }));
   if(p.pidRef && refs.length<5) refs.unshift({ codigo:p.pidRef, titulo:"DIAGRAMA DE PROCESO E INSTRUMENTACIÓN" });
   return refs;
 }
@@ -44,7 +47,7 @@ const ETAPA_TXT = { conceptual:"INGENIERÍA CONCEPTUAL", basica:"INGENIERÍA BÁ
 function fmtFecha(f){ const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (f||""); }
 export function tituloDoc(p, id){ const di = docInfo(p, id); const st = sistemaTag(p); const t = (di.titulo||"").toUpperCase(); return st && !t.includes(st) ? `${t} - TAG: ${st}` : t; }
 /* referencia a otro documento del proyecto: su nombre (vacío si no forma parte del proyecto) */
-export function refDoc(p, id){ return p.documentos[id] && entregable(id) ? entregable(id).nombre : ""; }
+export function refDoc(p, id){ return p.documentos[id] && entregable(id) ? nombreEntregable(id, p) : ""; }
 
 export function escalares(p, id, org){
   const e = entregable(id), di = docInfo(p, id), v = valoresDiseno(p);
@@ -188,6 +191,7 @@ export function datosMemoria(p, docId = "ele-md"){
     tableros:tablerosM, cables, protecciones: prot, anexo_md: anexoMD, anexo_cables: anexoC, anexo_prot: anexoP,
     pi_total: r2(raiz.reduce((a,c)=>a+c.installedKVA,0),2), md_total: r2(raiz.reduce((a,c)=>a+c.totalKVA,0),2), i_md_total: r2(raiz.reduce((a,c)=>a+c.demandCurrent,0),2),
     itm_general: raiz.map(c=>`${c.tablero.tag}: 3x${c.mainBreaker} A`).join(" · "),
+    itm_lista: raiz.map(c=>({ tag:c.tablero.tag, nombre:c.tablero.nombre||"", valor:`3x${c.mainBreaker} A` })),
     // condiciones del sitio (las que indicó el usuario; «-» si no tiene el dato) y códigos y estándares elegidos
     condiciones: condicionesSitio(v).map(texto=>({ texto })), codigos: textosNormas(p, docId).map(texto=>({ texto })),
   };
@@ -248,14 +252,14 @@ export function camposHDEq(p, t){
 
 /* ================= registro de documentos generables ================= */
 export const DOCS = {
-  "ele-cargas": { formato:"xlsx", plantilla:"xlsx/lista_cargas.xlsx", man:"lista_cargas", ref:"Listado de cargas: carátula + una hoja por tablero", editores:["cargas","cargasControl","notas"] },
+  "ele-cargas": { formato:"xlsx", plantilla:"xlsx/lista_cargas.xlsx", man:"lista_cargas", ref:"Listado de cargas: carátula + una hoja por tablero", editores:["cargas","cargasTrafo","cargasControl","notas"] },
   "ele-cables": { formato:"xlsx", plantilla:"xlsx/lista_cables.xlsx", man:"lista_cables", ref:"Listado de cables con canalización", editores:["cables","notas"] },
-  "ele-equipos": { formato:"xlsx", plantilla:"xlsx/equipos_electricos.xlsx", man:"equipos_electricos", ref:"Listado de equipos: carátula + listado", editores:["tableros","equiposCfg","notas"] },
+  "ele-equipos": { formato:"xlsx", plantilla:"xlsx/equipos_electricos.xlsx", man:"equipos_electricos", ref:"Listado de equipos: carátula + listado por tablero", editores:["equiposLista","notas"] },
   "ele-hd": { formato:"xlsx", plantilla:"xlsx/hoja_datos_instrumentos.xlsx", man:"hoja_datos_instrumentos", ref:"Hoja de datos: carátula + índice + una hoja por tablero", editores:["hdEq"] },
   "ele-mc": { formato:"docx", plantilla:"docx/memoria_conductores.docx", ref:"Memoria de cálculo con anexos de conductores y protecciones", editores:["memoria","normas"] },
   "ele-md": { formato:"docx", plantilla:"docx/memoria_md.docx", ref:"Memoria de cálculo con anexo de máxima demanda", editores:["normas"] },
   "ele-unifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros","marcas"] },
-  "ele-multifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["cargas","marcas"] },
+  "ele-multifilar": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["multifilar","marcas","notas"] },
   "ele-mecanico": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["mecanico","marcas"], vista3d:true },
   "ele-arreglo": { formato:"dxf", ref:"Lámina A1 sobre la planta del cliente", editores:["arreglo"] },
   "ins-pid": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["proceso"] },
@@ -266,7 +270,7 @@ export const DOCS = {
   "ins-arquitectura": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tablerocontrol"] },
   "ins-bloques": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tableros"] },
   "ins-unifilar-tc": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tablerocontrol","circuitos","notas"] },
-  "ins-multifilar-tc": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tablerocontrol","io"] },
+  "ins-multifilar-tc": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["multifilar","tablerocontrol","io"] },
   "ins-mecanico-tc": { formato:"dxf", ref:"Lámina A1 con cajetín estándar", editores:["tablerocontrol","mecanico"], vista3d:true },
   "ins-arreglo": { formato:"dxf", ref:"Lámina A1 sobre la planta del cliente", editores:["arreglo"] },
   "ins-tipicos": { formato:"docx", plantilla:"docx/documento_texto.docx", secciones: seccionesTipicos, ref:"Documento Word estándar", editores:[] },
@@ -313,8 +317,7 @@ export async function payloadExcel(p, id, org){
     return { scal, tablas:{ cables: filas, notas: notasDe(p, base, [ `Longitudes estimadas con ${d.cablesCfg.reserva}% de reserva; las longitudes finales se confirman con el plano de rutas / arreglo general.`, `Calidad de cable: ${(CLASES_CABLE[d.cablesCfg.clase]||CLASES_CABLE.lszh).nombre} (${(CLASES_CABLE[d.cablesCfg.clase]||CLASES_CABLE.lszh).norma}).` ]).map(n=>({ texto: n.n+" "+n.texto })) } };
   }
   if(base==="ele-equipos"){
-    const filas = equiposElectricos(p).map(f=>Object.assign({}, f, { plano: f.plano || refDoc(p, f._doc) }));
-    return { scal, tablas:{ equipos: filas, notas: notasDe(p, base, []) } };
+    return { scal, tablas:{ equipos: listadoEquipos(p), notas: notasDe(p, base, []) } };
   }
   if(base==="ele-hd"){
     const lista = tableros(p); const instancias = [], indice = [];
@@ -378,13 +381,20 @@ export async function formatoCliente(p){
   return (formato || cajetin) ? { formato, cajetin } : null;
 }
 
-export async function generarPlano(p, id, org, logos){
+/* planos que se emiten uno por tablero (cada tablero con sus propias hojas): multifilares y mecánicos */
+const POR_TABLERO = { "ele-multifilar":"potencia", "ele-mecanico":"potencia", "ins-multifilar-tc":"control", "ins-mecanico-tc":"control" };
+export function tablerosDePlano(p, id){
+  const k = POR_TABLERO[id]; if(!k) return null;
+  const lista = k==="potencia" ? calcularTodos(p).map(c=>c.tablero).filter(Boolean) : tablerosControl(p).filter(t=>t.tipo==="control");
+  return lista.length ? lista : null;
+}
+export async function generarPlano(p, id, org, logos, tablero){
   const g = GENERADORES[id];
   const di = docInfo(p, id);
   const cliente = await formatoCliente(p);
   const st = sistemaTag(p);
   const titulo = (di.titulo||g.titulo).toUpperCase() + (st && !(di.titulo||"").includes(st) ? " - TAG: "+st : "");
   const valsDe = (i, n, extra)=>Object.assign(valoresCajetin({ p, ent:entregable(id), docInfo:di, org, titulo, hoja:`${i+1} DE ${n}`, disciplina: DISC_TXT[entregable(id).disciplina], escala:"S/E" }), { _logos: logos||null }, extra||{});
-  return g.fn({ p, valsDe, cliente, id });
+  return g.fn({ p, valsDe, cliente, id, tablero: tablero || null });
 }
 export { dxfBytes };

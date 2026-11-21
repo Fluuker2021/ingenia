@@ -254,11 +254,11 @@ export async function visor3D(cont, modelo, opciones){
   for(const s of m.secciones.slice(1)) caja(s.x0 - 20, 0, 0, 40, H, 40, mat(0xa9aeb5), capas.envolvente);
   if(m.techoTipo==="inclinado"){
     // techo inclinado: cae del frente (alero) hacia atrás
-    const ang = Math.atan2(60, D + 80), largo = Math.hypot(D + 80, 60);
-    const g = new THREE.Mesh(new THREE.BoxGeometry((W + 80)*k, 14*k, largo*k), mat(RAL7035)); g.rotation.x = -ang; g.position.set((W/2)*k, (H + 60)*k, (D/2)*k); g.castShadow = g.receiveShadow = true; capas.envolvente.add(g);
+    const caida = Math.max(20, (m.techoAlto || 90) - 30), ang = Math.atan2(caida, D + 80), largo = Math.hypot(D + 80, caida);
+    const g = new THREE.Mesh(new THREE.BoxGeometry((W + 80)*k, 14*k, largo*k), mat(RAL7035)); g.rotation.x = -ang; g.position.set((W/2)*k, (H + 30 + caida/2)*k, (D/2)*k); g.castShadow = g.receiveShadow = true; capas.envolvente.add(g);
     caja(-40, H, -40, W + 80, 30, 8, mat(RAL7035), capas.envolvente); caja(-40, H, D + 32, W + 80, 30, 8, mat(RAL7035), capas.envolvente);
   } else if(m.techo) caja(-40, H, -40, W + 80, 30, D + 80, mat(RAL7035), capas.envolvente);
-  for(const [xe, ze] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ const t = new THREE.Mesh(new THREE.TorusGeometry(16*k, 4*k, 8, 20), metal(0x8a8f96)); t.position.set(xe*k, (H + (m.techoTipo==="inclinado" ? 90 : m.techo ? 30 : 0) + 30)*k, ze*k); capas.envolvente.add(t); }
+  for(const [xe, ze] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ const t = new THREE.Mesh(new THREE.TorusGeometry(16*k, 4*k, 8, 20), metal(0x8a8f96)); t.position.set(xe*k, (H + (m.techoTipo==="inclinado" ? ((m.techoAlto || 90) + 30)/2 : m.techo ? 30 : 0) + 30)*k, ze*k); capas.envolvente.add(t); }
   // (los visores, las caperuzas y las manijas con lock out se montan en su hoja de puerta: ver «puertas»)
   // prensaestopas en la base
   for(const c of m.base){ const zc = c.zb ?? (c.fila ? D*0.32 : D*0.6); const g = cil(c.x, m.tipo==="control" && m.entrada==="superior" ? H + 6 : -6, zc, (c.agujero||25)/2 + 3, 18, c.ref==="RESERVA" ? 0x9aa0a8 : 0x2b2f36, capas.envolvente); g.userData.info = { tag:c.ref, desc:c.desc, modelo:`Prensaestopa ${c.rosca}${c.awg ? " · cable "+c.awg : ""}`, dim:`Agujero Ø${c.agujero} mm` }; }

@@ -38,9 +38,9 @@ export const ENTREGABLES = [
     salida:"Excel (carátula + listado: tipo, tensión, N° de conductores, sección, desde / hasta, longitudes por canalización)" },
   { id:"ele-equipos", n:3, disciplina:"ELE", tipo:"lista", doc:"EL", etapas:["basica","detalle"], estado:"listo",
     nombre:"Listado de equipos eléctricos",
-    finalidad:"Registrar todos los tableros eléctricos del proyecto (fuerza, control, fuerza y control, distribución) con su TAG.",
-    entradas:["Tipos y cantidades de tableros (se definen al crear el proyecto)","TAG de cada tablero","Alimentación de cada tablero"],
-    salida:"Excel (carátula + listado de equipos con plano de referencia)" },
+    finalidad:"Enlistar, por tablero, los equipos eléctricos y accesorios que lo componen (interruptores, contactores, variadores, transformadores, PLC, fuentes…) con su TAG, marca, modelo y código.",
+    entradas:["Listado de cargas (los equipos salen del cálculo de cada tablero)","Marcas de los equipos","Accesorios del tablero"],
+    salida:"Excel (carátula + listado de equipos por tablero: ítem, cantidad, TAG, descripción, marca, modelo y código)" },
   { id:"ele-hd", n:4, disciplina:"ELE", tipo:"lista", doc:"HD", etapas:["basica","detalle"], estado:"listo",
     nombre:"Hoja de datos de equipos eléctricos",
     finalidad:"Características eléctricas de los equipos de cada tablero, obtenidas del mismo cálculo que alimenta los unifilares y el listado de cargas.",
@@ -141,29 +141,51 @@ export function entregablesPor(disciplina, etapa){
   return CATALOGO.filter(e => (!disciplina || e.disciplina===disciplina) && (!etapa || e.etapas.includes(etapa)));
 }
 export function entregable(id){ return ENTREGABLES.find(e=>e.id===id); }
+/* nombre del documento según los tableros del proyecto: los documentos de los tableros de potencia dicen «del tablero de
+   fuerza y control», «del tablero de fuerza» o «del tablero de distribución» según lo que el usuario eligió */
+const NOMBRE_TIPO = { distribucion:"distribución", fuerza:"fuerza", fuerzacontrol:"fuerza y control" };
+export function tipoTablerosTxt(p){
+  const tipos = [...new Set(((p && p.datos && p.datos.tableros) || []).map(t=>t.tipo).filter(t=>NOMBRE_TIPO[t]))];
+  if(!tipos.length) return "tablero de fuerza";
+  const orden = ["fuerzacontrol","fuerza","distribucion"].filter(t=>tipos.includes(t)).map(t=>NOMBRE_TIPO[t]);
+  return orden.length===1 ? `tablero de ${orden[0]}` : `tableros de ${orden.slice(0, -1).join(", ")} y de ${orden[orden.length-1]}`;
+}
+const conTipo = (txt, p) => String(txt||"").replace(/del tablero de fuerza(?! y control)/g, ()=>{ const t = tipoTablerosTxt(p); return (t.startsWith("tableros") ? "de los " : "del ") + t; })
+  .replace(/cada tablero de fuerza(?! y control)( \/ distribución)?/g, ()=>`cada ${tipoTablerosTxt(p).replace(/^tableros/, "tablero")}`);
+export function nombreEntregable(id, p){ const e = entregable(id); return e ? conTipo(e.nombre, p) : id; }
+export function finalidadEntregable(id, p){ const e = entregable(id); return e ? conTipo(e.finalidad, p) : ""; }
+/* títulos por defecto que pudo guardar el documento (con el tipo de tablero anterior): se reemplazan por el actual */
+export function esTituloPorDefecto(id, titulo){
+  const e = entregable(id); if(!e || !titulo) return !titulo;
+  const T = String(titulo).trim().toUpperCase(), base = e.nombre.toUpperCase();
+  if(T===base) return true;
+  const raiz = base.replace(/ DEL TABLERO DE FUERZA$/, "");
+  return raiz!==base && new RegExp("^" + raiz.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + " DE(L| LOS) TABLEROS? DE [A-ZÁÉÍÓÚ ,]+$").test(T);
+}
 /* documentos propios de un tablero de control independiente: en un tablero de fuerza y control la etapa de control
    está dentro del mismo tablero y se detalla en su unifilar, su multifilar y su plano mecánico (no hay documentos aparte) */
 export const SOLO_TABLERO_CONTROL = ["ins-unifilar-tc","ins-multifilar-tc","ins-mecanico-tc"];
 export const aplicaEntregable = (id, tableros) => !SOLO_TABLERO_CONTROL.includes(id) || (tableros||[]).some(t=>t.tipo==="control");
 
 /* ---------------- ruta de trabajo de los documentos ----------------
-   Orden de desarrollo recomendado: se parte del proceso (P&ID) y de las cargas, siguen los cálculos y listados que
+   Orden de desarrollo recomendado: se parte de la lista de instrumentos y de las cargas, siguen los cálculos y listados que
    dependen de ellos, luego los diagramas, el detalle de los tableros y al final las especificaciones y la filosofía.
    REQUIERE: documentos que conviene tener listos antes (sus datos alimentan al documento). Ninguno se bloquea: la ruta
    orienta al usuario y le dice qué puede elaborar al terminar cada documento. */
 export const ETAPAS_TRABAJO = [
-  { n:1, titulo:"Punto de partida", desc:"El proceso y las cargas: definen qué se alimenta, qué se mide y qué se controla.", docs:["ins-pid","ele-cargas"] },
-  { n:2, titulo:"Cálculos y listados base", desc:"Instrumentos, máxima demanda, conductores, cables y señales.", docs:["ins-instrumentos","ele-md","ele-mc","ele-cables","ins-io"] },
-  { n:3, titulo:"Diagramas eléctricos y de control", desc:"Unifilares, arquitectura de control y lazos.", docs:["ele-unifilar","ins-unifilar-tc","ins-arquitectura","ins-lazo"] },
+  { n:1, titulo:"Punto de partida", desc:"Los instrumentos y las cargas: definen qué se mide, qué se alimenta y qué se controla.", docs:["ins-instrumentos","ele-cargas"] },
+  { n:2, titulo:"Cálculos y listados base", desc:"Equipos eléctricos, máxima demanda, conductores, cables y señales.", docs:["ele-equipos","ele-md","ele-mc","ele-cables","ins-io"] },
+  { n:3, titulo:"Diagramas eléctricos y de control", desc:"P&ID, unifilares, arquitectura de control y lazos.", docs:["ins-pid","ele-unifilar","ins-unifilar-tc","ins-arquitectura","ins-lazo"] },
   { n:4, titulo:"Detalle de los tableros", desc:"Multifilares y mecánicos para fabricación.", docs:["ele-multifilar","ins-multifilar-tc","ele-mecanico","ins-mecanico-tc"] },
-  { n:5, titulo:"Especificaciones y cierre", desc:"Equipos, hojas de datos y filosofía de control.", docs:["ele-equipos","ele-hd","ins-hd","ins-filosofia"] },
+  { n:5, titulo:"Especificaciones y cierre", desc:"Hojas de datos y filosofía de control.", docs:["ele-hd","ins-hd","ins-filosofia"] },
 ];
 export const REQUIERE = {
-  "ins-pid":[], "ele-cargas":[],
-  "ins-instrumentos":["ins-pid"], "ele-md":["ele-cargas"], "ele-mc":["ele-cargas"], "ele-cables":["ele-mc"], "ins-io":["ins-instrumentos","ele-cargas"],
+  "ins-instrumentos":[], "ele-cargas":[],
+  // el P&ID se dibuja cuando ya está definida la lista de instrumentos
+  "ins-pid":["ins-instrumentos"], "ele-md":["ele-cargas"], "ele-mc":["ele-cargas"], "ele-cables":["ele-mc"], "ins-io":["ins-instrumentos","ele-cargas"],
   "ele-unifilar":["ele-cargas"], "ins-unifilar-tc":["ins-io"], "ins-arquitectura":["ins-io"], "ins-lazo":["ins-io"],
   "ele-multifilar":["ele-unifilar"], "ins-multifilar-tc":["ins-unifilar-tc"], "ele-mecanico":["ele-multifilar"], "ins-mecanico-tc":["ins-multifilar-tc"],
-  "ele-equipos":["ele-unifilar"], "ele-hd":["ele-mecanico"], "ins-hd":["ins-instrumentos"], "ins-filosofia":["ins-io","ins-pid"],
+  "ele-equipos":["ele-cargas"], "ele-hd":["ele-mecanico"], "ins-hd":["ins-instrumentos"], "ins-filosofia":["ins-io","ins-pid"],
 };
 const ORDEN_TRABAJO = ETAPAS_TRABAJO.flatMap(e=>e.docs);
 export const ordenTrabajo = id => { const i = ORDEN_TRABAJO.indexOf(id); return i < 0 ? 999 : i; };

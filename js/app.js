@@ -1,5 +1,5 @@
 /* Ingenia — aplicación (enrutador por hash y pantallas) */
-import { ENTREGABLES, CATALOGO, DISCIPLINAS, ETAPAS, ESTADOS, TIPOS, entregable, aplicaEntregable, ETAPAS_TRABAJO, ordenTrabajo, etapaDe, docListo, requisitos, habilita, ESTADOS_DOC, sincronizarEstado, claseEstado } from "./catalog.js";
+import { ENTREGABLES, CATALOGO, DISCIPLINAS, ETAPAS, ESTADOS, TIPOS, entregable, nombreEntregable, aplicaEntregable, ETAPAS_TRABAJO, ordenTrabajo, etapaDe, docListo, requisitos, habilita, ESTADOS_DOC, sincronizarEstado, claseEstado } from "./catalog.js";
 import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, confirmar, dropzone, leerComoArrayBuffer, leerComoTexto, leerComoDataURL, fmtFecha, hoy, kb } from "./ui.js";
 import * as X from "./export.js";
@@ -14,9 +14,14 @@ import { VERSION } from "./version.js";
 import { comprobarVersion } from "./actualizar.js";
 import { iniciarCopito } from "./copito.js";
 import { esPro, etiquetaDoc, screenPlan, nombrePlan } from "./plan.js";
+import { exigirSesion, bloqueUsuario, cerrarSesion } from "./auth.js";
 
+// acceso: sin sesión se muestra la pantalla de ingreso; los datos se cargan con la clave del usuario que ingresó
+await exigirSesion();
 const main = $("#main");
 const state = S.load();
+document.querySelector(".sidenav .foot").insertAdjacentHTML("afterbegin", bloqueUsuario());
+{ const b = document.getElementById("btn-salir"); if(b) b.onclick = async ()=>{ if(await confirmar("Cerrar sesión", "¿Quieres salir del panel? Tus proyectos quedan guardados en este navegador.", "Cerrar sesión")) cerrarSesion(); }; }
 const etapaNombre = id => (ETAPAS.find(e=>e.id===id)||{}).nombre || id;
 const disciplinaNombre = id => (DISCIPLINAS[id]||{}).nombre || id;
 
@@ -368,12 +373,12 @@ function tabDocumentos(body, p){
   const sel = p.entregables.map(entregable).filter(Boolean).sort((a, b)=>ordenTrabajo(a.id) - ordenTrabajo(b.id));
   // el estado sigue a la revisión vigente (la que se emite en «Cajetín y descarga» de cada documento)
   if(sel.reduce((n, e)=>n + (sincronizarEstado(p.documentos[e.id]) ? 1 : 0), 0)) S.save();
-  const nombre = id => (entregable(id)||{}).nombre || id;
+  const nombre = id => nombreEntregable(id, p);
   const chip = id => { const ok = docListo(p.documentos[id]); return `<a class="req-chip ${ok ? "ok" : ""}" href="#/proyecto/${p.id}/doc/${id}" title="${ok ? "Listo" : "Pendiente"}">${ok ? ICON.check : "○"} ${esc(nombre(id))}</a>`; };
   const fila = e=>{ const d = p.documentos[e.id]; const rv = (d.revisiones && d.revisiones.length) ? d.revisiones[d.revisiones.length-1] : { rev:d.rev, fecha:d.fecha, descripcion:d.emitido };
     const req = requisitos(p, e.id);
     return `<tr data-id="${e.id}" class="${docListo(d) ? "doc-listo" : ""}">
-        <td><div style="font-weight:500">${generable(e.id)?`<a href="#/proyecto/${p.id}/doc/${e.id}">${esc(e.nombre)}</a>`:esc(e.nombre)}</div><div class="muted" style="font-size:12px">${esc(DISCIPLINAS[e.disciplina].corto)} ${etiquetaDoc(e, state)}</div></td>
+        <td><div style="font-weight:500">${generable(e.id)?`<a href="#/proyecto/${p.id}/doc/${e.id}">${esc(nombreEntregable(e.id, p))}</a>`:esc(nombreEntregable(e.id, p))}</div><div class="muted" style="font-size:12px">${esc(DISCIPLINAS[e.disciplina].corto)} ${etiquetaDoc(e, state)}</div></td>
         <td class="doc-req">${req.length ? req.map(chip).join("") : `<span class="req-inicio">Punto de partida</span>`}</td>
         <td style="white-space:nowrap"><span class="mono">Rev. ${esc(rv.rev||"A")}</span> · <span class="mono">${esc(fmtFecha(rv.fecha))}</span><div class="muted" style="font-size:12px">${esc(String(rv.descripcion||"").replace(/^Emitido para /,"Para ")||"—")}</div></td>
         <td><select data-f="estado" class="sel-estado ${claseEstado(d.estado)}" style="min-width:130px">${ESTADOS_DOC.map(o=>`<option ${d.estado===o?"selected":""}>${o}</option>`).join("")}</select></td>

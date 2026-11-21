@@ -95,7 +95,7 @@ function tabla(doc, x, yTop, cols, filas, o){
     let x2 = x;
     for(const c of cols){
       let v = f[c.key]; v = v==null ? "" : String(v);
-      const maxC = Math.floor((c.w - 1.6)/(fs*0.72));
+      const maxC = Math.floor((c.w - 1.6)/(fs*0.84));
       if(v.length > maxC) v = v.slice(0, Math.max(1, maxC - 1)) + "…";
       const al = c.al || "izq";
       doc.text(al==="centro" ? x2 + c.w/2 : x2 + 0.8, y + hf/2, fs, v, f.__titulo ? "M-ETIQUETA" : "M-TEXTO", al==="centro" ? { halign:1, valign:2 } : { valign:2 });
@@ -460,13 +460,14 @@ function dibujarDispositivo(v, d, conLeyenda){
 function dibujarFrente(v, m, llam){
   const { W, H, zocalo } = m;
   v.R(0, 0, W, H, "M-GABINETE");
-  if(zocalo){ v.R(0, -zocalo, W, zocalo, "M-GABINETE"); for(const s of m.secciones.slice(1)) v.L(s.x0, -zocalo, s.x0, 0, "M-GABINETE"); llam.push({ x:0, y:-zocalo/2, texto:`ZÓCALO DE ${zocalo} mm` }); }
+  if(zocalo){ v.R(0, -zocalo, W, zocalo, "M-GABINETE"); for(const s of m.secciones.slice(1)) v.L(s.x0, -zocalo, s.x0, 0, "M-GABINETE"); llam.push({ x:0, y:-zocalo/2, tag:"ZC", desc:`Zócalo de ${zocalo} mm` }); }
   // techo (intemperie) y cáncamos de izaje
-  if(m.techoTipo==="inclinado"){ v.R(-40, H, W + 80, 30, "M-GABINETE"); v.R(-40, H + 30, W + 80, 60, "M-GABINETE"); v.L(-40, H + 30, W + 40, H + 90, "M-DETALLE"); llam.push({ x:-40, y:H + 60, texto:"TECHO INCLINADO (CAÍDA HACIA ATRÁS)" }); }
-  else if(m.techo){ v.R(-40, H, W + 80, 30, "M-GABINETE"); v.R(-40, H + 30, W + 80, 25, "M-GABINETE"); llam.push({ x:-40, y:H + 28, texto:"TECHO CON ALERO (INTEMPERIE)" }); }
+  // techo inclinado: de frente se ve su canto delantero (el más alto) y la caída hacia atrás en línea oculta
+  if(m.techoTipo==="inclinado"){ const ta = m.techoAlto; v.R(-40, H, W + 80, 30, "M-GABINETE"); v.R(-40, H + 30, W + 80, ta - 30, "M-GABINETE"); llam.push({ x:-40, y:H + ta/2 + 15, tag:"TE", desc:"Techo inclinado con alero (caída hacia atrás)" }); }
+  else if(m.techo){ v.R(-40, H, W + 80, 30, "M-GABINETE"); v.R(-40, H + 30, W + 80, 25, "M-GABINETE"); llam.push({ x:-40, y:H + 28, tag:"TE", desc:"Techo plano con alero (intemperie)" }); }
   const yE = H + (m.techoAlto || 0);
   for(const xe of [80, W - 80]){ v.R(xe - 6, yE, 12, 45, "M-GABINETE"); v.C(xe, yE + 55, 14, "M-GABINETE"); v.C(xe, yE + 55, 7, "M-GABINETE"); }
-  llam.push({ x:80, y:yE + 55, texto:"CÁNCAMO DE IZAJE" });
+  llam.push({ x:80, y:yE + 55, tag:"CI", desc:"Cáncamo de izaje", cant:4 });
   // puertas con bisagras y manijas
   for(const p of hojasPuerta(m)){
     v.R(p.x0, PUERTA_GAP, p.x1 - p.x0, H - 2*PUERTA_GAP, "M-PUERTA");
@@ -476,31 +477,31 @@ function dibujarFrente(v, m, llam){
   // manijas en el borde de cierre de cada hoja (entre las puertas); con lock out, la manija con bloqueo por candado
   const mjs = C.manijasPuerta(m, PUERTA_GAP);
   for(const mj of mjs){ if(mj.lockout) lockoutFrente(v, mj.x, mj.y0); else { v.R(mj.x - 10, mj.y0, 20, 160, "M-EQUIPO"); v.C(mj.x, mj.y0 + 140, 6, "M-DETALLE"); } }
-  llam.push({ x:mjs[0].x + mjs[0].w/2, y:mjs[0].y0 + mjs[0].h/2, texto: m.lockout ? "MANIJA CON BLOQUEO POR CANDADO (LOCK OUT), ENTRE LAS PUERTAS" : "MANIJA CON CERRADURA Y LLAVE" });
+  llam.push({ x:mjs[0].x + mjs[0].w/2, y:mjs[0].y0 + mjs[0].h/2, tag:"MJ", desc: m.lockout ? "Manija con bloqueo por candado (lock out), entre las puertas" : "Manija con cerradura y llave", cant: mjs.length });
   // dispositivos de puerta
   for(const d of m.puerta) dibujarDispositivo(v, d);
   // visores (ventana de inspección IP66) sobre los dispositivos elegidos y caperuzas antilluvia de los ventiladores
-  for(const z of m.visores||[]){ visorFrente(v, z); llam.push({ x:z.x1, y:z.y1 - 15, texto:"VISOR IP66 (VENTANA DE INSPECCIÓN CON TAPA ABATIBLE)" }); }
+  (m.visores||[]).forEach((z, i)=>{ visorFrente(v, z); llam.push({ x:z.x1, y:z.y1 - 15, tag:`VS${i+1}`, desc:"Visor IP66 (ventana de inspección con tapa abatible)" }); });
   for(const c of m.caperuzas||[]) caperuzaFrente(v, c, false);
-  if((m.caperuzas||[]).length){ const c = m.caperuzas[0]; llam.push({ x:c.x + c.w/2, y:c.y + c.h/2 - 10, texto:"CAPERUZA ANTILLUVIA (VENTILADOR / FILTRO)" }); }
-  const q = m.puerta.find(d=>d.tipo==="manija"); if(q) llam.push({ x:q.x, y:q.y + 45, texto:"MANIJA DEL INTERRUPTOR PRINCIPAL Q1" });
-  if(m.panel){ const p = m.panel; v.R(p.x, p.y, p.w, p.h, "M-OCULTO"); llam.push({ x:p.x, y:p.y + p.h - 20, texto:"PANEL DE OPERACIÓN (VER LÁMINA 3)" }); }
+  (m.caperuzas||[]).forEach((c, i)=>llam.push({ x:c.x + c.w/2, y:c.y + c.h/2 - 10, tag:`CP${i+1}`, desc:`Caperuza antilluvia${c.tag ? ` de ${c.tag}` : ""}` }));
+  const q = m.puerta.find(d=>d.tipo==="manija"); if(q) llam.push({ x:q.x, y:q.y + 45, tag:q.tag || "Q1", desc:"Manija rotativa del interruptor principal (en puerta)" });
+  if(m.panel){ const p = m.panel; v.R(p.x, p.y, p.w, p.h, "M-OCULTO"); llam.push({ x:p.x, y:p.y + p.h - 20, tag:"PO", desc:"Panel de operación (ver lámina 3)" }); }
   const fv = m.puerta.find(d=>d.tipo==="ventilador"), fr = m.puerta.find(d=>d.tipo==="rejilla"), aa = m.puerta.find(d=>d.tipo==="aa");
-  if(fv) llam.push({ x:fv.x + fv.w/2, y:fv.y, texto:"VENTILADOR CON FILTRO (ENTRADA DE AIRE)" });
-  if(fr) llam.push({ x:fr.x + fr.w/2, y:fr.y, texto:"FILTRO DE SALIDA DE AIRE" });
-  if(aa) llam.push({ x:aa.x + aa.w/2, y:aa.y, texto:"AIRE ACONDICIONADO DE PUERTA" });
-  for(const d of m.puerta.filter(d=>d.tipo==="panelvfd")) llam.push({ x:d.x + d.w/2, y:d.y, texto:`PANEL DE OPERADOR DE ${d.tag}` });
+  if(fv) llam.push({ x:fv.x + fv.w/2, y:fv.y, tag:fv.tag || "FV1", desc:"Ventilador con filtro (entrada de aire)" });
+  if(fr) llam.push({ x:fr.x + fr.w/2, y:fr.y, tag:fr.tag || "FS1", desc:"Filtro de salida de aire" });
+  if(aa) llam.push({ x:aa.x + aa.w/2, y:aa.y, tag:aa.tag || "AA1", desc:"Aire acondicionado de puerta" });
+  for(const d of m.puerta.filter(d=>d.tipo==="panelvfd")) llam.push({ x:d.x + d.w/2, y:d.y, tag:d.tag, desc:"Panel de operador del variador (en puerta)" });
   if(m.tipo==="control"){
-    for(const d of m.puerta.filter(d=>d.tipo==="hmi")) llam.push({ x:d.x + d.w/2, y:d.y + d.h/4, texto:`PANTALLA ${d.tag} (RECORTE ${d.recorteW} x ${d.recorteH} mm)` });
-    for(const d of m.puerta.filter(d=>d.tipo==="ventilador" && d.rol==="salida")) llam.push({ x:d.x + d.w/2, y:d.y, texto:`VENTILADOR ${d.tag} CON FILTRO (EXTRACCIÓN DE AIRE)` });
-    const lz = m.puerta.find(d=>d.tipo==="luz"); if(lz) llam.push({ x:lz.x + 15, y:lz.y, texto:"LUCES PILOTO DE TENSIÓN PRESENTE" });
+    for(const d of m.puerta.filter(d=>d.tipo==="hmi")) llam.push({ x:d.x + d.w/2, y:d.y + d.h/4, tag:d.tag, desc:`Pantalla de operación (recorte ${d.recorteW} x ${d.recorteH} mm)` });
+    for(const d of m.puerta.filter(d=>d.tipo==="ventilador" && d.rol==="salida")) llam.push({ x:d.x + d.w/2, y:d.y, tag:d.tag, desc:"Ventilador con filtro (extracción de aire)" });
+    const lz = m.puerta.filter(d=>d.tipo==="luz"); if(lz.length) llam.push({ x:lz[0].x + 15, y:lz[0].y, tag:lz.length > 1 ? `${lz[0].tag}…${lz[lz.length-1].tag}` : lz[0].tag, desc:"Luces piloto de tensión presente", cant: lz.length });
   }
   // placa de identificación (140 × 40, arriba) y señal de riesgo eléctrico en cada hoja de puerta (abajo, centrada)
   const pid = C.placaId(m);
   v.R(pid.x - pid.w/2, pid.y - pid.h/2, pid.w, pid.h, "M-EQUIPO");
   const lp = [[(m.tablero.nombre||"").toUpperCase(), 1.1, "M-TEXTO"], [m.tablero.tag, 1.4, "M-ETIQUETA"], [m.placaTxt || `${m.tension} Vac, 3F+T, ${m.frecuencia} Hz`, 1.0, "M-TEXTO"]];
   lp.forEach(([t, h, ly], i)=>v.T(pid.x, pid.y + pid.h*0.25 - i*pid.h*0.25, h, t, ly, { halign:1, valign:2 }));
-  llam.push({ x:pid.x - pid.w/2, y:pid.y, texto:"PLACA DE IDENTIFICACIÓN (NOMBRE, TAG Y TENSIÓN)" });
+  llam.push({ x:pid.x - pid.w/2, y:pid.y, tag:"PI", desc:"Placa de identificación (nombre, TAG y tensión)" });
   const sen = C.senalesRiesgo(m);
   for(const { x, y, w, h } of sen){
     v.R(x - w/2, y - h/2, w, h, "M-SENAL");
@@ -511,7 +512,7 @@ function dibujarFrente(v, m, llam){
     v.T(x, y - h*0.22, 1.3, "ATENCIÓN", "M-SENAL", { halign:1, valign:2 });
     v.T(x, y - h*0.36, 1.1, "RIESGO ELÉCTRICO", "M-SENAL", { halign:1, valign:2 });
   }
-  if(sen.length) llam.push({ x:sen[0].x - sen[0].w/2, y:sen[0].y, texto:`SEÑAL «ATENCIÓN / RIESGO ELÉCTRICO» EN ${sen.length > 1 ? "CADA PUERTA" : "LA PUERTA"}` });
+  if(sen.length) llam.push({ x:sen[0].x - sen[0].w/2, y:sen[0].y, tag:"SR", desc:`Señal «Atención / riesgo eléctrico» (${sen.length > 1 ? "una en cada puerta" : "en la puerta"})`, cant: sen.length });
 }
 function dibujarLateral(v, m){
   const { D, H, zocalo } = m;
@@ -530,12 +531,18 @@ function dibujarLateral(v, m){
     for(const d of m.puerta.filter(d=>d.tipo==="hmi")){ v.R(D - d.prof, d.y - d.recorteH/2, d.prof, d.recorteH, "M-OCULTO"); v.R(D + 22, d.y - d.h/2, 6, d.h, "M-DETALLE"); }
     for(const d of m.puerta.filter(d=>d.tipo==="ventilador")) v.R(D + 22, d.y - d.h/2, 14, d.h, "M-DETALLE"); }
   else v.R(25, 75, dmax - 25, H - 155, "M-OCULTO");
-  if(m.techo){ v.P([[-40, H], [D + 60, H], [D + 60, H + 30], [-40, H + (m.techoAlto || 55)]], "M-GABINETE", null, true); }
+  if(m.techoTipo==="inclinado"){ v.P([[-40, H], [D + 60, H], [D + 60, H + m.techoAlto], [-40, H + 30]], "M-GABINETE", null, true); v.L(-40, H + 30 - 12, D + 60, H + m.techoAlto - 12, "M-DETALLE"); }
+  else if(m.techo){ v.P([[-40, H], [D + 60, H], [D + 60, H + (m.techoAlto || 55)], [-40, H + (m.techoAlto || 55)]], "M-GABINETE", null, true); }
   // visores y caperuzas vistos de costado: sobresalen de la puerta (la caperuza con su abertura hacia abajo)
   for(const z of m.visores||[]){ v.R(D + 22, z.y0, z.prof, z.y1 - z.y0, "M-DETALLE"); v.L(D + 22 + z.prof - 6, z.y0 + 4, D + 22 + z.prof - 6, z.y1 - 4, "M-DETALLE"); }
   for(const c of m.caperuzas||[]) caperuzaPerfil(v, D + 22, c, false);
-  const yE = H + (m.techoAlto || 0);
-  for(const xe of [80, D - 80]){ v.R(xe - 6, yE, 12, 45, "M-GABINETE"); v.C(xe, yE + 55, 14, "M-GABINETE"); }
+  // cáncamos sobre el techo (en el inclinado, a la altura del techo en cada punto)
+  for(const xe of [80, D - 80]){ const yE = H + alturaTecho(m, D - xe); v.R(xe - 6, yE, 12, 45, "M-GABINETE"); v.C(xe, yE + 55, 14, "M-GABINETE"); }
+}
+/* alto del techo sobre el gabinete a una profundidad e desde el frente (inclinado: alto adelante, cae hacia atrás) */
+function alturaTecho(m, e){
+  if(m.techoTipo==="inclinado"){ const f = Math.min(1, Math.max(0, (e + 40)/(m.D + 80))); return m.techoAlto - (m.techoAlto - 30)*f; }
+  return m.techo ? (m.techoAlto || 55) : 0;
 }
 /* isométrica: x (ancho) hacia la derecha-abajo, profundidad hacia la derecha-arriba, y hacia arriba */
 function isometrica(doc, ox, oy, s, m){
@@ -571,8 +578,14 @@ function isometrica(doc, ox, oy, s, m){
   rectIso(pid.x - pid.w/2, pid.y - pid.h/2, pid.x + pid.w/2, pid.y + pid.h/2, "M-EQUIPO");
   for(const { x, y, w, h } of C.senalesRiesgo(m)){ rectIso(x - w/2, y - h/2, x + w/2, y + h/2, "M-SENAL"); const t = w*0.36, yc = y + h*0.16; poly([P(x - t, yc - t*0.8, 0), P(x + t, yc - t*0.8, 0), P(x, yc + t*0.95, 0)], "M-SENAL"); }
   // techo y cáncamos
-  if(m.techo){ const hf = m.techoTipo==="inclinado" ? 90 : 30;   // alto del techo en el frente (inclinado: cae hacia atrás)
-    poly([P(-40, H + hf, -40), P(W + 40, H + hf, -40), P(W + 40, H + 30, D + 40), P(-40, H + 30, D + 40)]); L(P(-40, H, -40), P(-40, H + hf, -40)); L(P(W + 40, H, -40), P(W + 40, H + hf, -40)); L(P(W + 40, H, D + 40), P(W + 40, H + 30, D + 40)); L(P(-40, H, -40), P(W + 40, H, -40)); L(P(W + 40, H, -40), P(W + 40, H, D + 40)); }
+  if(m.techo){
+    // techo: cara superior desde el canto delantero (alto) al trasero (bajo), canto lateral derecho y alero delantero
+    const hf = alturaTecho(m, -40), hb = alturaTecho(m, m.D + 40);
+    poly([P(-40, H + hf, -40), P(W + 40, H + hf, -40), P(W + 40, H + hb, D + 40), P(-40, H + hb, D + 40)]);
+    poly([P(W + 40, H, -40), P(W + 40, H + hf, -40), P(W + 40, H + hb, D + 40), P(W + 40, H, D + 40)]);
+    poly([P(-40, H, -40), P(W + 40, H, -40), P(W + 40, H + hf, -40), P(-40, H + hf, -40)]);
+    if(m.techoTipo==="inclinado"){ L(P(-40, H + hf - 14, -40), P(W + 40, H + hf - 14, -40), "M-DETALLE"); L(P(W + 40, H + hf - 14, -40), P(W + 40, H + hb - 14, D + 40), "M-DETALLE"); }
+  }
   // visores: caja que sobresale de la puerta con su ventana de esquinas redondeadas
   for(const z of m.visores||[]){ const e = -z.prof, wv = C.ventanaVisor(z);
     poly([P(z.x0, z.y0, e), P(z.x1, z.y0, e), P(z.x1, z.y1, e), P(z.x0, z.y1, e)], "M-EQUIPO");
@@ -585,8 +598,7 @@ function isometrica(doc, ox, oy, s, m){
     for(const [a, b] of [[pTop, pIncl], [pIncl, pFr], [pFr, pBase]]) poly([P(x0, a[1], a[0]), P(x1, a[1], a[0]), P(x1, b[1], b[0]), P(x0, b[1], b[0])], "M-EQUIPO");
     poly(pf.map(([e, y])=>P(x1, y, e)), "M-EQUIPO");
   }
-  const yE = H + (m.techoTipo==="inclinado" ? 90 : m.techo ? 30 : 0);
-  for(const [xe, ee] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ L(P(xe, yE, ee), P(xe, yE + 45, ee)); const pts = []; for(let k=0;k<16;k++){ const a = k*Math.PI/8; pts.push(P(xe + 14*Math.cos(a), yE + 59 + 14*Math.sin(a), ee)); } poly(pts); }
+  for(const [xe, ee] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ const yE = H + alturaTecho(m, ee); L(P(xe, yE, ee), P(xe, yE + 45, ee)); const pts = []; for(let k=0;k<16;k++){ const a = k*Math.PI/8; pts.push(P(xe + 14*Math.cos(a), yE + 59 + 14*Math.sin(a), ee)); } poly(pts); }
 }
 
 /* ---------- lámina 3: detalles de los accesorios de puerta ----------
@@ -611,9 +623,9 @@ function detallesAccesorios(doc, caja, m){
   const ancho = s => items.reduce((a, it)=>a + itemW(it, s), 0) + GAP*(items.length - 1);
   const s = ESCALAS.find(e=>ancho(e) <= W - 4 && Math.max(...items.map(it=>it.h))/e + 46 + 20/e <= H);
   if(!s) return;
-  doc.text(caja.x0, caja.y1, 2.8, "%%UDETALLES DE ACCESORIOS DE PUERTA", "M-TEXTO");
   // títulos debajo de los textos de las vistas («INTERIOR», «ABERTURA HACIA ABAJO»), todos a la misma altura
   const dT = Math.max(16, 20/s + 9), yBase = caja.y0 + 8 + dT + Math.max(0, (H - 46 - 20/s - Math.max(...items.map(it=>it.h))/s)/2);
+  doc.text(caja.x0, Math.min(caja.y1, yBase + Math.max(...items.map(it=>it.h))/s + 22), 3.2, "%%UDETALLES DE ACCESORIOS DE PUERTA", "M-TEXTO");
   let x = caja.x0 + Math.max(0, (W - ancho(s))/2);
   for(const it of items){
     const x0 = x, xFin = x0 + itemW(it, s);
@@ -665,192 +677,295 @@ function detallesAccesorios(doc, caja, m){
   }
 }
 
-/* =============================== generador =============================== */
-export async function mecanicoKit({ p, valsDe, cliente, id }, tipo){
-  const doc = new DXFDoc();
+/* =============================== generador ===============================
+   Cada tablero arma primero su lista de láminas (las tablas largas siguen en láminas de continuación) y luego se dibujan
+   con la numeración del plano. Todo queda dentro del área de dibujo sin pisar el bloque del cajetín (abajo a la derecha);
+   los dibujos se escalan para entrar y se centran en su zona, con la misma separación a cada lado. */
+const TB = { h:4.6, fs:2.1, hc:7 };            // tablas: alto de fila, texto y encabezado (mm de lámina)
+const NOTA = 2.5, TIT = 3.2;                   // notas y títulos de tablas
+const ZONA = { x0: AR.x0 + 10, x1: AR.x1 - 10, y0: AR.y0 + 8, y1: AR.y1 - 8 };
+const BLOQ = { x0: RES.x0 - 8, y1: RES.y1 + 8 };   // bloque del cajetín (con su margen)
+/* límite inferior libre para una franja horizontal [x0, x1] (sobre el bloque del cajetín si lo cruza) */
+const pisoDe = (x0, x1) => x1 > BLOQ.x0 ? BLOQ.y1 : ZONA.y0;
+/* filas que entran en una columna de tabla entre yTop y yBot */
+const filasEn = (yTop, yBot, o = TB) => Math.max(0, Math.floor((yTop - yBot - o.hc)/o.h));
+const anchoCols = cols => cols.reduce((a, c)=>a + c.w, 0);
+/* columnas de tabla repartidas a lo ancho de la lámina, centradas y con la misma separación */
+function columnasTabla(ancho, gap = 16){
+  const n = Math.max(1, Math.floor((ZONA.x1 - ZONA.x0 + gap)/(ancho + gap)));
+  const total = n*ancho + (n - 1)*gap, x0 = ZONA.x0 + (ZONA.x1 - ZONA.x0 - total)/2;
+  return Array.from({ length:n }, (_, i)=>({ x: x0 + i*(ancho + gap), x1: x0 + i*(ancho + gap) + ancho }));
+}
+/* reparte las filas de una tabla en columnas y láminas (con el título y «(continuación)» en cada una).
+   Devuelve láminas: [{ titulo2, dibujar(ox) }] */
+function laminasDeTabla(titulo2, titulo, cols, filas, primera){
+  const out = [], W = anchoCols(cols), colsX = columnasTabla(W);
+  let i = 0, n = 0;
+  // la primera parte puede ir en un espacio dado de otra lámina (primera: { filas })
+  if(primera) i = primera;
+  while(i < filas.length){
+    const reparto = [];
+    for(const c of colsX){
+      if(i >= filas.length) break;
+      const yTop = ZONA.y1 - 10, cap = filasEn(yTop, pisoDe(c.x, c.x1) + 2);
+      let k = Math.min(cap, filas.length - i);
+      if(k > 1 && i + k < filas.length && filas[i + k - 1].__titulo) k--;   // un título de grupo no queda al pie
+      reparto.push({ c, yTop, desde:i, hasta:i + k }); i += k;
+    }
+    const cont = n++ > 0 || !!primera;
+    const ult = reparto[reparto.length - 1], libres = colsX.slice(reparto.length).map(c=>({ x:c.x, x1:c.x1, yTop: ZONA.y1 - 2, yBot: pisoDe(c.x, c.x1) + 2 }));
+    libres.unshift({ x: ult.c.x, x1: ult.c.x1, yTop: ult.yTop - TB.hc - (ult.hasta - ult.desde)*TB.h - 12, yBot: pisoDe(ult.c.x, ult.c.x1) + 2 });
+    out.push({ libres, titulo2: `${titulo2}${cont ? " (CONTINUACIÓN)" : ""}`, dibujar(ox){
+      doc_.text(ox + reparto[0].c.x, ZONA.y1 - 2, TIT, `%%U${titulo}${cont ? " (CONTINUACIÓN)" : ""}`, "M-TEXTO");
+      for(const r of reparto) tabla(doc_, ox + r.c.x, r.yTop, cols, filas.slice(r.desde, r.hasta), TB);
+    } });
+  }
+  return out;
+}
+let doc_ = null;   // documento en curso (las láminas se dibujan después de planificarlas)
+
+/* etiquetas de TAG con línea guía, apiladas en una columna sin superponerse */
+function etiquetasTag(doc, lista, xTexto, lado){
+  const ord = lista.slice().sort((a, b)=>b.y - a.y), paso = 4.6;
+  let ultimo = Infinity;
+  for(const l of ord){
+    const yt = Math.min(l.y, ultimo - paso); ultimo = yt;
+    const xt = xTexto;
+    doc.line(l.x, l.y, xt + (lado==="izq" ? 1.2 : -1.2), yt, "M-COTA");
+    doc.circle(l.x, l.y, 0.5, "M-COTA");
+    doc.text(xt, yt, 2.6, l.tag, "M-ETIQUETA", { halign: lado==="izq" ? 2 : 0, valign:2 });
+  }
+}
+
+export async function mecanicoKit({ p, valsDe, cliente, id, tablero }, tipo){
+  const doc = new DXFDoc(); doc_ = doc;
   Object.assign(doc.capas, CAPAS); Object.assign(doc.tiposLinea, TIPOS_LINEA);
   // tipo "control": tableros de control (js/mecanico/arreglo-control.js); si no, los de fuerza
-  const modelos = tipo==="control" ? arreglosControl(p) : arreglosProyecto(p);
+  let modelos = tipo==="control" ? arreglosControl(p) : arreglosProyecto(p);
+  // un plano por tablero
+  if(tablero && modelos.some(m=>m.tablero.id===tablero)) modelos = modelos.filter(m=>m.tablero.id===tablero);
   if(!modelos.length){
     dibujarLamina(doc, 0, 0, valsDe(0, 1, {}), cliente);
     doc.text(AR.x0 + 30, AR.y1 - 40, 4, tipo==="control" ? "EL PROYECTO NO TIENE TABLEROS DE CONTROL." : "EL PROYECTO NO TIENE TABLEROS DE FUERZA CON CARGAS.", "M-TEXTO");
     return { dxf: doc.toDXF(), hojas:1, modelos };
   }
-  const total = modelos.length*4;
-  let k = 0;
+  const notasU = id ? datos(p).notas[id] || [] : [];   // solo las notas del usuario (sin notas, la lámina no lleva notas)
+  const laminas = [];
   for(const m of modelos){
-    const t = m.tablero, nombre = `${(t.nombre||"").toUpperCase()} ${t.tag}`;
-    const lam = (sub)=>{ dibujarLamina(doc, k*PASO_HOJAS, 0, valsDe(k, total, { TITULO2:`${nombre} - ${sub}`, ESCALA:"INDICADA" }), cliente); return k*PASO_HOJAS; };
-    const hTot = m.H + m.zocalo + (m.techoAlto || 0) + 70;
+    const nombre = `${(m.tablero.nombre||"").toUpperCase()} ${m.tablero.tag}`;
+    for(const l of laminasTablero(doc, m, notasU)) laminas.push(Object.assign({}, l, { titulo2: `${nombre} - ${l.titulo2}` }));
+  }
+  const total = laminas.length;
+  laminas.forEach((l, k)=>{ dibujarLamina(doc, k*PASO_HOJAS, 0, valsDe(k, total, { TITULO2: l.titulo2, ESCALA:"INDICADA" }), cliente); l.dibujar(k*PASO_HOJAS); });
+  return { dxf: doc.toDXF(), hojas: total, modelos };
+}
 
-    // ---------- lámina 1: vistas exteriores ----------
-    let ox = lam("VISTAS EXTERIORES");
-    const isoW = (m.W + m.D)*Math.cos(Math.PI/6), isoH = m.H + m.zocalo + (m.W + m.D)*0.5 + 70;
-    const s1 = ESCALAS.find(s=>(m.W + m.D + 120)/s + 70 + 55 + 30 + isoW/s*0.55 <= (AR.x1 - AR.x0) - 20 && hTot/s + 30 <= (AR.y1 - AR.y0) - 20) || 50;
-    const altoDisp = (AR.y1 - 12) - (AR.y0 + 24);
-    const yBase = AR.y0 + 24 + Math.max(0, (altoDisp - hTot/s1)*0.45) + (m.zocalo)/s1;
-    const xF = ox + AR.x0 + 72, llamF = [];
-    const vF = vista(doc, xF, yBase, s1);
-    dibujarFrente(vF, m, llamF);
-    llamadas(doc, llamF.filter(l=>l.x < m.W*0.5).map(l=>({ x:vF.X(l.x), y:vF.Y(l.y), texto:l.texto })), xF - 15, "izq");
-    const derF = llamF.filter(l=>l.x >= m.W*0.5).map(l=>({ x:vF.X(l.x), y:vF.Y(l.y), texto:l.texto }));
-    const xL = vF.X(m.W) + (derF.length ? 58 : 30);
-    llamadas(doc, derF, vF.X(m.W) + 4, "der");
-    cotaH(doc, vF.X(0), vF.X(m.W), vF.Y(-m.zocalo) - 9, vF.Y(-m.zocalo), String(m.W));
-    let xc = vF.X(0);
-    if(m.secciones.length > 1) for(const s of m.secciones){ cotaH(doc, vF.X(s.x0), vF.X(s.x1), vF.Y(-m.zocalo) - 4.5, vF.Y(-m.zocalo), String(s.W)); }
-    cotaV(doc, vF.Y(0), vF.Y(m.H), xc - 6, xc, String(m.H));
-    if(m.zocalo) cotaV(doc, vF.Y(-m.zocalo), vF.Y(0), xc - 6, xc, String(m.zocalo));
-    tituloVista(doc, vF.X(m.W/2), vF.Y(-m.zocalo) - 16, "VISTA FRONTAL", escTxt(s1));
-    const vL = vista(doc, xL, yBase, s1);
-    dibujarLateral(vL, m);
-    cotaH(doc, vL.X(0), vL.X(m.D), vL.Y(-m.zocalo) - 9, vL.Y(-m.zocalo), String(m.D));
-    tituloVista(doc, vL.X(m.D/2), vL.Y(-m.zocalo) - 16, "VISTA LATERAL DERECHA", escTxt(s1));
-    // isométrica en el espacio restante (sin escala), notas debajo
-    const xIso0 = vL.X(m.D + 80) + 18, xIso1 = ox + AR.x1 - 8;
-    const notas = id ? datos(p).notas[id] || [] : [];   // solo las notas del usuario (sin notas, la lámina no lleva notas)
-    const xNot1 = ox + RES.x0 - 6;                               // las notas no invaden el bloque del cajetín
-    const anchoNot = Math.max(80, xNot1 - xIso0);
-    const altoNotas = !notas.length ? 0 : notas.reduce((a, n)=>a + envolver(n, Math.floor(anchoNot/(1.9*0.78)) - 4).length*2.76 + 0.8, 0) + 10;
-    const yIsoTop = AR.y1 - 10, yIsoBot = AR.y0 + altoNotas + 12;
-    const sIso = Math.max((isoW)/Math.max(40, xIso1 - xIso0 - 10), (isoH)/Math.max(40, yIsoTop - yIsoBot - 14));
-    const isoOx = xIso0 + Math.max(0, ((xIso1 - xIso0) - isoW/sIso)/2), isoOy = yIsoBot + 10 + (m.W*0.5 + m.zocalo)/sIso;
-    isometrica(doc, isoOx, isoOy, sIso, m);
-    tituloVista(doc, (xIso0 + xIso1)/2, yIsoBot + 4, "VISTA ISOMÉTRICA", "SIN ESCALA");
-    if(notas.length) parrafos(doc, xIso0, yIsoBot - 6, anchoNot, "NOTAS:", notas, 1.9);
-    k++;
+function laminasTablero(doc, m, notasU){
+  const L = [];
+  // ---------- lámina 1: vistas exteriores, lista de TAGs y notas ----------
+  const llamF = [];
+  { const tmp = new DXFDoc(); dibujarFrente(vista(tmp, 0, 0, 1), m, llamF); }   // solo para conocer los TAGs exteriores
+  const tags = []; for(const l of llamF){ const t = tags.find(x=>x.tag===l.tag); if(t) t.cant += l.cant || 1; else tags.push({ tag:l.tag, desc:l.desc, cant:l.cant || 1 }); }
+  const colsTag = [{ titulo:"TAG", key:"tag", w:22, al:"centro" }, { titulo:"COMPONENTE", key:"desc", w:150 }, { titulo:"CANT.", key:"cant", w:16, al:"centro" }];
+  const filasTag = tags;
+  L.push({ titulo2:"VISTAS EXTERIORES", dibujar(ox){ laminaExterior(doc, ox, m, colsTag, filasTag, notasU); } });
 
-    // ---------- lámina 2: disposición interior ----------
-    ox = lam("DISPOSICIÓN DE EQUIPOS");
-    const anchoTabla = 250;
-    const s2 = ESCALAS.find(s=>m.W/s + 95 <= (AR.x1 - AR.x0) - anchoTabla - 20 && (m.H + m.zocalo)/s + 52 <= (AR.y1 - AR.y0) - 12) || 50;
-    const libreV = (AR.y1 - AR.y0) - 12 - ((m.H + m.zocalo)/s2 + 52);
-    const vI = vista(doc, ox + AR.x0 + 40, AR.y0 + 30 + Math.max(0, libreV*0.5) + m.zocalo/s2, s2);
+  // ---------- lámina 2: disposición interior y detalle de borneras ----------
+  const filasB = [];
+  for(const b of m.bornes){
+    filasB.push({ grupo:b.grupo, n:"", modelo:"", destino:b.desc.toUpperCase(), __titulo:true });
+    for(const x of b.bornes) filasB.push({ grupo:"", n:x.n, modelo:x.modelo, destino: destinoBorne(b, x) });
+  }
+  const colsB = [{ titulo:"BORNERA", key:"grupo", w:24, al:"centro" }, { titulo:"BORNE", key:"n", w:16, al:"centro" }, { titulo:"MODELO", key:"modelo", w:32, al:"centro" }, { titulo:"CONEXIÓN / DESTINO", key:"destino", w:190 }];
+  const wB = anchoCols(colsB), xTB = ZONA.x1 - wB, capB = filasEn(ZONA.y1 - 10, pisoDe(xTB, ZONA.x1) + 2);
+  let nB = Math.min(capB, filasB.length); if(nB > 1 && nB < filasB.length && filasB[nB - 1].__titulo) nB--;
+  L.push({ titulo2:"DISPOSICIÓN DE EQUIPOS", dibujar(ox){
+    const conTabla = filasB.length > 0, xMax = conTabla ? xTB - 24 : ZONA.x1;
+    const anchoV = xMax - ZONA.x0 - 30, altoV = (ZONA.y1 - 6) - (ZONA.y0 + 30);
+    const s2 = ESCALAS.find(s=>m.W/s + 24 <= anchoV && (m.H + m.zocalo)/s + 20 <= altoV) || 50;
+    const x0 = ox + ZONA.x0 + 18 + (anchoV - m.W/s2)/2, y0 = ZONA.y0 + 30 + (altoV - (m.H + m.zocalo)/s2 - 14)/2 + m.zocalo/s2;
+    const vI = vista(doc, x0, y0, s2);
     dibujarInterior(vI, m);
     cotaH(doc, vI.X(0), vI.X(m.W), vI.Y(m.H) + 6, vI.Y(m.H), String(m.W));
     cotaV(doc, vI.Y(0), vI.Y(m.H), vI.X(0) - 6, vI.X(0), String(m.H));
-    for(const pl of m.placas){ cotaH(doc, vI.X(pl.x), vI.X(pl.x + pl.w), vI.Y(-m.zocalo) - 5, vI.Y(pl.y), String(r1(pl.w))); doc.text(vI.X(pl.x + pl.w/2), vI.Y(-m.zocalo) - 10.5, 2.2, pl.nombre, "M-ETIQUETA", { halign:1 }); }
+    for(const pl of m.placas){ cotaH(doc, vI.X(pl.x), vI.X(pl.x + pl.w), vI.Y(-m.zocalo) - 5, vI.Y(pl.y), String(r1(pl.w))); doc.text(vI.X(pl.x + pl.w/2), vI.Y(-m.zocalo) - 10.5, 2.4, pl.nombre, "M-ETIQUETA", { halign:1 }); }
     const plU = m.placas[m.placas.length-1]; cotaV(doc, vI.Y(plU.y), vI.Y(plU.y + plU.h), vI.X(m.W) + 6, vI.X(plU.x + plU.w), String(r1(plU.h)));
-    const llamI = [];
-    if(m.barras.some(b=>b.fase==="L1")){ const b = m.barras.find(b=>b.fase==="L3"); llamI.push({ x:vI.X(b.x + b.w), y:vI.Y(b.y), texto:`BARRAS L1-L2-L3 Cu ${m.fase.nombre} mm SOBRE AISLADORES` }); }
-    llamadas(doc, llamI, vI.X(m.W) + 14, "der");
-    tituloVista(doc, vI.X(m.W/2), vI.Y(-m.zocalo) - 17, "DISPOSICIÓN DE EQUIPOS - PLACAS DE MONTAJE (SIN PUERTAS)", escTxt(s2));
-    // detalle de borneras
-    const xT = ox + AR.x1 - anchoTabla - 4;
-    if(m.tipo!=="control") doc.text(xT, AR.y1 - 8, 3, "%%UDETALLE DE BORNERAS", "M-TEXTO");
-    const filasB = [];
-    for(const b of m.bornes){
-      filasB.push({ grupo:b.grupo, n:"", modelo:"", destino:b.desc.toUpperCase(), __titulo:true });
-      for(const x of b.bornes) filasB.push({ grupo:"", n:x.n, modelo:x.modelo, destino: destinoBorne(b, x) });
-    }
-    const maxFilas = Math.floor(((AR.y1 - 14) - (AR.y0 + 8))/3.6) - 2;
-    if(m.tipo==="control"){
-      // varias columnas en el espacio libre a la derecha de la vista (las del pie no invaden el cajetín)
-      const xL0 = vI.X(m.W) + 22, libreT = (ox + AR.x1 - 4) - xL0, nC = Math.max(1, Math.min(4, Math.floor(libreT/175))), wC = Math.min(250, libreT/nC - 4);
-      const xs = Array.from({ length:nC }, (_, i)=>ox + AR.x1 - 4 - (nC - i)*(wC + 4));
-      doc.text(xs[0], AR.y1 - 8, 3, "%%UDETALLE DE BORNERAS", "M-TEXTO");
-      let i0 = 0;
-      xs.forEach((x0, ci)=>{ const yMin = x0 + wC > ox + RES.x0 ? RES.y1 + 6 : AR.y0 + 8, n = Math.floor(((AR.y1 - 14) - yMin)/3.6) - 2;
-        let n2 = Math.min(n, filasB.length - i0); if(n2 > 0 && i0 + n2 < filasB.length && filasB[i0 + n2 - 1].__titulo) n2--;
-        if(n2 > 0) tabla(doc, x0, AR.y1 - 12, [{ titulo:"BORNERA", key:"grupo", w:20, al:"centro" }, { titulo:"BORNE", key:"n", w:12, al:"centro" }, { titulo:"MODELO", key:"modelo", w:24, al:"centro" }, { titulo:"CONEXIÓN / DESTINO", key:"destino", w:wC - 56 }], filasB.slice(i0, i0 + n2), { h:3.6, fs:1.5 });
-        i0 += Math.max(0, n2); });
-      if(i0 < filasB.length) doc.text(xs[0], AR.y0 + 4, 1.8, `(continúa: ${filasB.length - i0} filas más en la lista de materiales)`, "M-TEXTO");
-    } else {
-    tabla(doc, xT, AR.y1 - 12, [{ titulo:"BORNERA", key:"grupo", w:22, al:"centro" }, { titulo:"BORNE", key:"n", w:14, al:"centro" }, { titulo:"MODELO", key:"modelo", w:28, al:"centro" }, { titulo:"CONEXIÓN / DESTINO", key:"destino", w:anchoTabla - 64 }],
-      filasB.slice(0, maxFilas), { h:3.6, fs:1.55 });
-    if(filasB.length > maxFilas) doc.text(xT, AR.y0 + 4, 1.8, `(continúa: ${filasB.length - maxFilas} filas más en la lista de materiales)`, "M-TEXTO");
-    }
-    k++;
+    tituloVista(doc, vI.X(m.W/2), vI.Y(-m.zocalo) - 18, "DISPOSICIÓN DE EQUIPOS - PLACAS DE MONTAJE (SIN PUERTAS)", escTxt(s2));
+    if(m.barras.some(b=>b.fase==="L1")) doc.text(vI.X(m.W/2), vI.Y(-m.zocalo) - 27, 2.2, `BARRAS L1-L2-L3 DE COBRE ${m.fase.nombre} mm SOBRE AISLADORES`, "M-TEXTO", { halign:1 });
+    if(conTabla){ doc.text(ox + xTB, ZONA.y1 - 2, TIT, "%%UDETALLE DE BORNERAS", "M-TEXTO"); tabla(doc, ox + xTB, ZONA.y1 - 10, colsB, filasB.slice(0, nB), TB); }
+  } });
+  if(nB < filasB.length) L.push(...laminasDeTabla("DETALLE DE BORNERAS", "DETALLE DE BORNERAS", colsB, filasB, nB));
 
-    // ---------- lámina 3: panel de operación y base ----------
-    ox = lam("PANEL DE OPERACIÓN Y BASE");
-    const pn = m.panel || { x:m.W/2 - 150, y:m.H*0.55, w:300, h:200, seccion:m.secciones[0].id, zona:true, titulo:"PUERTA (SIN DISPOSITIVOS DE OPERACIÓN)" }, ops = m.puerta.filter(d=>d.seccion===pn.seccion && ["luz","pulsador","selector","potenciometro","seta","hmi"].includes(d.tipo));
-    const colIzq = 290;
-    // la parada de emergencia puede ir fuera del panel (debajo, en su eje): la vista abarca ambos
-    const yMinP = Math.min(pn.y, ...ops.map(d=>d.y - (d.anillo || d.diam || 30)/2 - 40)), hP = pn.y + pn.h - yMinP;
-    const s3 = [2, 2.5, 3, 4, 5, 7.5].find(s=>hP/s <= 300 && pn.w/s <= colIzq - 40) || 7.5;
-    const vP = vista(doc, ox + AR.x0 + 30 + (colIzq - 40 - pn.w/s3)/2 - pn.x/s3, AR.y1 - 16 - (pn.y + pn.h)/s3, s3);
-    if(pn.zona) vP.R(pn.x, pn.y, pn.w, pn.h, "M-OCULTO");
-    else { vP.R(pn.x, pn.y, pn.w, pn.h, "M-EQUIPO"); vP.R(pn.x + 12, pn.y + 12, pn.w - 24, pn.h - 24, "M-DETALLE");
-    for(const [cx2, cy2] of [[pn.x + 6, pn.y + 6], [pn.x + pn.w - 6, pn.y + 6], [pn.x + 6, pn.y + pn.h - 6], [pn.x + pn.w - 6, pn.y + pn.h - 6]]) vP.C(cx2, cy2, 3, "M-DETALLE"); }
-    for(const d of ops){
-      dibujarDispositivo(vP, d, true);
-      if(d.leyenda){ const pl = C.PUERTA.placa, yy = d.y + (d.anillo ? d.anillo/2 : (d.diam||30)/2) + 6 + pl.h/2;
-        const lin = envolver(d.leyenda, 12).slice(0, 3); lin.forEach((t2, i)=>vP.T(d.x, yy + ((lin.length - 1)/2 - i)*4.8, Math.min(1.5, 1.6*4/s3), t2, "M-TEXTO", { halign:1, valign:2 })); }
-      if(d.tag && d.tipo!=="seta" && d.tipo!=="hmi") vP.T(d.x + 17, d.y - 17, 1.2, d.tag, "M-ETIQUETA");
-      if(d.tipo==="hmi"){ const x0 = d.x - d.recorteW/2, y0 = d.y - d.recorteH/2;
-        cotaH(doc, vP.X(x0), vP.X(x0 + d.recorteW), vP.Y(d.y + d.h/2) + 8, vP.Y(y0 + d.recorteH), `RECORTE ${d.recorteW}`);
-        cotaV(doc, vP.Y(y0), vP.Y(y0 + d.recorteH), vP.X(d.x + d.w/2) + 6, vP.X(x0 + d.recorteW), `RECORTE ${d.recorteH}`);
-        vP.T(d.x, d.y, Math.min(2.2, 9/s3), "PANTALLA", "M-TEXTO", { halign:1, valign:2 }); vP.T(d.x, d.y - 4.5*s3, Math.min(1.8, 7/s3), String(d.modelo||"").toUpperCase(), "M-TEXTO", { halign:1, valign:2 }); }
-    }
-    const epb = ops.find(d=>d.tipo==="seta"); if(epb){ vP.T(epb.x, epb.y - 38, 1.6, "PARADA DE EMERGENCIA", "M-SENAL", { halign:1 }); vP.T(epb.x + 34, epb.y, 1.6, "EPB1", "M-ETIQUETA", { valign:2 }); }
-    if(pn.zona){ const hm = ops.find(d=>d.tipo==="hmi"); if(hm) doc.text(vP.X(pn.x + pn.w/2), vP.Y(pn.y) - 7, 1.9, `CENTRO DEL RECORTE A ${r1(hm.y + m.zocalo)} mm DE LA BASE DEL GABINETE Y A ${r1(hm.x - m.secciones.find(x=>x.id===pn.seccion).x0)} mm DE SU BORDE IZQUIERDO`, "M-TEXTO", { halign:1 }); }
-    else { cotaH(doc, vP.X(pn.x), vP.X(pn.x + pn.w), vP.Y(pn.y + pn.h) + 7, vP.Y(pn.y + pn.h), String(r1(pn.w)));
-    cotaV(doc, vP.Y(pn.y), vP.Y(pn.y + pn.h), vP.X(pn.x) - 7, vP.X(pn.x), String(r1(pn.h))); }
-    tituloVista(doc, vP.X(pn.x + pn.w/2), vP.Y(yMinP) - 17, (pn.titulo || "PANEL DE OPERACIÓN") + " (PUERTA " + (m.secciones.findIndex(x=>x.id===pn.seccion) + 1) + ")", escTxt(s3));
-    // leyenda de dispositivos de puerta (debajo del panel)
-    const xLey = ox + AR.x0 + 8, yLey = vP.Y(yMinP) - 30;
-    doc.text(xLey, yLey, 2.8, "%%ULEYENDA DE DISPOSITIVOS DE PUERTA", "M-TEXTO");
-    const filasLey = m.puerta.map(d=>({ tag:d.tag||"", tipo:d.leyenda || d.desc || "", modelo:d.modelo || (C.PUERTA[d.tipo]||{}).modelo || "", color:d.color||"" }));
-    const nLey = Math.max(3, Math.floor((yLey - 4 - (AR.y0 + 6) - 6)/3.8));
-    tabla(doc, xLey, yLey - 4, [{ titulo:"TAG", key:"tag", w:22, al:"centro" }, { titulo:"FUNCIÓN / LEYENDA", key:"tipo", w:100 }, { titulo:"DISPOSITIVO", key:"modelo", w:136 }, { titulo:"COLOR", key:"color", w:16, al:"centro" }], filasLey.slice(0, nLey), { h:3.8, fs:1.55 });
-    // base del tablero (vista superior de la placa pasacables), a la derecha
-    const xR0 = ox + AR.x0 + colIzq + 20, xR1 = ox + AR.x1 - 12;
-    const sB = ESCALAS.find(s=>(m.W + 60)/s <= (xR1 - xR0) - 20 && (m.D + 60)/s <= 190) || 50;
-    const yBTop = AR.y1 - 22;
-    const vB = vista(doc, xR0 + 10 + Math.max(0, ((xR1 - xR0) - 20 - m.W/sB)/2), yBTop - m.D/sB, sB);
-    vB.R(0, 0, m.W, m.D, "M-GABINETE"); vB.R(25, 25, m.W - 50, m.D - 50, "M-OCULTO");
-    for(const sc of m.secciones){ if(sc.x0 > 0) vB.L(sc.x0, 0, sc.x0, m.D, "M-GABINETE"); vB.R(sc.x0 + 60, 50, sc.W - 120, m.D - 100, "M-DETALLE"); }
-    vB.T(m.W/2, -4*sB, 2, "FRENTE (PUERTAS)", "M-TEXTO", { halign:1, valign:3 });
-    for(const r of m.comps.filter(c=>c.tipo==="reactancia")){ vB.R(r.x, 25, r.w, r.d, "M-OCULTO"); vB.T(r.x + r.w/2, 25 + r.d/2, 1.5, `BASE DE ${r.tag}`, "M-TEXTO", { halign:1, valign:2 }); }
-    const yFila = f => m.D*(f ? 0.3 : 0.62);
-    m.base.forEach((c, i)=>{ const cy = c.zb ?? yFila(c.fila||0); vB.C(c.x, cy, c.agujero/2, c.ref==="RESERVA" ? "M-OCULTO" : "M-EQUIPO");
-      if(c.ref!=="RESERVA"){ vB.L(c.x - c.agujero/2 - 4, cy, c.x + c.agujero/2 + 4, cy, "M-EJE"); vB.L(c.x, cy - c.agujero/2 - 4, c.x, cy + c.agujero/2 + 4, "M-EJE");
-        const nro = m.base.filter(x=>x.ref!=="RESERVA").indexOf(c) + 1; vB.T(c.x, cy + c.agujero/2 + 1.2*sB, Math.min(1.8, Math.max(1.1, 30/sB)), String(nro), "M-ETIQUETA", { halign:1 }); } });
-    cotaH(doc, vB.X(0), vB.X(m.W), vB.Y(m.D) + 5, vB.Y(m.D), String(m.W));
-    cotaV(doc, vB.Y(0), vB.Y(m.D), vB.X(m.W) + 6, vB.X(m.W), String(m.D));
-    tituloVista(doc, (xR0 + xR1)/2, vB.Y(0) - 12, `BASE DEL TABLERO - ENTRADA ${m.entrada.toUpperCase()} DE CABLES`, escTxt(sB));
-    // tabla de prensaestopas (numeradas como en la vista)
-    const filasG = m.base.filter(c=>c.ref!=="RESERVA").map((c, i)=>({ n:i+1, ref:c.ref, desc:c.desc, cable:c.awg || "—", d:c.diam ? r1(c.diam) : "—", pe:c.rosca, ag:String(c.agujero).replace(".", ",") }))
-      .concat([{ n:"", ref:"RESERVA", desc:`${m.base.filter(c=>c.ref==="RESERVA").length} agujeros con tapón ciego`, cable:"", d:"", pe: m.tipo==="control" ? [...new Set(m.base.filter(c=>c.ref==="RESERVA").map(c=>c.rosca))].join(" / ") : "M32", ag: m.tipo==="control" ? [...new Set(m.base.filter(c=>c.ref==="RESERVA").map(c=>String(c.agujero).replace(".", ",")))].join(" / ") : "32,5" }]);
-    const yG = vB.Y(0) - 26;
-    doc.text(xR0, yG + 4, 2.8, "%%UPRENSAESTOPAS DE LA BASE", "M-TEXTO");
-    const colsG = [{ titulo:"N°", key:"n", w:9, al:"centro" }, { titulo:"REF.", key:"ref", w:22, al:"centro" }, { titulo:"CIRCUITO / CABLE", key:"desc", w:112 }, { titulo:"CALIBRE", key:"cable", w:22, al:"centro" }, { titulo:"Ø EXT. (mm)", key:"d", w:18, al:"centro" }, { titulo:"PRENSAESTOPA", key:"pe", w:24, al:"centro" }, { titulo:"AGUJERO (mm)", key:"ag", w:20, al:"centro" }];
-    const wG = colsG.reduce((a, c)=>a + c.w, 0);
-    // si la tabla llega al bloque del cajetín, se limita su largo
-    const yMinG = (xR0 + wG > ox + RES.x0) ? RES.y1 + 4 : AR.y0 + 4;
-    const nG = Math.max(2, Math.floor((yG - yMinG - 6)/3.8));
-    const hG = tabla(doc, xR0, yG, colsG, filasG.slice(0, nG), { h:3.8, fs:1.55 });
-    // detalles de los accesorios de puerta (ventilador / filtro con caperuza, visor y lock out) en el espacio libre de abajo
-    detallesAccesorios(doc, { x0:xR0, x1:ox + AR.x1 - 8, y0:ox ? RES.y1 + 8 : RES.y1 + 8, y1:yG - hG - 12 }, m);
-    k++;
+  // ---------- lámina 3: panel de operación, leyenda, base y prensaestopas; detalles de accesorios ----------
+  const filasLey = m.puerta.map(d=>({ tag:d.tag||"", tipo:d.leyenda || d.desc || "", modelo:d.modelo || (C.PUERTA[d.tipo]||{}).modelo || "", color:d.color||"" }));
+  const colsLey = [{ titulo:"TAG", key:"tag", w:24, al:"centro" }, { titulo:"FUNCIÓN / LEYENDA", key:"tipo", w:112 }, { titulo:"DISPOSITIVO", key:"modelo", w:124 }, { titulo:"COLOR", key:"color", w:20, al:"centro" }];
+  const filasG = m.base.filter(c=>c.ref!=="RESERVA").map((c, i)=>({ n:i+1, ref:c.ref, desc:c.desc, cable:c.awg || "—", d:c.diam ? r1(c.diam) : "—", pe:c.rosca, ag:String(c.agujero).replace(".", ",") }))
+    .concat([{ n:"", ref:"RESERVA", desc:`${m.base.filter(c=>c.ref==="RESERVA").length} agujeros con tapón ciego`, cable:"", d:"", pe: m.tipo==="control" ? [...new Set(m.base.filter(c=>c.ref==="RESERVA").map(c=>c.rosca))].join(" / ") : "M32", ag: m.tipo==="control" ? [...new Set(m.base.filter(c=>c.ref==="RESERVA").map(c=>String(c.agujero).replace(".", ",")))].join(" / ") : "32,5" }]);
+  const colsG = [{ titulo:"N°", key:"n", w:10, al:"centro" }, { titulo:"REF.", key:"ref", w:24, al:"centro" }, { titulo:"CIRCUITO / CABLE", key:"desc", w:150 }, { titulo:"CALIBRE", key:"cable", w:24, al:"centro" }, { titulo:"Ø EXT. (mm)", key:"d", w:20, al:"centro" }, { titulo:"PRENSAESTOPA", key:"pe", w:28, al:"centro" }, { titulo:"AGUJERO (mm)", key:"ag", w:24, al:"centro" }];
+  const plan3 = planLamina3(m, colsLey, filasLey, colsG, filasG);
+  L.push({ titulo2:"PANEL DE OPERACIÓN Y BASE", dibujar(ox){ laminaPanelBase(doc, ox, m, plan3, colsLey, filasLey, colsG, filasG); } });
+  if(plan3.nLey < filasLey.length) L.push(...laminasDeTabla("LEYENDA DE DISPOSITIVOS DE PUERTA", "LEYENDA DE DISPOSITIVOS DE PUERTA", colsLey, filasLey, plan3.nLey));
+  if(plan3.nG < filasG.length) L.push(...laminasDeTabla("PRENSAESTOPAS DE LA BASE", "PRENSAESTOPAS DE LA BASE", colsG, filasG, plan3.nG));
+  if(!plan3.detalles) L.push({ titulo2:"DETALLES DE ACCESORIOS", dibujar(ox){ detallesAccesorios(doc, { x0: ox + ZONA.x0 + 20, x1: ox + ZONA.x1 - 20, y0: BLOQ.y1 + 8, y1: ZONA.y1 - 8 }, m); } });
 
-    // ---------- lámina 4: lista de materiales, criterios y balance térmico ----------
-    ox = lam("LISTA DE MATERIALES Y CRITERIOS");
-    doc.text(ox + AR.x0 + 6, AR.y1 - 8, 3, "%%ULISTA DE MATERIALES (DIMENSIONES ANCHO x ALTO x FONDO EN mm)", "M-TEXTO");
-    const colsBom = [{ titulo:"ÍTEM", key:"n", w:9, al:"centro" }, { titulo:"TAG", key:"tag", w:20, al:"centro" }, { titulo:"DESCRIPCIÓN", key:"desc", w:150 }, { titulo:"MODELO / CÓDIGO", key:"modelo", w:110 }, { titulo:"CANT.", key:"cant", w:14, al:"centro" }, { titulo:"DIMENSIONES", key:"dim", w:34, al:"centro" }, { titulo:"MONTAJE", key:"montaje", w:20, al:"centro" }];
-    const filasBom = m.bom.map((f, i)=>Object.assign({ n:i+1 }, f));
-    const hFila = Math.max(3.4, Math.min(5, ((AR.y1 - 12) - (AR.y0 + 6) - 6)/Math.max(1, filasBom.length)));
-    const porCol = Math.floor(((AR.y1 - 12) - (AR.y0 + 6) - 6)/hFila);
-    const hB = tabla(doc, ox + AR.x0 + 6, AR.y1 - 12, colsBom, filasBom.slice(0, porCol), { h:hFila, fs:Math.min(1.8, hFila*0.42) });
-    const xC = ox + AR.x0 + 6 + colsBom.reduce((a, c)=>a + c.w, 0) + 12;
-    let yC = AR.y1 - 8;
-    if(filasBom.length > porCol){ doc.text(xC, yC, 2.6, "%%ULISTA DE MATERIALES (CONTINUACIÓN)", "M-TEXTO"); const h2 = tabla(doc, xC, yC - 4, [colsBom[0], colsBom[1], Object.assign({}, colsBom[3], { w:90 }), colsBom[4]], filasBom.slice(porCol, porCol*2), { h:3.4, fs:1.45 }); yC -= h2 + 12; }
-    const anchoC = (ox + AR.x1 - 6) - xC;
-    const tm = m.termico;
-    const term = [`Pérdidas internas estimadas: ${tm.perdidas} W (${tm.notaPerdidas || "equipos a corriente nominal + barras y conexiones"}).`,
-      `Superficie efectiva de disipación (IEC 60890, gabinete contra la pared): ${tm.superficie} m², k = ${tm.k} W/m²K.`,
-      `Temperatura de diseño del sitio ${tm.tAmb} °C; temperatura interior máxima ${tm.tiMax} °C; altitud ${tm.altitud} m s.n.m. (factor de caudal ${tm.fAlt}).`,
-      tm.modo==="forzada" ? (m.tipo==="control" ? `Ventilación forzada: ${tm.caudal} m³/h requeridos; ventilador de entrada abajo y de extracción arriba, con filtro, mandados por termostato (ver vista frontal).` : `Ventilación forzada: ${tm.caudal} m³/h con ${tm.ventiladores} ventilador(es) con filtro y filtro(s) de salida (ver vista frontal).`) : tm.modo==="aire acondicionado" ? `Se requiere aire acondicionado de ${tm.potenciaFrio} W (temperatura de diseño ≥ temperatura interior admisible).` : `Ventilación natural: la disipación de la envolvente (${tm.disipacion||0} W) cubre las pérdidas.`];
-    if(xC + 60 < ox + AR.x1){
-      yC -= parrafos(doc, xC, yC, anchoC, "CRITERIOS DE DISEÑO APLICADOS", m.criterios, 1.75) + 6;
-      yC -= parrafos(doc, xC, yC, anchoC, "BALANCE TÉRMICO", term, 1.75) + 6;
-      if(m.avisos.length) yC -= parrafos(doc, xC, yC, anchoC, "OBSERVACIONES PARA REVISIÓN", m.avisos, 1.75) + 6;
-      parrafos(doc, xC, Math.max(yC, RES.y1 + 30), anchoC, "FUENTE DE LAS DIMENSIONES", [`Dimensiones tomadas de la base de datos de componentes de Ingenia (catálogos de los fabricantes: ${m.tipo==="control" ? "ABB, Allen-Bradley, Siemens, Phoenix Contact, Teltonika, Rittal, STEGO" : "ABB, Allen-Bradley, Phoenix Contact"} y gabinetes normalizados). Son referenciales: verificar con el plano dimensional del código exacto antes de fabricar.`], 1.6);
+  // ---------- lista de materiales (en columnas, las láminas que hagan falta) y criterios ----------
+  const colsBom = [{ titulo:"ÍTEM", key:"n", w:11, al:"centro" }, { titulo:"TAG", key:"tag", w:22, al:"centro" }, { titulo:"DESCRIPCIÓN", key:"desc", w:140 }, { titulo:"MODELO / CÓDIGO", key:"modelo", w:104 }, { titulo:"CANT.", key:"cant", w:16, al:"centro" }, { titulo:"DIMENSIONES", key:"dim", w:40, al:"centro" }, { titulo:"MONTAJE", key:"montaje", w:25, al:"centro" }];
+  const filasBom = m.bom.map((f, i)=>Object.assign({ n:i+1 }, f));
+  const lamBom = laminasDeTabla("LISTA DE MATERIALES", "LISTA DE MATERIALES (DIMENSIONES ANCHO x ALTO x FONDO EN mm)", colsBom, filasBom, 0);
+  L.push(...lamBom);
+  const tm = m.termico;
+  const term = [`Pérdidas internas estimadas: ${tm.perdidas} W (${tm.notaPerdidas || "equipos a corriente nominal + barras y conexiones"}).`,
+    `Superficie efectiva de disipación (IEC 60890, gabinete contra la pared): ${tm.superficie} m², k = ${tm.k} W/m²K.`,
+    `Temperatura de diseño del sitio ${tm.tAmb} °C; temperatura interior máxima ${tm.tiMax} °C; altitud ${tm.altitud} m s.n.m. (factor de caudal ${tm.fAlt}).`,
+    tm.modo==="forzada" ? (m.tipo==="control" ? `Ventilación forzada: ${tm.caudal} m³/h requeridos; ventilador de entrada abajo y de extracción arriba, con filtro, mandados por termostato (ver vista frontal).` : `Ventilación forzada: ${tm.caudal} m³/h con ${tm.ventiladores} ventilador(es) con filtro y filtro(s) de salida (ver vista frontal).`) : tm.modo==="aire acondicionado" ? `Se requiere aire acondicionado de ${tm.potenciaFrio} W (temperatura de diseño ≥ temperatura interior admisible).` : `Ventilación natural: la disipación de la envolvente (${tm.disipacion||0} W) cubre las pérdidas.`];
+  const fuente = [`Dimensiones tomadas de la base de datos de componentes de Ingenia (catálogos de los fabricantes: ${m.tipo==="control" ? "ABB, Allen-Bradley, Siemens, Phoenix Contact, Teltonika, Rittal, STEGO" : "ABB, Allen-Bradley, Phoenix Contact"} y gabinetes normalizados). Son referenciales: verificar con el plano dimensional del código exacto antes de fabricar.`];
+  const bloques = [["CRITERIOS DE DISEÑO APLICADOS", m.criterios], ["BALANCE TÉRMICO", term], ...(m.avisos.length ? [["OBSERVACIONES PARA REVISIÓN", m.avisos]] : []), ["FUENTE DE LAS DIMENSIONES", fuente]];
+  // reparto de los bloques de texto en zonas (columnas) de arriba hacia abajo; null si no entran
+  const repartir = zonas => {
+    const out = []; let zi = 0, y = zonas.length ? zonas[0].yTop : 0;
+    for(const [tit, items] of bloques){
+      for(;;){ const z = zonas[zi]; if(!z) return null; const alto = altoParrafos(z.x1 - z.x, items, NOTA) + 9;
+        if(y - alto >= z.yBot){ out.push({ z, y, tit, items }); y -= alto; break; }
+        zi++; y = zonas[zi] ? zonas[zi].yTop : 0; }
     }
-    k++;
+    return out;
+  };
+  const textos = (ox, plan) => { for(const b of plan) parrafos(doc, ox + b.z.x, b.y, b.z.x1 - b.z.x, b.tit, b.items, NOTA); };
+  const ultBom = lamBom[lamBom.length - 1], enBom = ultBom && repartir(ultBom.libres.filter(z=>z.yTop - z.yBot > 40));
+  if(enBom){ const d0 = ultBom.dibujar; ultBom.dibujar = ox=>{ d0(ox); textos(ox, enBom); }; ultBom.titulo2 = ultBom.titulo2.replace(/^LISTA DE MATERIALES/, "LISTA DE MATERIALES Y CRITERIOS"); }
+  else {
+    const cols = columnasTabla(380, 26).slice(0, 2).map(c=>({ x:c.x, x1:c.x1, yTop: ZONA.y1 - 2, yBot: pisoDe(c.x, c.x1) + 4 }));
+    const plan = repartir(cols) || repartir(cols.map(c=>Object.assign({}, c, { yBot: ZONA.y0 })));
+    L.push({ titulo2:"CRITERIOS DE DISEÑO Y BALANCE TÉRMICO", dibujar(ox){ if(plan) textos(ox, plan); } });
   }
-  return { dxf: doc.toDXF(), hojas: total, modelos };
+  return L;
+}
+/* alto que ocupan unas notas numeradas (mismo cálculo que parrafos) */
+function altoParrafos(ancho, items, fs){
+  const paso = fs*1.45, nCar = Math.min(200, Math.floor(ancho/(fs*0.78)));
+  return 5 + items.reduce((a, it)=>a + envolver(it, nCar - 4).length*paso + 0.8, 0);
+}
+
+/* ---------- lámina 1 ---------- */
+function laminaExterior(doc, ox, m, colsTag, filasTag, notasU){
+  const c30 = Math.cos(Math.PI/6);
+  const roof = m.techoAlto || 0, hTot = m.H + m.zocalo + roof + 70;
+  // franja inferior: lista de TAGs (izquierda) y notas del usuario (a su derecha, sin llegar al cajetín)
+  const wTag = anchoCols(colsTag), hTag = TB.hc + filasTag.length*TB.h + 8;
+  const xNot0 = ZONA.x0 + wTag + 20, xNot1 = BLOQ.x0 - 10, anchoNot = xNot1 - xNot0;
+  const hNot = notasU.length ? altoParrafos(anchoNot, notasU, NOTA) + 4 : 0;
+  const hFranja = Math.max(hTag, hNot, BLOQ.y1 - ZONA.y0);
+  const yV0 = ZONA.y0 + hFranja + 26, yV1 = ZONA.y1 - 4, altoV = yV1 - yV0;
+  // ancho de cada vista a la escala s (frontal con sus columnas de TAG, lateral e isométrica a 1,3 veces la escala)
+  const izq = 18, der = 18, gap = 28;
+  const wFront = s => izq + (m.W + 80)/s + der;
+  const wLat = s => (m.D + 60 + 22 + 140)/s;
+  const kIso = 1.3;
+  const isoW = s => (m.W + m.D + 160)*c30/(s*kIso);
+  const isoH = s => (m.zocalo + m.W*0.5 + m.H + roof + 70 + (m.D + 80)*0.5)/(s*kIso);
+  const anchoTot = s => wFront(s) + gap + wLat(s) + gap + isoW(s);
+  const s1 = ESCALAS.find(s=>anchoTot(s) <= ZONA.x1 - ZONA.x0 && hTot/s <= altoV && isoH(s) <= altoV) || 50;
+  // todo centrado: misma separación a ambos lados, las vistas apoyadas en la misma línea de base
+  const libre = (ZONA.x1 - ZONA.x0) - anchoTot(s1), x0 = ox + ZONA.x0 + libre/2;
+  const altoMax = Math.max(hTot/s1, isoH(s1));
+  const yBase = yV0 + (altoV - altoMax)/2 + m.zocalo/s1;
+  // frontal con las etiquetas de TAG a ambos lados
+  const xF = x0 + izq + 40/s1, llam = [];
+  const vF = vista(doc, xF, yBase, s1);
+  dibujarFrente(vF, m, llam);
+  const pts = llam.map(l=>({ x:vF.X(l.x), y:vF.Y(l.y), tag:l.tag }));
+  etiquetasTag(doc, pts.filter(l=>l.x < vF.X(m.W/2)), xF - 40/s1 - 4, "izq");
+  etiquetasTag(doc, pts.filter(l=>l.x >= vF.X(m.W/2)), vF.X(m.W + 40) + 4, "der");
+  cotaH(doc, vF.X(0), vF.X(m.W), vF.Y(-m.zocalo) - 9, vF.Y(-m.zocalo), String(m.W));
+  if(m.secciones.length > 1) for(const s of m.secciones) cotaH(doc, vF.X(s.x0), vF.X(s.x1), vF.Y(-m.zocalo) - 4.5, vF.Y(-m.zocalo), String(s.W));
+  cotaV(doc, vF.Y(0), vF.Y(m.H), vF.X(0) - 6, vF.X(0), String(m.H));
+  if(m.zocalo) cotaV(doc, vF.Y(-m.zocalo), vF.Y(0), vF.X(0) - 6, vF.X(0), String(m.zocalo));
+  tituloVista(doc, vF.X(m.W/2), vF.Y(-m.zocalo) - 17, "VISTA FRONTAL", escTxt(s1));
+  // lateral derecha
+  const xL = x0 + wFront(s1) + gap + 40/s1, vL = vista(doc, xL, yBase, s1);
+  dibujarLateral(vL, m);
+  cotaH(doc, vL.X(0), vL.X(m.D), vL.Y(-m.zocalo) - 9, vL.Y(-m.zocalo), String(m.D));
+  tituloVista(doc, vL.X(m.D/2), vL.Y(-m.zocalo) - 17, "VISTA LATERAL DERECHA", escTxt(s1));
+  // isométrica, con su base en la misma línea que las otras vistas
+  const sI = s1*kIso, xI = x0 + wFront(s1) + gap + wLat(s1) + gap;
+  const isoOx = xI + 80*c30/sI, isoOy = yBase + (m.W*0.5)/sI;
+  isometrica(doc, isoOx, isoOy, sI, m);
+  tituloVista(doc, xI + isoW(s1)/2, vF.Y(-m.zocalo) - 17, "VISTA ISOMÉTRICA", "SIN ESCALA");
+  // lista de TAGs y notas
+  const yT = ZONA.y0 + hFranja + 2;
+  doc.text(ox + ZONA.x0, yT, TIT, "%%ULISTA DE TAGS - COMPONENTES EXTERIORES", "M-TEXTO");
+  tabla(doc, ox + ZONA.x0, yT - 5, colsTag, filasTag, TB);
+  if(notasU.length) parrafos(doc, ox + xNot0, yT, anchoNot, "NOTAS:", notasU, NOTA);
+}
+
+/* ---------- lámina 3: reparto (cuántas filas entran de cada tabla y si entran los detalles) ---------- */
+function planLamina3(m, colsLey, filasLey, colsG, filasG){
+  const wIzq = anchoCols(colsLey), xDer0 = ZONA.x0 + wIzq + 30;
+  const pn = m.panel || { x:m.W/2 - 150, y:m.H*0.55, w:300, h:200 };
+  const ops = m.puerta.filter(d=>d.seccion===(m.panel ? pn.seccion : m.secciones[0].id) && ["luz","pulsador","selector","potenciometro","seta","hmi"].includes(d.tipo));
+  const yMinP = Math.min(pn.y, ...ops.map(d=>d.y - (d.anillo || d.diam || 30)/2 - 40)), hP = pn.y + pn.h - yMinP;
+  const s3 = [2, 2.5, 3, 4, 5, 7.5, 10].find(s=>hP/s <= 250 && pn.w/s <= wIzq - 40) || 10;
+  const yLey = ZONA.y1 - 6 - hP/s3 - 34;
+  const nLey = Math.min(filasLey.length, filasEn(yLey - 5, ZONA.y0 + 2));
+  const wDer = ZONA.x1 - xDer0;
+  const sB = ESCALAS.find(s=>(m.W + 60)/s <= wDer - 20 && (m.D + 60)/s <= 150) || 50;
+  const yG = ZONA.y1 - 10 - m.D/sB - 34;
+  const wG = anchoCols(colsG);
+  const nG = Math.min(filasG.length, filasEn(yG - 5, pisoDe(xDer0, xDer0 + wG) + 2));
+  // detalles de accesorios: en el espacio libre bajo la tabla de prensaestopas (si no entran, van en su propia lámina)
+  const yDet1 = yG - 5 - TB.hc - nG*TB.h - 12, yDet0 = BLOQ.y1 + 6;
+  const hayDet = m.puerta.some(x=>x.tipo==="ventilador" || x.tipo==="rejilla") || (m.visores||[]).length || m.lockout;
+  return { xDer0, s3, pn, ops, yMinP, hP, yLey, nLey, sB, yG, nG, detalles: !hayDet || (nG===filasG.length && yDet1 - yDet0 >= 110), yDet0, yDet1 };
+}
+function laminaPanelBase(doc, ox, m, P3, colsLey, filasLey, colsG, filasG){
+  const { pn: pn0, ops, yMinP, hP, s3, xDer0 } = P3;
+  const pn = m.panel || Object.assign({ seccion:m.secciones[0].id, zona:true, titulo:"PUERTA (SIN DISPOSITIVOS DE OPERACIÓN)" }, pn0);
+  const wIzq = anchoCols(colsLey);
+  // panel de operación (arriba a la izquierda, centrado sobre su leyenda)
+  const vP = vista(doc, ox + ZONA.x0 + (wIzq - pn.w/s3)/2 - pn.x/s3, ZONA.y1 - 6 - (pn.y + pn.h)/s3, s3);
+  if(pn.zona) vP.R(pn.x, pn.y, pn.w, pn.h, "M-OCULTO");
+  else { vP.R(pn.x, pn.y, pn.w, pn.h, "M-EQUIPO"); vP.R(pn.x + 12, pn.y + 12, pn.w - 24, pn.h - 24, "M-DETALLE");
+    for(const [cx2, cy2] of [[pn.x + 6, pn.y + 6], [pn.x + pn.w - 6, pn.y + 6], [pn.x + 6, pn.y + pn.h - 6], [pn.x + pn.w - 6, pn.y + pn.h - 6]]) vP.C(cx2, cy2, 3, "M-DETALLE"); }
+  for(const d of ops){
+    dibujarDispositivo(vP, d, true);
+    if(d.leyenda){ const pl = C.PUERTA.placa, yy = d.y + (d.anillo ? d.anillo/2 : (d.diam||30)/2) + 6 + pl.h/2;
+      const lin = envolver(d.leyenda, 12).slice(0, 3); lin.forEach((t2, i)=>vP.T(d.x, yy + ((lin.length - 1)/2 - i)*4.8, Math.min(1.6, 1.7*4/s3), t2, "M-TEXTO", { halign:1, valign:2 })); }
+    if(d.tag && d.tipo!=="seta" && d.tipo!=="hmi") vP.T(d.x + 17, d.y - 17, Math.min(1.8, 1.4*4/s3), d.tag, "M-ETIQUETA");
+    if(d.tipo==="hmi"){ const x0 = d.x - d.recorteW/2, y0 = d.y - d.recorteH/2;
+      cotaH(doc, vP.X(x0), vP.X(x0 + d.recorteW), vP.Y(d.y + d.h/2) + 8, vP.Y(y0 + d.recorteH), `RECORTE ${d.recorteW}`);
+      cotaV(doc, vP.Y(y0), vP.Y(y0 + d.recorteH), vP.X(d.x + d.w/2) + 6, vP.X(x0 + d.recorteW), `RECORTE ${d.recorteH}`);
+      vP.T(d.x, d.y, Math.min(2.4, 9/s3), "PANTALLA", "M-TEXTO", { halign:1, valign:2 }); vP.T(d.x, d.y - 4.5*s3, Math.min(2, 7/s3), String(d.modelo||"").toUpperCase(), "M-TEXTO", { halign:1, valign:2 }); }
+  }
+  const epb = ops.find(d=>d.tipo==="seta"); if(epb){ vP.T(epb.x, epb.y - 38, 1.9, "PARADA DE EMERGENCIA", "M-SENAL", { halign:1 }); vP.T(epb.x + 34, epb.y, 1.9, "EPB1", "M-ETIQUETA", { valign:2 }); }
+  if(pn.zona){ const hm = ops.find(d=>d.tipo==="hmi"); if(hm) doc.text(vP.X(pn.x + pn.w/2), vP.Y(pn.y) - 7, 2.1, `CENTRO DEL RECORTE A ${r1(hm.y + m.zocalo)} mm DE LA BASE DEL GABINETE Y A ${r1(hm.x - m.secciones.find(x=>x.id===pn.seccion).x0)} mm DE SU BORDE IZQUIERDO`, "M-TEXTO", { halign:1 }); }
+  else { cotaH(doc, vP.X(pn.x), vP.X(pn.x + pn.w), vP.Y(pn.y + pn.h) + 7, vP.Y(pn.y + pn.h), String(r1(pn.w)));
+    cotaV(doc, vP.Y(pn.y), vP.Y(pn.y + pn.h), vP.X(pn.x) - 7, vP.X(pn.x), String(r1(pn.h))); }
+  tituloVista(doc, vP.X(pn.x + pn.w/2), vP.Y(yMinP) - 17, (pn.titulo || "PANEL DE OPERACIÓN") + " (PUERTA " + (m.secciones.findIndex(x=>x.id===pn.seccion) + 1) + ")", escTxt(s3));
+  // leyenda de dispositivos de puerta (debajo del panel)
+  doc.text(ox + ZONA.x0, P3.yLey, TIT, "%%ULEYENDA DE DISPOSITIVOS DE PUERTA", "M-TEXTO");
+  if(P3.nLey) tabla(doc, ox + ZONA.x0, P3.yLey - 5, colsLey, filasLey.slice(0, P3.nLey), TB);
+  if(P3.nLey < filasLey.length) doc.text(ox + ZONA.x0, ZONA.y0 - 3, 2.2, "(CONTINÚA EN LA LÁMINA SIGUIENTE)", "M-TEXTO");
+  // base del tablero (arriba a la derecha, centrada en su columna)
+  const xR0 = ox + xDer0, xR1 = ox + ZONA.x1, sB = P3.sB, yBTop = ZONA.y1 - 10;
+  const vB = vista(doc, xR0 + Math.max(0, ((xR1 - xR0) - m.W/sB)/2), yBTop - m.D/sB, sB);
+  vB.R(0, 0, m.W, m.D, "M-GABINETE"); vB.R(25, 25, m.W - 50, m.D - 50, "M-OCULTO");
+  for(const sc of m.secciones){ if(sc.x0 > 0) vB.L(sc.x0, 0, sc.x0, m.D, "M-GABINETE"); vB.R(sc.x0 + 60, 50, sc.W - 120, m.D - 100, "M-DETALLE"); }
+  vB.T(m.W/2, -4*sB, 2.2, "FRENTE (PUERTAS)", "M-TEXTO", { halign:1, valign:3 });
+  for(const r of m.comps.filter(c=>c.tipo==="reactancia")){ vB.R(r.x, 25, r.w, r.d, "M-OCULTO"); vB.T(r.x + r.w/2, 25 + r.d/2, 1.8, `BASE DE ${r.tag}`, "M-TEXTO", { halign:1, valign:2 }); }
+  const yFila = f => m.D*(f ? 0.3 : 0.62);
+  m.base.forEach(c=>{ const cy = c.zb ?? yFila(c.fila||0); vB.C(c.x, cy, c.agujero/2, c.ref==="RESERVA" ? "M-OCULTO" : "M-EQUIPO");
+    if(c.ref!=="RESERVA"){ vB.L(c.x - c.agujero/2 - 4, cy, c.x + c.agujero/2 + 4, cy, "M-EJE"); vB.L(c.x, cy - c.agujero/2 - 4, c.x, cy + c.agujero/2 + 4, "M-EJE");
+      const nro = m.base.filter(x=>x.ref!=="RESERVA").indexOf(c) + 1; vB.T(c.x, cy + c.agujero/2 + 1.2*sB, Math.min(2.2, Math.max(1.4, 34/sB)), String(nro), "M-ETIQUETA", { halign:1 }); } });
+  cotaH(doc, vB.X(0), vB.X(m.W), vB.Y(m.D) + 5, vB.Y(m.D), String(m.W));
+  cotaV(doc, vB.Y(0), vB.Y(m.D), vB.X(m.W) + 6, vB.X(m.W), String(m.D));
+  tituloVista(doc, (xR0 + xR1)/2, vB.Y(0) - 13, `BASE DEL TABLERO - ENTRADA ${m.entrada.toUpperCase()} DE CABLES`, escTxt(sB));
+  // prensaestopas (centrada en la columna derecha)
+  const wG = anchoCols(colsG), xG = xR0 + Math.max(0, ((xR1 - xR0) - wG)/2);
+  doc.text(xG, P3.yG, TIT, "%%UPRENSAESTOPAS DE LA BASE", "M-TEXTO");
+  const hG = P3.nG ? tabla(doc, xG, P3.yG - 5, colsG, filasG.slice(0, P3.nG), TB) : 0;
+  if(P3.nG < filasG.length) doc.text(xG, P3.yG - 5 - hG - 4, 2.2, "(CONTINÚA EN LA LÁMINA SIGUIENTE)", "M-TEXTO");
+  // detalles de los accesorios de puerta en el espacio libre de abajo
+  if(P3.detalles) detallesAccesorios(doc, { x0:xR0, x1:xR1, y0:P3.yDet0, y1:P3.yDet1 }, m);
 }
 
 function destinoBorne(b, x){

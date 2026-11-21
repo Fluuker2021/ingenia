@@ -5,7 +5,7 @@
       de Anthropic con la clave que el usuario guarda en este navegador. */
 import * as S from "./store.js";
 import { esc, cargando } from "./ui.js";
-import { entregable, ETAPAS, DISCIPLINAS } from "./catalog.js";
+import { entregable, nombreEntregable, ETAPAS, DISCIPLINAS } from "./catalog.js";
 import { datos, calcularTablero, tableros, tablerosPotencia, instrumentos, expandirTag, cablesFuerza, ipRecomendado, r2 } from "./datos.js";
 import { valoresDiseno, tensionControlTxt } from "./modules/criterios.js";
 import { tablasIO } from "./docs.js";
@@ -132,7 +132,7 @@ function rBuscar(p, q){
   const ver = (txt, etq, href) => { const t = norm(txt); const k = pal.filter(w=>t.includes(w)).length; if(k) hits.push({ k, etq, href }); };
   d.cargas.forEach(l=>ver(`${l.tag} ${l.desc}`, `Carga ${l.tag||""} — ${l.desc||""}`, `#/proyecto/${p.id}/doc/ele-cargas/datos`));
   instrumentos(p).forEach(i=>ver(`${i.tag} ${i.descripcion} ${i.servicio} ${i.ubicacion}`, `Instrumento ${i.tag} — ${i.descripcion||""}`, `#/proyecto/${p.id}/doc/ins-instrumentos/datos`));
-  p.entregables.forEach(id=>{ const e = entregable(id)||{}; ver(`${e.nombre} ${e.finalidad}`, `Documento: ${e.nombre}`, `#/proyecto/${p.id}/doc/${id}`); });
+  p.entregables.forEach(id=>{ const e = Object.assign({}, entregable(id), { nombre: nombreEntregable(id, p) }); ver(`${e.nombre} ${e.finalidad}`, `Documento: ${e.nombre}`, `#/proyecto/${p.id}/doc/${id}`); });
   (d.proceso.equipos||[]).forEach(e=>ver(`${e.tag} ${e.descripcion}`, `Equipo ${e.tag||""} — ${e.descripcion||""}`, `#/proyecto/${p.id}/doc/ins-pid/datos`));
   if(!hits.length) return null;
   hits.sort((a,b)=>b.k-a.k);
@@ -185,7 +185,7 @@ function contexto(ruta){
       cables: cb, instrumentos: instrumentos(p),
       io_resumen: io.resumen || [], io: (io.io||[]).slice(0, 400).map(f=>({ tag:f.tag, tipo:f.tipo, senal:f.senal, descripcion:f.descripcion, tablero:f.tablero, slot:f.slot, ch:f.ch, bornes:f.terminales })),
       proceso: { descripcion: d.proceso.descripcion, equipos: d.proceso.equipos },
-      documentos: p.entregables.map(id=>{ const doc = (p.documentos||{})[id]||{}; return { documento:(entregable(id)||{}).nombre, estado:doc.estado, revisiones:doc.revisiones }; }),
+      documentos: p.entregables.map(id=>{ const doc = (p.documentos||{})[id]||{}; return { documento: nombreEntregable(id, p), estado:doc.estado, revisiones:doc.revisiones }; }),
     };
   });
   return JSON.stringify(out);

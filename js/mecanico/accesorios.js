@@ -27,7 +27,8 @@ export function aplicarAccesoriosMecanicos(m, cfg){
   const t = cfg.techo || "auto";
   m.techoTipo = t==="auto" ? (m.techo ? "plano" : null) : t==="no" ? null : t;
   m.techo = !!m.techoTipo;
-  m.techoAlto = m.techoTipo==="inclinado" ? 90 : m.techoTipo ? 55 : 0;
+  // techo inclinado: canto delantero a 30 mm + la caída (≈ 12° hacia atrás, sobre el fondo más los aleros)
+  m.techoAlto = m.techoTipo==="inclinado" ? 30 + Math.round((m.D + 80)*0.22) : m.techoTipo ? 55 : 0;
   if(m.techoTipo){
     m.bom.push({ tag:"", desc: m.techoTipo==="inclinado" ? "Techo inclinado de protección (caída hacia atrás, alero de 40 mm por lado) para intemperie" : "Techo plano con alero de protección para intemperie",
       modelo:"Techo para gabinete (ref. Rittal TS 8 / Schneider Spacial SF, según ancho y fondo)", cant:1, dim:`${m.W + 80} x ${m.D + 80}`, montaje:"Techo", fuente:"Accesorios de gabinetes (referencial)" });

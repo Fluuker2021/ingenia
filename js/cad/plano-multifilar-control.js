@@ -20,6 +20,7 @@ import { cargarKit, usarKit, pieza, envolver } from "./kit.js";
 import { datos, tablerosControl, tc, tableros, tableroPorId, instrumentos, expandirTag } from "../datos.js";
 import { equiposControl } from "../control/equipos.js";
 import { extremosSueltos, quitarDiagonalesSueltas, centradoHoja, moverX } from "./revision.js";
+import { cableado, aplicarCableado } from "./cableado.js";
 
 const DX = 25, DY = -112;                         // hoja del plano de referencia → área útil de la lámina A1
 const BUS = { l:["EPLAN540",5], pe:["EPLAN547",150], l1:["EPLAN540",1], l2:["EPLAN541",1], v24:["EPLAN540",180], v0:["EPLAN541",180],
@@ -105,10 +106,12 @@ class Plano {
 
 /* tableros: los de control independientes (los de fuerza y control se detallan en el multifilar de fuerza, que llama a
    este generador con tableros = [TFC], k0 = hojas de fuerza antes y etapa = true para agregar su etapa de control) */
-export async function multifilarControlKit({ p, valsDe, cliente, id, tableros:lista0, k0=0, etapa=false }){
+export async function multifilarControlKit({ p, valsDe, cliente, id, tableros:lista0, k0=0, etapa=false, tablero }){
   const kit = await cargarKit("multifilar_control");
   const puros = tablerosControl(p).filter(t=>t.tipo==="control");
-  const lista = lista0 || (puros.length ? puros : tablerosControl(p).length ? tablerosControl(p) : [tc(p)]);
+  let lista = lista0 || (puros.length ? puros : tablerosControl(p).length ? tablerosControl(p) : [tc(p)]);
+  // un plano por tablero
+  if(!lista0 && tablero && lista.some(t=>t.id===tablero)) lista = lista.filter(t=>t.id===tablero);
   const eqs = lista.map(t=>equiposControl(p, t));
   // dos pasadas: la primera ubica cada flecha (hoja y zona); la segunda dibuja con las referencias cruzadas resueltas
   let reg = new Map(), total = 0, dxs = null;
@@ -119,6 +122,7 @@ export async function multifilarControlKit({ p, valsDe, cliente, id, tableros:li
     P.cerrar();
     if(pasada){
       doc.limpiarUniones(); quitarDiagonalesSueltas(doc);
+      if(!etapa) aplicarCableado(doc, cableado(p), true);   // en la etapa de control de un TFC lo aplica el multifilar de fuerza
       const dxf = doc.toDXF();
       return { dxf, doc, hojas: P.k+1, avisos: revisionPlano(dxf, P.sinDestino, eqs), centrado: P.dxNuevo };
     }

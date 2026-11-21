@@ -17,6 +17,7 @@ import { tagBornera, borneFuerza, barraFase, barraTierra } from "../mecanico/com
 import { repartirEquilibrado } from "./plano-unifilar.js";
 import { extremosSueltos } from "./revision.js";
 import { multifilarControlKit } from "./plano-multifilar-control.js";
+import { cableado, aplicarCableado } from "./cableado.js";
 
 const DX = 25, DY = -108;                        // hoja del plano de referencia → área útil de la lámina A1
 // barras a la altura de las derivaciones y de las flechas de las piezas (y = …,85): con …,51 quedaban 0,34 mm abiertas
@@ -108,11 +109,13 @@ function columnas(calc, g){
   });
 }
 
-export async function multifilarKit({ p, valsDe, cliente, id }){
+export async function multifilarKit({ p, valsDe, cliente, id, tablero }){
   const notasU = datos(p).notas[id || "ele-multifilar"] || [];
   const kit = await cargarKit("multifilar");
   const calcs = calcularTodos(p);
-  const lista = calcs.length ? calcs : [calcularTablero(p, tf(p))];
+  let lista = calcs.length ? calcs : [calcularTablero(p, tf(p))];
+  // un plano por tablero: solo las hojas del tablero pedido (numeradas 1 DE n dentro de su plano)
+  if(tablero && lista.some(c=>c.tablero && c.tablero.id===tablero)) lista = lista.filter(c=>c.tablero && c.tablero.id===tablero);
   const v = valoresDiseno(p);
   const doc = new DXFDoc(); usarKit(doc, kit);
   // plan de hojas por tablero: acometida, fuerza (columnas) y secundarios de cada transformador
@@ -248,6 +251,9 @@ export async function multifilarKit({ p, valsDe, cliente, id }){
     });
   }
   doc.limpiarUniones(); doc.centrarEnSimbolos();
+  // aislamiento y colores de los conductores elegidos en «Datos del multifilar»
+  const cab = cableado(p); aplicarCableado(doc, cab);
+  if(ctl && ctl.doc) aplicarCableado(ctl.doc, cab, true);
   // revisión de continuidad: conductores de fuerza, control y tierra que no llegan a ningún borne ni conductor
   const dxfF = doc.toDXF();
   const avisos = extremosSueltos(dxfF, { capas:/^(E-FZA-BT-PRI|E-FZA-BT-SEC|E-TIERRA|E-CONTROL|EPLAN54\d|EPLAN311)$/ })

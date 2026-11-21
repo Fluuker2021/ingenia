@@ -195,8 +195,9 @@ export const APLIC_CARGA_TRAFO = {
 export const UNIDADES_CARGA_TRAFO = r => r.tipo==="motor" ? [["hp","HP"],["kw","kW"],["w","W"]] : [["va","VA"],["w","W"],["kva","kVA"],["kw","kW"]];
 /* potencia típica (referencial) de una carga de transformador según su tipo y aplicación: se propone mientras el usuario
    no la cambie (manPot = false); en la tabla se ve en cursiva como los demás valores típicos */
-const POT_TRAFO = { control:[150,"va"], plc:[150,"va"], fuente:[240,"w"], instrumentacion:[100,"va"], tablero:[500,"va"], reserva:[100,"va"] };
-const POT_TRAFO_GENERAL = { ventiladores:[200,"va"], calefaccion:[100,"w"], luminaria:[40,"w"], tomacorriente:[180,"va"], otro:[100,"va"] };
+// potencias por defecto de las cargas del transformador de control (el usuario las edita)
+const POT_TRAFO = { control:[20,"va"], plc:[100,"va"], fuente:[240,"w"], instrumentacion:[30,"va"], tablero:[40,"va"], reserva:[100,"va"] };
+const POT_TRAFO_GENERAL = { ventiladores:[100,"va"], calefaccion:[100,"w"], luminaria:[10,"w"], tomacorriente:[20,"w"], otro:[100,"va"] };
 const POT_TRAFO_MOTOR = { "ventilador-axial":0.25, "faja-transportadora":1, "compresor-piston":1 };
 export function potenciaTipicaTrafo(r){
   if(r.tipo==="motor") return [POT_TRAFO_MOTOR[r.application] ?? 0.5, "hp"];

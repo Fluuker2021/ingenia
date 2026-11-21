@@ -1,12 +1,12 @@
 /* Ingenia — entorno dedicado de un entregable: solo los datos que usa ese documento, su vista previa,
    el cajetín / historial de revisiones y la plantilla con la que se descarga (por defecto o del cliente). */
-import { entregable, DISCIPLINAS, TIPOS, ESTADOS, sincronizarEstado } from "./catalog.js";
+import { entregable, DISCIPLINAS, TIPOS, ESTADOS, sincronizarEstado, nombreEntregable, finalidadEntregable } from "./catalog.js";
 import * as S from "./store.js";
 import { $, $$, esc, html, ICON, toast, modal, dropzone, leerComoArrayBuffer, kb, fmtFecha, spinner } from "./ui.js";
 import * as X from "./export.js";
 import { rellenarExcel, marcadoresExcel } from "./xlsx-engine.js";
 import { formatoWord } from "./formato-doc.js";
-import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, cargasTableroControl, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, dxfBytes, manifiesto, tablasEstandar, refDoc, tituloDoc, descargable } from "./docs.js";
+import { DOCS, defDoc, docInfo, referenciasSugeridas, escalares, payloadExcel, tablasCargas, cargasTableroControl, tablasIO, camposHD, camposHDEq, datosMemoria, generarPlano, tablerosDePlano, dxfBytes, manifiesto, tablasEstandar, refDoc, tituloDoc, descargable } from "./docs.js";
 import { renderEditores } from "./editores.js";
 import { esPro, pantallaPro } from "./plan.js";
 import { datos, calcularTablero, calcularTodos, equiposElectricos, instrumentos, r2, tableros, tablerosControl, tf, cablesFuerza, CANALIZACIONES } from "./datos.js";
@@ -15,12 +15,13 @@ import { parseDXF, boundsOf, colorCapa, rgbACI } from "./dxf.js";
 import { corregir } from "./ortografia.js";
 import { seccionesCriteriosElectricos, seccionesCriteriosIC, seccionesMemoriaDescriptiva } from "./modules/criterios.js";
 import { ENTREGABLES } from "./catalog.js";
+import { listadoEquipos } from "./modules/equipos-lista.js";
 import { montarBarraCopito } from "./copito-docs.js";
 
 const FMT = { xlsx:"Excel", docx:"Word", dxf:"DXF (AutoCAD)", proceso:"Datos de proceso" };
 
 export async function screenDocumento(main, state, p, id, tab, topbar){
-  const e = entregable(id), def = defDoc(id);
+  const e0 = entregable(id), def = defDoc(id), e = e0 && Object.assign({}, e0, { nombre: nombreEntregable(id, p), finalidad: finalidadEntregable(id, p) });
   if(!e || !def){ location.hash = `#/proyecto/${p.id}/documentos`; return; }
   S.sincronizarDocumentos(p, ENTREGABLES);
   if(!p.documentos[id]){
@@ -78,7 +79,7 @@ async function tabVista(body, state, p, id, def){
     if(base==="ele-hd") return vistaHDEq(body, p, id);
     if(base==="ele-md") return vistaMemoria(body, p, id, "md");
     if(def.secciones) return vistaTexto(body, p, id, def);
-    if(base==="ele-equipos") return vistaTabla(body, p, id, "LISTADO DE EQUIPOS ELÉCTRICOS", [["ÍTEM","#"],["SISTEMA","sistema"],["CANT.","cant"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["MARCA","marca"],["MODELO","modelo"],["VOLTAJE / FRECUENCIA / FASE","tension"],["PLANO DE REFERENCIA","plano"]], equiposElectricos(p).map(f=>Object.assign({}, f, { plano: f.plano || refDoc(p, f._doc) })));
+    if(base==="ele-equipos") return vistaTabla(body, p, id, "LISTADO DE EQUIPOS ELÉCTRICOS", [["ÍTEM","item"],["CANT.","cant"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["MARCA","marca"],["MODELO","modelo"],["CÓDIGO","codigo"]], listadoEquipos(p));
     if(base==="ins-instrumentos") return vistaTabla(body, p, id, "LISTADO DE INSTRUMENTOS", [["ÍTEM","#"],["SISTEMA","sistema"],["CANT.","cant"],["TAG","tag"],["DESCRIPCIÓN","descripcion"],["MARCA","marca"],["MODELO","modelo"],["TIPO DE SEÑAL","tipoSenal"],["SEÑAL DE SALIDA","senal"],["ALIMENTACIÓN","alimentacion"],["UBICACIÓN","ubicacion"],["HOJA DE DATOS","hojaDatos"]], instrumentos(p).map(i=>Object.assign({}, i, { sistema: i.sistema || (datos(p).sistema.nombre||"").toUpperCase(), hojaDatos: i.hojaDatos || refDoc(p,"ins-hd") })));
     if(base==="ins-io"){ const t = tablasIO(p); return vistaTabla(body, p, id, "LISTADO DE ENTRADAS Y SALIDAS (I/O)", [["ÍTEM","#"],["TAG","tag"],["TIPO E/S","tipo"],["SEÑAL","senal"],["DESCRIPCIÓN","descripcion"],["VOLTAJE / PROTOCOLO","voltaje"],["RANGO","rango"],["ALIMENTACIÓN","alimentacion"],["CONTROLADOR","tablero"],["SLOT","slot"],["CANAL","ch"],["BORNES","terminales"]], t.io,
       `<h3 class="ed-sub mt-2">Resumen de señales y módulos</h3>${tablaHTML([["TIPO","tipo"],["USADOS","usados"],["RESERVA","reserva"],["REQUERIDOS","requeridos"],["CANALES/MÓDULO","cpm"],["MÓDULOS","modulos"],["CAPACIDAD","capacidad"]], t.resumen)}`); }
@@ -94,13 +95,13 @@ function cabeceraHoja(p, id, titulo){
   return `<div class="xl-sheet"><div class="xl-title">${esc(titulo)}</div>
     <table class="xl-head"><tr><th>Cliente</th><td>${esc(p.cliente||"")}</td><th>Fecha</th><td>${esc(fmtF(di.fecha))}</td></tr>
     <tr><th>Proyecto</th><td>${esc(p.nombre||"")}</td><th>Revisión</th><td>${esc(di.rev||"A")}</td></tr>
-    <tr><th>Documento</th><td>${esc(entregable(id).nombre)}</td><th>Unidad</th><td>${esc(p.unidad||"—")}</td></tr></table>`;
+    <tr><th>Documento</th><td>${esc(nombreEntregable(id, p))}</td><th>Unidad</th><td>${esc(p.unidad||"—")}</td></tr></table>`;
 }
 function fmtF(f){ const m = String(f||"").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (f||""); }
 /* columnas de texto descriptivo: alineadas a la izquierda; el resto de valores, centrados */
 const esDescripcion = c => /^descrip|descripción/i.test(c[0]) || ["descripcion","desc"].includes(c[1]);
 function tablaHTML(cols, filas, totales){
-  return `<div class="table-wrap"><table class="xl-table"><thead><tr>${cols.map(c=>`<th class="${esDescripcion(c)?"izq":""}">${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${filas.map((f,i)=>`<tr>${cols.map(c=>{ const v = c[1]==="#" ? i+1 : f[c[1]]; return `<td class="${typeof v==="number"?"num":""}${esDescripcion(c)?" izq":""}">${esc(v==null?"":typeof v==="string" ? corregir(v) : String(v)).replace(/\n/g,"<br>")}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:16px">Sin registros — completa los datos de entrada.</td></tr>`}${totales||""}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="xl-table"><thead><tr>${cols.map(c=>`<th class="${esDescripcion(c)?"izq":""}">${esc(c[0])}</th>`).join("")}</tr></thead><tbody>${filas.map((f,i)=>f.__var==="seccion" ? `<tr class="xl-seccion"><td colspan="${cols.length}">${esc(f.texto||"")}</td></tr>` : `<tr>${cols.map(c=>{ const v = c[1]==="#" ? i+1 : f[c[1]]; return `<td class="${typeof v==="number"?"num":""}${esDescripcion(c)?" izq":""}">${esc(v==null?"":typeof v==="string" ? corregir(v) : String(v)).replace(/\n/g,"<br>")}</td>`; }).join("")}</tr>`).join("") || `<tr><td colspan="${cols.length}" class="muted" style="text-align:center;padding:16px">Sin registros — completa los datos de entrada.</td></tr>`}${totales||""}</tbody></table></div>`;
 }
 function vistaTabla(body, p, id, titulo, cols, filas, extra){
   body.innerHTML = cabeceraHoja(p, id, titulo) + tablaHTML(cols, filas) + (extra||"") + `</div>` + pieVista(p, id);
@@ -164,7 +165,7 @@ function vistaMemoria(body, p, id, tipo){
   const cond = `<h3 class="ed-sub mt-2">Anexo A — Conductores</h3>${tablaHTML([["Circ.","circuito"],["Hasta","hasta"],["In (A)","i"],["Id (A)","id"],["L (m)","l"],["Calibre","calibre"],["Iadm (A)","iadm"],["KT","ktot"],["Ic (A)","icorr"],["ΔV (%)","dv_pct"],["EGC","egc"],["Referencia","modelo"]], m.anexo_cables)}
     <h3 class="ed-sub mt-2">Anexo B — Protecciones</h3>${tablaHTML([["Circ.","circuito"],["Descripción","descripcion"],["In (A)","i"],["Tipo","tipo"],["Dispositivo","modelo"],["Ajuste","iprot"]], m.anexo_prot)}`;
   body.innerHTML = `<div class="doc-prev"><div class="doc-cover"><div class="muted">${esc(p.cliente||"")}</div><h2>${esc(tituloDoc(p,id))}</h2></div>
-    <div class="stat-row"><div class="stat"><div class="k">Potencia instalada</div><div class="v">${m.pi_total} kVA</div></div><div class="stat"><div class="k">Máxima demanda</div><div class="v">${m.md_total} kVA</div></div><div class="stat"><div class="k">I máx. demanda</div><div class="v">${m.i_md_total} A</div></div><div class="stat"><div class="k">Interruptor general</div><div class="v" style="font-size:14px">${esc(m.itm_general)}</div></div></div>
+    <div class="stat-row"><div class="stat"><div class="k">Potencia instalada</div><div class="v">${m.pi_total} kVA</div></div><div class="stat"><div class="k">Máxima demanda</div><div class="v">${m.md_total} kVA</div></div><div class="stat"><div class="k">I máx. demanda</div><div class="v">${m.i_md_total} A</div></div><div class="stat stat-lista"><div class="k">Interruptor general</div><ul class="lista-itm">${(m.itm_lista||[]).map(x=>`<li><b>${esc(x.tag)}</b><span>${esc(x.valor)}</span></li>`).join("")}</ul></div></div>
     ${tipo==="md" ? md : cond}
     <p class="muted mt-2" style="font-size:12px">El Word incluye además generalidades, normas, procedimiento, cálculo por ${tipo==="md" ? "tablero y carga" : "cable y protección"} e índice.</p></div>` + pieVista(p, id);
 }
@@ -176,13 +177,20 @@ function vistaTexto(body, p, id, def){
   body.innerHTML = `<div class="doc-prev">${secs.map(s=>`<h3 class="ed-sub"${s.nivel>1?` style="font-size:${s.nivel>2?"11px":"11.5px"};margin-left:${(s.nivel-1)*10}px"`:""}>${esc(s.titulo)}</h3>${s.texto?`<p>${esc(s.texto)}</p>`:""}${bloques(s.bloques)}${(s.items||[]).length?`<ul>${s.items.map(i=>`<li>${esc(i)}</li>`).join("")}</ul>`:""}${(s.tablas||[]).map(tabla).join("")}${s.figura?`<div style="margin:10px 0;overflow-x:auto">${s.figura.replace("<svg ", '<svg style="width:100%;height:auto;max-width:900px;display:block;margin:0 auto" ')}</div>${s.pieFigura?`<p class="muted" style="text-align:center;font-size:12px;font-style:italic">${esc(s.pieFigura)}</p>`:""}`:""}${bloques(s.despues)}`).join("")}</div>` + pieVista(p, id);
 }
 
+/* selector del plano de cada tablero (multifilar y mecánico: un plano por tablero) */
+function selectorPlanos(tbs, sel){
+  if(!tbs || tbs.length < 2) return tbs && tbs.length ? `<div class="planos-sel mb-2"><span class="muted">Plano del tablero</span><span class="chip-plano on">${esc(tbs[0].tag)}</span></div>` : "";
+  return `<div class="planos-sel mb-2" role="tablist" aria-label="Plano de cada tablero"><span class="muted">${tbs.length} planos, uno por tablero:</span>${tbs.map(t=>`<button class="chip-plano ${t===sel ? "on" : ""}" role="tab" aria-selected="${t===sel}" data-plano-t="${t.id}" title="${esc(t.nombre||"")}">${esc(t.tag)}</button>`).join("")}</div>`;
+}
 /* visor de planos con zoom y desplazamiento */
 async function vistaPlano(body, state, p, id){
   const org = await orgConLogo(state);
-  const r = await generarPlano(p, id, org, await logosPlano(org, p));
+  // multifilares y mecánicos: un plano por tablero (sus hojas no se mezclan con las de otro tablero)
+  const tbs = tablerosDePlano(p, id), tSel = tbs ? (tbs.find(t=>t.id===body.dataset.t) || tbs[0]) : null;
+  const r = await generarPlano(p, id, org, await logosPlano(org, p), tSel && tSel.id);
   const d = parseDXF(r.dxf);
   const hojas = r.hojas||1;
-  body.innerHTML = `<div class="row between mb-2"><div class="row">${hojas>1?`<label class="muted">Hoja</label><select id="pl-h">${Array.from({length:hojas},(_,i)=>`<option value="${i}">${i+1} de ${hojas}</option>`).join("")}</select>`:""}
+  body.innerHTML = `${selectorPlanos(tbs, tSel)}<div class="row between mb-2"><div class="row">${hojas>1?`<label class="muted">Hoja</label><select id="pl-h" style="width:auto;min-width:110px">${Array.from({length:hojas},(_,i)=>`<option value="${i}">${i+1} de ${hojas}</option>`).join("")}</select>`:""}
       <button class="btn-sm" id="pl-fit">Ajustar</button><span class="muted" style="font-size:12px">Rueda del ratón: zoom · arrastrar: desplazar</span></div>
       <span class="muted">${hojas} lámina(s) A1 · ${d.entities.length} entidades · capas: ${Object.keys(d.layers).length}</span></div>
     ${Array.isArray(r.avisos) ? (r.avisos.length ? `<div class="notice warn mb-2"><strong>Revisión de continuidad y referencias cruzadas:</strong><br>${r.avisos.map(esc).join("<br>")}</div>`
@@ -222,6 +230,7 @@ async function vistaPlano(body, state, p, id){
   reset();
   $("#pl-fit").onclick = reset;
   const hs = $("#pl-h"); if(hs) hs.onchange = ()=>{ view.hoja = +hs.value; reset(); };
+  $$("[data-plano-t]", body).forEach(b=>b.onclick = ()=>{ body.dataset.t = b.dataset.planoT; body.innerHTML = spinner("Dibujando el plano…"); vistaPlano(body, state, p, id); });
   cv.addEventListener("wheel", ev=>{ ev.preventDefault(); const r0 = cv.getBoundingClientRect(); const mx = (ev.clientX-r0.left)*2, my = (ev.clientY-r0.top)*2; const k = ev.deltaY<0 ? 1.2 : 1/1.2; view.ox = mx - (mx-view.ox)*k; view.oy = my - (my-view.oy)*k; view.s *= k; dibujar(); }, { passive:false });
   let drag = null;
   cv.addEventListener("mousedown", ev=>{ drag = { x:ev.clientX, y:ev.clientY, ox:view.ox, oy:view.oy }; cv.style.cursor = "grabbing"; });
@@ -236,7 +245,7 @@ async function vistaPlano(body, state, p, id){
       if(!/^-?[A-Z]{1,6}\d*[-.]?\d+[A-Z]?(\.\d+)?$|^[A-Z]{1,5}-\d{2,4}[A-Z]?$/.test(tx)) continue;
       const w = tx.length*e.h*0.6, cx = e.x + (e.align===1 ? 0 : e.align===2 ? -w/2 : w/2), dd = Math.hypot(cx - x, e.y - y);
       if(dd < dm){ dm = dd; mejor = tx.replace(/^-/, ""); } }
-    if(mejor && dm < 12 && window.copito) window.copito.abrir(`En ${entregable(id).nombre}, para ${mejor}, `, false);
+    if(mejor && dm < 12 && window.copito) window.copito.abrir(`En ${nombreEntregable(id, p)}, para ${mejor}, `, false);
   });
 }
 
@@ -305,8 +314,17 @@ function tabCajetin(body, state, p, id, def){
     body.innerHTML = html`<div id="ws-ident"></div>
     ${def.formato==="dxf" ? `<div class="card mt-2"><div class="card-head"><h2>Planos de referencia (cajetín)</h2><button class="btn-sm" id="rf-auto">Volver a sugerir</button></div><div class="card-body" id="refs"></div></div>` : ""}
     ${descargable(id) ? `<div class="card mt-2 ws-descarga"><div class="card-body row between" style="flex-wrap:wrap"><h2 style="font-size:15px">Descargar el documento</h2><div class="row"><button class="btn-accent" id="ws-dl">${ICON.download} Descargar ${FMT[def.formato]}</button><button class="btn-primary" id="ws-pdf">${ICON.download} Descargar PDF</button></div></div></div>` : ""}`;
-    const wdl = $("#ws-dl", body); if(wdl) wdl.onclick = ()=>descargarDoc(state, p, id, wdl);
-    const wpdf = $("#ws-pdf", body); if(wpdf) wpdf.onclick = ()=>descargarDoc(state, p, id, wpdf, "pdf");
+    const tbs = def.formato==="dxf" ? tablerosDePlano(p, id) : null;
+    if(tbs){
+      // un plano por tablero: se elige el tablero (o todos, en un .zip con un archivo por tablero)
+      const caja = $(".ws-descarga .card-body", body);
+      if(caja) caja.insertAdjacentHTML("afterend", `<div class="card-body planos-tab"><span class="muted" style="font-size:12.5px">Un plano por tablero (${tbs.length}). Descarga uno o todos:</span>
+        <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${tbs.map(t=>`<div class="plano-dl"><b class="mono">${esc(t.tag)}</b><button class="btn-sm" data-dl="${t.id}">${ICON.download} DXF</button><button class="btn-sm" data-pdf="${t.id}">${ICON.download} PDF</button></div>`).join("")}</div></div>`);
+      $$("[data-dl]", body).forEach(b=>b.onclick = ()=>descargarDoc(state, p, id, b, "nativo", null, b.dataset.dl));
+      $$("[data-pdf]", body).forEach(b=>b.onclick = ()=>descargarDoc(state, p, id, b, "pdf", null, b.dataset.pdf));
+    }
+    const wdl = $("#ws-dl", body); if(wdl){ if(tbs) wdl.innerHTML = `${ICON.download} Todos en DXF (.zip)`; wdl.onclick = ()=>descargarDoc(state, p, id, wdl); }
+    const wpdf = $("#ws-pdf", body); if(wpdf){ if(tbs) wpdf.innerHTML = `${ICON.download} Todos en PDF (.zip)`; wpdf.onclick = ()=>descargarDoc(state, p, id, wpdf, "pdf"); }
     tarjetasDocumento($("#ws-ident", body), state, p, id, def);
     if(def.formato==="dxf"){
       const rf = $("#refs");
@@ -435,13 +453,13 @@ async function logosPlano(org, p){
 async function logoCliente(p){ if(!p.plantillas || !p.plantillas.logo_cliente) return null; const f = await S.leerArchivo(p.plantillas.logo_cliente); return f ? await logoPNG(await S.blobToDataURL(f.blob)) : null; }
 
 /* archivo nativo del documento: { datos, ext, mime } (DXF, Excel o Word); hojas: láminas del plano */
-export async function generarArchivo(state, p, id){
-  const def = defDoc(id), e = entregable(id);
+export async function generarArchivo(state, p, id, tablero){
+  const def = defDoc(id), e = Object.assign({}, entregable(id), { nombre: nombreEntregable(id, p) });
   const org = await orgConLogo(state);
   const di = docInfo(p, id);
   const tplCli = null;   // los documentos se descargan siempre en el formato estándar de Ingenia
     if(def.formato==="dxf"){
-      const r = await generarPlano(p, id, org, await logosPlano(org, p));
+      const r = await generarPlano(p, id, org, await logosPlano(org, p), tablero);
       return { datos: dxfBytes(r.dxf), dxf: r.dxf, hojas: r.hojas||1, ext:"dxf", mime:X.MIME.dxf };
     } else if(def.formato==="proceso"){ return null;
     } else if(def.estandar || (def.texto && !tplCli)){
@@ -449,7 +467,7 @@ export async function generarArchivo(state, p, id){
       const ctx = { scal: escalares(p, id, org), logos: { org: await logoPNG(org.logoDataURL), cliente: await logoCliente(p) }, org, proyecto:{ nombre:p.nombre, cliente:p.cliente, unidad:p.unidad, codigo:"", etapaNombre:"" }, doc:{ codigo:"", titulo:tituloDoc(p,id), rev:di.rev, fecha:di.fecha, disciplina:DISCIPLINAS[e.disciplina].nombre, emitidoPara:di.emitido, referencia:p.pidRef||"" }, revisiones: di.revisiones.map(r=>Object.assign({ elaboro:di.elaboro||org.elaboraPor, reviso:di.reviso||org.revisaPor, aprobo:di.aprobo||org.apruebaPor }, r)), tablas:{}, campos:{} };
       if(false){
       } else if(id==="gen-registro"){
-        const filas = p.entregables.map(entregable).filter(Boolean).map((x,i)=>{ const d=p.documentos[x.id]||{}; return { item:i+1, titulo:x.nombre, disciplina:DISCIPLINAS[x.disciplina].nombre, tipo:TIPOS[x.tipo], rev:d.rev, fecha:d.fecha, emitido:d.emitido||"", estado:d.estado }; });
+        const filas = p.entregables.map(entregable).filter(Boolean).map((x,i)=>{ const d=p.documentos[x.id]||{}; return { item:i+1, titulo:nombreEntregable(x.id, p), disciplina:DISCIPLINAS[x.disciplina].nombre, tipo:TIPOS[x.tipo], rev:d.rev, fecha:d.fecha, emitido:d.emitido||"", estado:d.estado }; });
         ctx.tablas = { "Lista de documentos": { titulo:"Lista de documentos / entregables", columnas:[{key:"item",titulo:"Ítem",ancho:6,num:true},{key:"titulo",titulo:"Documento",ancho:56},{key:"disciplina",titulo:"Disciplina",ancho:22},{key:"tipo",titulo:"Tipo",ancho:18},{key:"rev",titulo:"Rev.",ancho:6,center:true},{key:"fecha",titulo:"Fecha",ancho:12},{key:"emitido",titulo:"Emitido para",ancho:26},{key:"estado",titulo:"Estado",ancho:14}], filas } };
         return { datos: await X.excelEstandar(ctx), ext:"xlsx", mime:X.MIME.xlsx };
       } else {
@@ -482,14 +500,32 @@ export async function generarArchivo(state, p, id){
 }
 
 /* descarga del documento: «nativo» (DXF, Excel o Word) o «pdf» (el mismo archivo convertido a PDF) */
-export async function descargarDoc(state, p, id, btn, tipo="nativo", pdfListo=null){
-  const e = entregable(id);
+export async function descargarDoc(state, p, id, btn, tipo="nativo", pdfListo=null, tablero=null){
+  const e = Object.assign({}, entregable(id), { nombre: nombreEntregable(id, p) });
   const lbl = btn ? btn.innerHTML : ""; if(btn){ btn.disabled = true; btn.textContent = "Generando…"; }
   try{
     const di = docInfo(p, id), dd = p.documentos[id];
     const nombre = ext => X.nombreSeguro(`${p.nombre||"Proyecto"} - ${e.nombre} - Rev ${di.rev||"A"}`)+"."+ext;
     // PDF ya preparado en la pestaña «Descarga»: se descarga el mismo que se ve
     if(tipo==="pdf" && pdfListo){ X.descargar(pdfListo, nombre("pdf"), "application/pdf"); if(dd.estado==="Por elaborar"){ dd.estado = "En elaboración"; S.save(); } toast("Documento generado: "+e.nombre); return; }
+    // planos por tablero: el del tablero elegido, o todos en un .zip (un archivo por tablero)
+    const tbs = defDoc(id).formato==="dxf" ? tablerosDePlano(p, id) : null;
+    if(tbs){
+      const lista = tablero ? tbs.filter(t=>t.id===tablero) : tbs, P = tipo==="pdf" ? await import("./pdf.js") : null;
+      const nomT = (t, ext) => X.nombreSeguro(`${p.nombre||"Proyecto"} - ${e.nombre} - ${t.tag} - Rev ${di.rev||"A"}`)+"."+ext;
+      const archivos = [];
+      for(const t of lista){
+        if(btn) btn.textContent = lista.length > 1 ? `Generando ${t.tag}…` : "Generando…";
+        const a = await generarArchivo(state, p, id, t.id);
+        archivos.push({ nombre: nomT(t, tipo==="pdf" ? "pdf" : "dxf"), datos: tipo==="pdf" ? await P.pdfPlano(a.dxf, a.hojas) : a.datos });
+      }
+      if(archivos.length===1) X.descargar(new Blob([archivos[0].datos], { type: tipo==="pdf" ? "application/pdf" : X.MIME.dxf }), archivos[0].nombre, tipo==="pdf" ? "application/pdf" : X.MIME.dxf);
+      else { const z = new window.PizZip(); for(const f of archivos) z.file(f.nombre, f.datos instanceof Uint8Array ? f.datos : new Uint8Array(f.datos));
+        X.descargar(z.generate({ type:"blob", compression:"DEFLATE" }), nombre("zip"), "application/zip"); }
+      if(dd.estado==="Por elaborar"){ dd.estado = "En elaboración"; S.save(); }
+      toast(`Documento generado: ${e.nombre}${archivos.length > 1 ? ` (${archivos.length} planos)` : ""}`);
+      return;
+    }
     const a = await generarArchivo(state, p, id);
     if(!a){ toast("Este entorno no genera archivo: alimenta el listado de instrumentos."); return; }
     if(tipo==="pdf"){

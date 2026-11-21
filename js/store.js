@@ -1,6 +1,8 @@
 /* Ingenia — persistencia local (sin servidor): proyectos y organización en localStorage,
    archivos de plantillas (xlsx / docx / dxf / ctb / logo) en IndexedDB. */
-const LS_KEY = "ingenia.v1";
+import { claveDatos } from "./auth.js";
+// cada usuario guarda sus proyectos con su propia clave (la cuenta dueña conserva «ingenia.v1»)
+const LS_KEY_ = () => claveDatos();
 const DB_NAME = "ingenia-files";
 
 export const uid = (p="id") => p + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
@@ -13,7 +15,7 @@ const defaults = () => ({
 let state = null;
 export function load(){
   if(state) return state;
-  try{ const raw = localStorage.getItem(LS_KEY); state = raw ? Object.assign(defaults(), JSON.parse(raw)) : defaults(); }
+  try{ const raw = localStorage.getItem(LS_KEY_()); state = raw ? Object.assign(defaults(), JSON.parse(raw)) : defaults(); }
   catch(e){ state = defaults(); }
   migrar(state); migrarVentilacion(state); retirarEntregables(state);
   return state;
@@ -40,7 +42,7 @@ function migrarVentilacion(s){
   for(const p of s.proyectos||[]) for(const lista of Object.values((p.datos||{}).circuitosCtl||{})) for(const c of lista||[]) if(c && c.descripcion==="Ventilación") c.descripcion = "Ventilación interna";
   s.migVent = 1;
 }
-export function save(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){ console.warn("No se pudo guardar", e); } }
+export function save(){ try{ localStorage.setItem(LS_KEY_(), JSON.stringify(state)); }catch(e){ console.warn("No se pudo guardar", e); } }
 
 export function nuevoProyecto(data){
   const p = Object.assign({

@@ -118,6 +118,11 @@ export function importarRespaldo(json){
     if(i >= 0){ s.proyectos[i] = p; actualizados++; } else { s.proyectos.push(p); agregados++; }
   }
   if(!(s.org && s.org.nombre) && nuevos.org) s.org = nuevos.org;
+  // biblioteca de componentes: se suman las plantillas que no estén (por marca + modelo); las del respaldo con DXF o medidas
+  // del usuario reemplazan a las de catálogo
+  if(Array.isArray(nuevos.biblioteca)){ if(!Array.isArray(s.biblioteca)) s.biblioteca = [];
+    for(const e of nuevos.biblioteca){ const i = s.biblioteca.findIndex(x=>x.clave===e.clave);
+      if(i < 0) s.biblioteca.push(e); else if(e.medidas==="usuario" && s.biblioteca[i].medidas!=="usuario") s.biblioteca[i] = e; } }
   save();
   return { agregados, actualizados, total: s.proyectos.length };
 }

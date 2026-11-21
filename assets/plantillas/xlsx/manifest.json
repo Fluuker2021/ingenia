@@ -91,7 +91,43 @@
      14
     ],
     "titulo": "LISTADO DE EQUIPOS ELÉCTRICOS",
-    "espacio": false
+    "espacio": false,
+    "ajustarAltos": true
+   },
+   "tablas": {
+    "equipos": {
+     "bordes": [
+      2,
+      14
+     ],
+     "seccion": {
+      "relleno": "FFF5C518",
+      "negrita": true
+     },
+     "unaLinea": [
+      5
+     ],
+     "compensa": 7,
+     "compensaMin": 18,
+     "izquierda": [
+      6
+     ],
+     "anchos": {
+      "2": 4.5,
+      "3": 3.5,
+      "4": 7,
+      "5": 12,
+      "6": 22,
+      "7": 28,
+      "8": 15,
+      "9": 32,
+      "10": 4,
+      "11": 5,
+      "12": 7,
+      "13": 5,
+      "14": 6
+     }
+    }
    }
   }
  },

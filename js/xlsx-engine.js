@@ -171,6 +171,7 @@ function rellenarTabla(H, grupo, filas, scal){
     }
     for(const m of t.merges) H.merges.push({ r1:r, r2:r, c1:m.c1, c2:m.c2 });
   }
+  const rango = { top, N, filas };
   // combinar verticalmente columnas marcadas |unir
   for(const c of defecto.unir){
     let i = 0;
@@ -187,6 +188,39 @@ function rellenarTabla(H, grupo, filas, scal){
         H.merges.push({ r1:top+i, r2:top+j-1, c1:c, c2 });
       }
       i = j;
+    }
+  }
+  return rango;
+}
+
+/* formato de una tabla del listado (manifiesto «tablas»): bordes completos en cada celda de sus filas (también en la
+   última fila y en las columnas combinadas), filas de sección resaltadas y columnas de una sola línea (p. ej. el TAG),
+   cuyo ancho crece hasta que entre el texto más largo; ese ancho se descuenta de la columna «compensa» (la descripción),
+   así el cuadro mantiene su ancho total. */
+function formatoTabla(H, r, op){
+  const ws = H.ws, [c1, c2] = op.bordes || [1, 1];
+  for(const [c, w] of Object.entries(op.anchos || {})) ws.getColumn(+c).width = +w;
+  const fino = { style:"thin", color:{ argb:"FF000000" } };
+  for(let i=0; i<r.N; i++){
+    const row = ws.getRow(r.top + i), f = r.filas[i] || {};
+    if(op.bordes) for(let c=c1; c<=c2; c++){ const cell = row.getCell(c); cell.border = { top:fino, left:fino, bottom:fino, right:fino }; }
+    if(f.__var==="seccion" && op.seccion){
+      for(let c=c1; c<=c2; c++){ const cell = row.getCell(c);
+        cell.fill = { type:"pattern", pattern:"solid", fgColor:{ argb:op.seccion.relleno || "FFF5C518" }, bgColor:{ indexed:64 } };
+        cell.font = Object.assign({}, cell.font||{}, { bold: op.seccion.negrita!==false, color:{ argb:"FF17191D" } }); }
+    }
+    if(!f.__var) for(const c of op.izquierda || []){ const cell = row.getCell(c); cell.alignment = Object.assign({}, cell.alignment||{}, { horizontal:"left", vertical:"middle", wrapText:true, indent:0 }); }
+  }
+  for(const c of op.unaLinea || []){
+    let px = 0;
+    for(let i=0; i<r.N; i++){ if((r.filas[i]||{}).__var) continue; const cell = ws.getRow(r.top + i).getCell(c);
+      const t = textoCelda(cell.value) || String(cell.value ?? ""); const sz = (cell.font && cell.font.size) || 10;
+      px = Math.max(px, anchoArial(t, sz, !!(cell.font && cell.font.bold))*1.1 + 18);
+      cell.alignment = Object.assign({}, cell.alignment||{}, { wrapText:false, shrinkToFit:false, horizontal:"center", vertical:"middle" }); }
+    const col = ws.getColumn(c), actual = col.width || 8.43, nuevo = Math.ceil(((px - 5)/7)*4)/4;
+    if(nuevo > actual){
+      col.width = nuevo;
+      if(op.compensa){ const cc = ws.getColumn(op.compensa); cc.width = Math.max(op.compensaMin || 18, (cc.width || 8.43) - (nuevo - actual)); }
     }
   }
 }
@@ -251,6 +285,8 @@ function ajustarAltos(H, desde){
       if(m && m.r2 > m.r1) return;                               // combinaciones verticales: se dejan como están
       let px = 0; for(let c=(m ? m.c1 : cell.col); c<=(m ? m.c2 : cell.col); c++) px += pxCol(ws, c);
       const sz = (cell.font && cell.font.size) || 10, negrita = !!(cell.font && cell.font.bold);
+      // celdas de una sola línea (p. ej. el TAG del listado de equipos): no se ajustan
+      if(cell.alignment && cell.alignment.wrapText===false){ alto = Math.max(alto, sz*1.22 + 3); return; }
       const lineas = t.split("\n").reduce((a, x)=>a + lineasTexto(x, sz, negrita, px - 7), 0);
       cell.alignment = Object.assign({}, cell.alignment||{}, { wrapText:true, vertical:(cell.alignment && cell.alignment.vertical) || "middle" });
       alto = Math.max(alto, lineas*sz*1.22 + 3);
@@ -362,7 +398,19 @@ export async function rellenarExcel(ExcelJS, buffer, datos){
     }
     const enc = estandar && t.man && t.man.encabezado ? encabezadoEstandar(H, t.man.encabezado) : null;
     const grupos = anclasDe(t.ws).sort((a,b)=>b.filas[0].rn - a.filas[0].rn);
-    for(const g of grupos) rellenarTabla(H, g, t.tablas[g.nombre] || [], t.scal);
+    for(const g of grupos){
+      const r = rellenarTabla(H, g, t.tablas[g.nombre] || [], t.scal);
+      const op = t.man && t.man.tablas && t.man.tablas[g.nombre];
+      if(op && r) formatoTabla(H, r, op);
+    }
+    // con notas: el área de impresión llega hasta la última nota (en algunos formatos terminaba en la tabla y el PDF no
+    // mostraba las notas)
+    if(Array.isArray(t.tablas.notas) && t.tablas.notas.length && t.ws.pageSetup && t.ws.pageSetup.printArea){
+      let ult = 0; const textos = new Set(t.tablas.notas.map(n=>String(n.texto||"")));
+      t.ws.eachRow({ includeEmpty:false }, (row, rn)=>row.eachCell({ includeEmpty:false }, cell=>{ if(textos.has(textoCelda(cell.value).trim()) || textos.has(String(cell.value??"").trim())) ult = Math.max(ult, rn); }));
+      const pa = String(t.ws.pageSetup.printArea), m = pa.match(/(\$?[A-Z]{1,3}\$?)(\d+)$/);
+      if(ult && m && +m[2] < ult) t.ws.pageSetup.printArea = pa.replace(/(\$?[A-Z]{1,3}\$?)(\d+)$/, (x, c)=>c + ult);
+    }
     // sin notas del usuario el documento no lleva notas: tampoco el rótulo «Notas:» del formato
     if(Array.isArray(t.tablas.notas) && !t.tablas.notas.length) t.ws.eachRow({ includeEmpty:false }, row=>row.eachCell({ includeEmpty:false }, cell=>{ if(/^notas\s*:?$/i.test(textoCelda(cell.value).trim())) cell.value = null; }));
     if(enc && t.man.encabezado.ajustarAltos) ajustarAltos(H, enc.fin+1);
@@ -443,7 +491,7 @@ function aplicarPaletaIngenia(wb){
     const f = cell.fill;
     if(f && f.type==="pattern" && f.pattern==="solid"){
       const c = rgbDe(f.fgColor);
-      if(c && !(c.lum>0.97)){
+      if(c && !(c.lum>0.97) && String(f.fgColor && f.fgColor.argb).toUpperCase()!==PAL.amarillo){
         let nuevo;
         if(c.lum < 0.55) nuevo = PAL.grafito;                    // encabezados oscuros
         else if(c.sat > 40) nuevo = PAL.amarillo100;            // claros con color (celeste, amarillo)

@@ -27,10 +27,12 @@ export function aplicarAccesoriosMecanicos(m, cfg){
   const t = cfg.techo || "auto";
   m.techoTipo = t==="auto" ? (m.techo ? "plano" : null) : t==="no" ? null : t;
   m.techo = !!m.techoTipo;
-  // techo inclinado: canto delantero a 30 mm + la caída (≈ 12° hacia atrás, sobre el fondo más los aleros)
-  m.techoAlto = m.techoTipo==="inclinado" ? 30 + Math.round((m.D + 80)*0.22) : m.techoTipo ? 55 : 0;
+  // techo inclinado: canto trasero de 30 mm y caída de 15° hacia atrás sobre el fondo más los aleros (pendiente usual de
+  // los techos de intemperie: 10…20°; con 15° se ve claramente en la vista lateral y en la isométrica)
+  m.techoPendiente = 15;
+  m.techoAlto = m.techoTipo==="inclinado" ? 30 + Math.round((m.D + 80)*Math.tan(m.techoPendiente*Math.PI/180)) : m.techoTipo ? 55 : 0;
   if(m.techoTipo){
-    m.bom.push({ tag:"", desc: m.techoTipo==="inclinado" ? "Techo inclinado de protección (caída hacia atrás, alero de 40 mm por lado) para intemperie" : "Techo plano con alero de protección para intemperie",
+    m.bom.push({ tag:"", tipo:"techo", desc: m.techoTipo==="inclinado" ? "Techo inclinado de protección (caída hacia atrás, alero de 40 mm por lado) para intemperie" : "Techo plano con alero de protección para intemperie",
       modelo:"Techo para gabinete (ref. Rittal TS 8 / Schneider Spacial SF, según ancho y fondo)", cant:1, dim:`${m.W + 80} x ${m.D + 80}`, montaje:"Techo", fuente:"Accesorios de gabinetes (referencial)" });
     m.criterios.push(m.techoTipo==="inclinado" ? "Techo inclinado con caída hacia atrás y alero en los cuatro lados: el agua y el polvo no se acumulan sobre el gabinete." : "Techo plano con alero sobre el gabinete (protección para intemperie).");
   }
@@ -42,7 +44,7 @@ export function aplicarAccesoriosMecanicos(m, cfg){
     return { tag:d.tag || "", tipo:d.tipo, x:d.x, y:d.y, w, h, prof:Math.round(h*0.27/5)*5, seccion:d.seccion }; }) : [];
   if(m.caperuzas.length){
     const c0 = m.caperuzas[0];
-    m.bom.push({ tag:"", desc:"Caperuza antilluvia (cubierta de intemperie) para ventilador y filtro de salida de puerta, IP56, abertura hacia abajo", modelo:"Cubierta de intemperie para ventilador con filtro (ref. Rittal SK 3255 / Pfannenberg, según tamaño)",
+    m.bom.push({ tag:"", tipo:"caperuza", desc:"Caperuza antilluvia (cubierta de intemperie) para ventilador y filtro de salida de puerta, IP56, abertura hacia abajo", modelo:"Cubierta de intemperie para ventilador con filtro (ref. Rittal SK 3255 / Pfannenberg, según tamaño)",
       cant:m.caperuzas.length, dim:`${c0.w} x ${c0.h} x ${c0.prof}`, montaje:"Puerta", fuente:"Accesorios de climatización de gabinetes (referencial)" });
     m.criterios.push("Caperuzas antilluvia sobre los ventiladores y filtros de la puerta: protegen la entrada y salida de aire de la lluvia y el polvo.");
   }
@@ -64,12 +66,12 @@ export function aplicarAccesoriosMecanicos(m, cfg){
   });
   for(const vz of m.visores){
     const w = Math.round(vz.x1 - vz.x0), h = Math.round(vz.y1 - vz.y0);
-    m.bom.push({ tag:"", desc:`Visor (ventana de inspección) de policarbonato con marco, bisagra y cierre, IP66, sobre ${[...new Set(vz.tags)].join(", ") || "los dispositivos de puerta"}`,
+    m.bom.push({ tag:"", tipo:"visor", desc:`Visor (ventana de inspección) de policarbonato con marco, bisagra y cierre, IP66, sobre ${[...new Set(vz.tags)].join(", ") || "los dispositivos de puerta"}`,
       modelo:"Ventana de inspección IP66 con tapa abatible (ref. Rittal / Hensel / Fibox, según recorte)", cant:1, dim:`${w} x ${h} x 40`, montaje:"Puerta", fuente:"Accesorios de gabinetes (referencial)" });
   }
   // ----- lock out: manija con bloqueo por candado en cada hoja, en su borde de cierre (entre las puertas)
   if(m.lockout){
-    m.bom.push({ tag:"", desc:"Manija de puerta con bloqueo por candado (lock out / tag out), con cilindro de cerradura, en el borde de cierre de cada hoja", modelo:"Manija giratoria con porta-candado (ref. Rittal SZ 2433 / Hoffman, según puerta)",
+    m.bom.push({ tag:"", tipo:"manijapuerta", desc:"Manija de puerta con bloqueo por candado (lock out / tag out), con cilindro de cerradura, en el borde de cierre de cada hoja", modelo:"Manija giratoria con porta-candado (ref. Rittal SZ 2433 / Hoffman, según puerta)",
       cant:hojas.length, dim:"40 x 200 x 38", montaje:"Puerta", fuente:"Accesorios de gabinetes (referencial)" });
     m.criterios.push("Lock out: manija con bloqueo por candado en cada hoja de puerta, en su borde de cierre (entre las puertas); se bloquea con el candado de seguridad y la tarjeta de advertencia.");
   }

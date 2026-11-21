@@ -10,7 +10,7 @@ export const EN = {
   "Abrir menú":"Open menu", "Cerrar menú":"Close menu", "Menú principal":"Main menu", "Nuevo proyecto":"New project",
   "Proyectos":"Projects", "Sin proyectos":"No projects", "Ver todos":"View all", "Catálogo de entregables":"Deliverables catalog", "Todos":"All",
   "Electricidad":"Electrical", "Instrumentación y control":"Instrumentation and control", "Instrumentación & Control":"Instrumentation & Control",
-  "Configuración":"Settings", "Mi plan":"My plan", "Mi organización":"My organization", "Formatos estándar":"Standard formats", "Respaldo de datos":"Data backup",
+  "Configuración":"Settings", "Mi plan":"My plan", "Mi organización":"My organization", "Formatos estándar":"Standard formats", "Biblioteca de componentes":"Component library", "Respaldo de datos":"Data backup",
   "Resumen":"Summary", "Datos generales":"General data", "Documentos":"Documents", "Documento":"Document",
   "Fecha y hora de publicación de esta versión":"Release date and time of this version",
   "Cerrar":"Close", "Cancelar":"Cancel", "Confirmar":"Confirm", "Guardar":"Save", "Editar":"Edit", "Eliminar":"Delete", "Quitar":"Remove", "Agregar":"Add",
@@ -322,7 +322,7 @@ export const EN = {
   "Familia de equipos":"Equipment family", "Sugerida":"Suggested", "Marca":"Brand", "Equipos y modelos seleccionados":"Selected equipment and models", "Ver menos":"Show less",
   "Interruptores (caja moldeada y miniatura)":"Circuit breakers (molded case and miniature)", "Contactores, guardamotores y relés de sobrecarga":"Contactors, motor protection circuit breakers and overload relays",
   "Variadores de frecuencia":"Variable frequency drives", "Arrancadores suaves":"Soft starters", "Supresores de sobretensiones (OVR / SPD)":"Surge protective devices (OVR / SPD)",
-  "Relés de monitoreo de fases":"Phase monitoring relays", "Gabinetes":"Enclosures", "Fabricación local":"Local manufacturing",
+  "Relés de monitoreo de fases":"Phase monitoring relays", "Gabinetes":"Enclosures", "Fabricación local":"Local manufacturing", "Nacional":"Local manufacturing",
   "El proyecto aún no tiene equipos: agrega las cargas de los tableros.":"The project has no equipment yet: add the panel loads.",
 
   /* ---------------- configuración de los tableros de control ---------------- */

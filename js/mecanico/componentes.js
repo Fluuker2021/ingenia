@@ -250,6 +250,24 @@ export const VENTILADORES = [
   // caudal libre (m³/h), caudal con filtro de salida, marco (mm), recorte (mm)
   [26, 20, 116.5, 92], [66, 55, 148.5, 124.5], [140, 105, 204, 177], [240, 180, 204, 177], [300, 230, 255, 224], [700, 550, 323, 292], [900, 700, 323, 292],
 ];
+/* marco mínimo del ventilador según el tamaño del cuerpo del gabinete (criterio de tablerista): en un cuerpo grande un
+   ventilador chico no renueva el aire de toda la altura (el aire caliente se estanca arriba); en uno chico, un ventilador
+   grande no cabe en la hoja ni deja lugar a los dispositivos de puerta */
+export function marcoMinimoVentilador(montaje, W, H){
+  if(montaje==="mural") return H <= 600 ? 116.5 : H <= 1000 ? 148.5 : 204;
+  return W <= 600 ? 204 : 255;
+}
+/* ventiladores de una hoja de puerta: el menor que dé el caudal con su filtro de salida, sin bajar del marco mínimo del
+   cuerpo ni pasar del ancho libre de la hoja (70 mm por lado para la bisagra y la manija); si uno no alcanza, varios
+   iguales en columna. → { n, caudal, libre, marco, recorte, modelo } */
+export function ventiladoresHoja(caudal, anchoHoja, marcoMin){
+  const maxMarco = Math.max(116.5, anchoHoja - 140);
+  const aptos = VENTILADORES.filter(v=>v[2] <= maxMarco + 0.1);
+  const lista = aptos.filter(v=>v[2] >= Math.min(marcoMin, aptos[aptos.length-1][2]) - 0.1);
+  const r = lista.find(v=>v[1] >= caudal) || lista[lista.length-1];
+  const n = Math.max(1, Math.ceil(caudal / r[1]));
+  return { n, caudal:r[1], libre:r[0], marco:r[2], recorte:r[3], modelo:`Ventilador con filtro ${r[2]}x${r[2]} mm, ${r[1]} m³/h (con filtro de salida)` };
+}
 export function ventilador(caudal){ const r = VENTILADORES.find(v=>v[1] >= caudal) || VENTILADORES[VENTILADORES.length-1]; return { caudal:r[1], libre:r[0], marco:r[2], recorte:r[3], modelo:`Ventilador con filtro ${r[2]}x${r[2]} mm, ${r[1]} m³/h (con filtro de salida)` }; }
 
 /* ---------- prensaestopas por diámetro de cable ---------- */

@@ -50,6 +50,7 @@ function route(){
   if(seg==="organizacion") return screenOrganizacion();
   if(seg==="respaldo") return screenRespaldo();
   if(seg==="estandares") return screenEstandares();
+  if(seg==="biblioteca") return screenBiblioteca();
   if(seg==="plan") return screenPlan(main, state, topbar);
   location.hash = "#/proyectos";
 }
@@ -93,7 +94,7 @@ function menuLateral(seg, id, tab){
   $("#nav-arbol").innerHTML =
     grupo("proyectos", IC.proy, "Proyectos", (ps.length ? ps.map(proyecto).join("") : `<span class="vacio-txt">Sin proyectos</span>`) + enlace("#/proyectos", IC.todos, "Ver todos", seg==="proyectos"), ps.length) +
     grupo("catalogo", IC.cat, "Catálogo de entregables", enlace("#/catalogo", "", "Todos", seg==="catalogo" && !id) + enlace("#/catalogo/ELE", "", "Electricidad", seg==="catalogo" && id==="ELE") + enlace("#/catalogo/INS", "", "Instrumentación y control", seg==="catalogo" && id==="INS")) +
-    grupo("config", IC.cfg, "Configuración", enlace("#/plan", "", "Mi plan", seg==="plan") + enlace("#/organizacion", "", "Mi organización", seg==="organizacion") + enlace("#/estandares", "", "Formatos estándar", seg==="estandares") + enlace("#/respaldo", "", "Respaldo de datos", seg==="respaldo"));
+    grupo("config", IC.cfg, "Configuración", enlace("#/plan", "", "Mi plan", seg==="plan") + enlace("#/organizacion", "", "Mi organización", seg==="organizacion") + enlace("#/estandares", "", "Formatos estándar", seg==="estandares") + enlace("#/biblioteca", "", "Biblioteca de componentes", seg==="biblioteca") + enlace("#/respaldo", "", "Respaldo de datos", seg==="respaldo"));
   // grupos: abrir / cerrar
   $$("#nav-arbol [data-grp]").forEach(b=>b.onclick = ()=>{ navAb[b.dataset.grp] = !navAb[b.dataset.grp]; guardarNav(); menuLateral(); });
   // proyecto: si ya está abierto en pantalla, el clic solo pliega o despliega sus secciones
@@ -550,7 +551,7 @@ function screenRespaldo(){
   main.innerHTML = topbar({ crumbs:[{label:"Configuración"},{label:"Respaldo de datos"}], title:"Respaldo de datos", sub:"Los proyectos se guardan en este navegador. Exporta un respaldo para llevarlos a otro equipo." }) + html`
     <div class="grid-2">
       <div class="card"><div class="card-head"><h2>Exportar</h2></div><div class="card-body">
-        <p class="muted">Proyectos y organización en un archivo .json. Las plantillas y logos cargados no se incluyen.</p>
+        <p class="muted">Proyectos, organización y biblioteca de componentes en un archivo .json. Las plantillas y logos cargados no se incluyen.</p>
         <button class="btn-primary" id="bk-exp">${ICON.download} Exportar respaldo</button>
       </div></div>
       <div class="card" style="margin-top:0"><div class="card-head"><h2>Importar</h2></div><div class="card-body">
@@ -560,6 +561,64 @@ function screenRespaldo(){
     </div>`;
   $("#bk-exp").onclick = ()=>X.descargar(S.exportarRespaldo(), "ingenia_respaldo_"+hoy()+".json", "application/json");
   $("#bk-imp").onclick = ()=>importarProyectos();
+}
+
+/* ================= biblioteca de componentes =================
+   Plantillas por marca y modelo: medidas reales y vistas frontal y de perfil en DXF. Se arma sola con los equipos de los
+   proyectos; el usuario carga el DXF del fabricante (o el suyo) y desde entonces el plano 2D dibuja ese equipo con su
+   plantilla y el arreglo usa sus medidas en todos los proyectos. */
+async function screenBiblioteca(){
+  const B = await import("./mecanico/biblioteca.js");
+  const { separarMarca, marcaPorFamilia } = await import("./modules/equipos-lista.js");
+  const { arregloTablero } = await import("./mecanico/arreglo.js"), { arregloControl } = await import("./mecanico/arreglo-control.js");
+  const { marcasProyecto } = await import("./engine/marcas.js"), { calcularTablero } = await import("./datos.js");
+  // registra los equipos de todos los proyectos (con las medidas de catálogo; no cambia las que fijó el usuario)
+  let nuevos = 0;
+  for(const p of S.load().proyectos){ const mr = marcasProyecto(p);
+    for(const t of tableros(p)){ try {
+      const m = t.tipo==="control" ? arregloControl(p, t) : (calcularTablero(p, t).circuits.length ? arregloTablero(p, t) : null); if(!m) continue;
+      nuevos += B.registrarArreglo(m, c=>separarMarca(c.modelo, c.fuente).marca || marcaPorFamilia(c, c.desc, mr) || "");
+    } catch(e){ console.warn("biblioteca", t.tag, e); } } }
+  const NOMBRE = { interruptor:"Interruptores en caja moldeada", mcb:"Interruptores miniatura", diferencial:"Diferenciales", fusible:"Portafusibles", xlp:"Seccionadores portafusible", contactor:"Contactores", guardamotor:"Guardamotores", sobrecarga:"Relés de sobrecarga", variador:"Variadores", arrancador:"Arrancadores suaves", reactancia:"Reactancias y filtros", trafo:"Transformadores", fuente:"Fuentes", spd:"Supresores", rele:"Relés", cpu:"PLC (CPU)", modulo:"Módulos de PLC", switch:"Switches", router:"Routers", hmi:"Pantallas HMI", ventilador:"Ventiladores", rejilla:"Filtros de salida", manija:"Mandos de puerta", panelvfd:"Paneles de variador", finpuerta:"Interruptores de puerta", fpd:"Módulos de PLC", tapa:"Módulos de PLC", luminaria:"Luminarias", tomacorriente:"Tomacorrientes", termostato:"Termostatos", resistencia:"Calefacción", luz:"Luces piloto", pulsador:"Pulsadores", selector:"Selectores", potenciometro:"Potenciómetros", seta:"Paradas de emergencia", aa:"Aire acondicionado" };
+  const fam = e => NOMBRE[e.tipo] || e.tipo || "—";
+  const render = ()=>{
+    const todos = B.componentes(), q = ($("#bib-q") && $("#bib-q").value || "").toLowerCase();
+    const filas = todos.filter(e=>!q || `${e.marca} ${e.modelo} ${e.codigo} ${e.tipo}`.toLowerCase().includes(q)).sort((a, b)=>fam(a).localeCompare(fam(b)) || a.modelo.localeCompare(b.modelo));
+    const vis = (e, k) => e.vistas && e.vistas[k] ? `<span class="badge badge-ok" title="${e.vistas[k].w} × ${e.vistas[k].h} mm">DXF ✓</span> <button class="btn-sm" data-dxf="${k}">Cambiar</button>` : `<button class="btn-sm" data-dxf="${k}">${ICON.upload} DXF</button>`;
+    $("#bib-lista").innerHTML = filas.length ? `<div class="table-wrap"><table class="ed-table"><thead><tr><th>Familia</th><th>Marca</th><th class="izq">Modelo</th><th>Ancho</th><th>Alto</th><th>Fondo</th><th>Medidas</th><th>Vista frontal</th><th>Perfil</th><th></th></tr></thead><tbody>
+      ${filas.map(e=>`<tr data-id="${e.id}"><td class="muted" style="font-size:12px">${esc(fam(e))}</td><td><input data-k="marca" value="${esc(e.marca)}" style="width:120px"></td><td class="izq mono" style="white-space:normal;min-width:180px">${esc(e.modelo)}</td>
+        ${["w","h","d"].map(k=>`<td><input data-k="${k}" type="number" step="0.5" value="${e[k]||""}" style="width:70px"></td>`).join("")}
+        <td>${e.medidas==="usuario" ? `<span class="badge badge-ok">Plantilla</span>` : `<span class="muted" style="font-size:12px">Catálogo</span>`}</td>
+        <td class="nw">${vis(e, "frente")}</td><td class="nw">${vis(e, "perfil")}</td>
+        <td class="nw"><a class="btn btn-sm" target="_blank" rel="noopener" href="${B.urlBuscarCAD(e)}" title="Busca el plano dimensional (DXF / DWG) del fabricante">Buscar CAD</a> <button class="btn-sm btn-danger" data-quitar title="Quitar de la biblioteca">${ICON.trash}</button></td></tr>`).join("")}
+      </tbody></table></div>` : `<div class="empty">${todos.length ? "Ningún componente coincide con la búsqueda." : "Aún no hay componentes: genera el plano mecánico de un tablero o agrega uno."}</div>`;
+    $$("#bib-lista tr[data-id]").forEach(tr=>{
+      const id = tr.dataset.id;
+      $$("input[data-k]", tr).forEach(i=>i.onchange = ()=>{ const k = i.dataset.k;
+        B.actualizar(id, k==="marca" ? { marca:i.value.trim(), clave:B.claveComp(i.value, B.componentes().find(x=>x.id===id).modelo) } : { [k]: +i.value || 0, medidas:"usuario" }); render(); toast("Biblioteca actualizada"); });
+      $$("[data-dxf]", tr).forEach(b=>b.onclick = ()=>{
+        const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".dxf";
+        inp.onchange = async ()=>{ const f = inp.files[0]; if(!f) return;
+          try { B.cargarVista(id, b.dataset.dxf, await leerComoTexto(f)); render(); toast(`Vista ${b.dataset.dxf==="frente" ? "frontal" : "de perfil"} cargada: el plano usará esta plantilla`); }
+          catch(e){ toast(e.message || "No se pudo leer el DXF", true); } };
+        inp.click(); });
+      const q2 = $("[data-quitar]", tr); if(q2) q2.onclick = async ()=>{ if(await confirmar("¿Quitar este componente de la biblioteca? Los planos vuelven a usar el dibujo de su familia.")){ B.eliminar(id); render(); } };
+    });
+  };
+  main.innerHTML = topbar({ crumbs:[{label:"Configuración"},{label:"Biblioteca de componentes"}], title:"Biblioteca de componentes", sub:"Plantillas por marca y modelo: medidas reales y vistas frontal y de perfil (DXF). El plano mecánico y el 3D las usan en todos tus proyectos." }) + html`
+    <div class="card"><div class="card-body">
+      <p class="muted" style="font-size:12.5px;margin:0 0 10px">Los equipos de tus proyectos se registran solos con las medidas de catálogo${nuevos ? ` (${nuevos} nuevo${nuevos>1?"s":""} ahora)` : ""}. Carga el <b>DXF del fabricante</b> (vista frontal y de perfil, en mm) o corrige las medidas: desde ese momento el arreglo usa esas medidas y el plano 2D dibuja el equipo con su plantilla. «Buscar CAD» abre la búsqueda del plano dimensional del modelo; si tienes un DWG, guárdalo como DXF en AutoCAD (GUARDARCOMO → DXF). Una foto no sirve como plantilla: hace falta el dibujo con medidas.</p>
+      <div class="row" style="gap:8px;flex-wrap:wrap"><input id="bib-q" type="search" placeholder="Buscar marca, modelo o familia" style="max-width:320px">
+        <button id="bib-nuevo">+ Agregar componente</button></div>
+    </div></div>
+    <div id="bib-lista" class="mt-2"></div>`;
+  $("#bib-q").oninput = render;
+  $("#bib-nuevo").onclick = ()=>{
+    const marca = prompt("Marca del componente (p. ej. ABB, Siemens, Phoenix Contact):"); if(marca==null) return;
+    const modelo = prompt("Modelo / referencia (tal como aparece en el listado de equipos):"); if(!modelo) return;
+    B.registrar({ marca:marca.trim(), modelo:modelo.trim() }); render(); toast("Componente agregado: carga su DXF o sus medidas");
+  };
+  render();
 }
 
 /* ================= formatos estándar ================= */

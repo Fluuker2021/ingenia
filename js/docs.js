@@ -317,7 +317,10 @@ export async function payloadExcel(p, id, org){
     return { scal, tablas:{ cables: filas, notas: notasDe(p, base, [ `Longitudes estimadas con ${d.cablesCfg.reserva}% de reserva; las longitudes finales se confirman con el plano de rutas / arreglo general.`, `Calidad de cable: ${(CLASES_CABLE[d.cablesCfg.clase]||CLASES_CABLE.lszh).nombre} (${(CLASES_CABLE[d.cablesCfg.clase]||CLASES_CABLE.lszh).norma}).` ]).map(n=>({ texto: n.n+" "+n.texto })) } };
   }
   if(base==="ele-equipos"){
-    return { scal, tablas:{ equipos: listadoEquipos(p), notas: notasDe(p, base, []) } };
+    // notas de los gabinetes (medida comercial distinta a la de diseño, grado IP de la familia) después de las del usuario
+    const eq = listadoEquipos(p), nu = notasDe(p, base, []);
+    const ng = eq.filter(f=>f._nota).map(f=>`Gabinete ${f.tag} (${f.marca} ${f.modelo}): ${f._nota}`);
+    return { scal, tablas:{ equipos: eq, notas: nu.concat(ng.map((t, i)=>({ n:(nu.length + i + 1)+".-", texto:t }))) } };
   }
   if(base==="ele-hd"){
     const lista = tableros(p); const instancias = [], indice = [];

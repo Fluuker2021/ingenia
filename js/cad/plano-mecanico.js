@@ -7,6 +7,7 @@
    3. Panel de operación (detalle con placas de leyenda) y base del tablero con los prensaestopas.
    4. Lista de materiales con dimensiones, criterios de diseño aplicados y balance térmico.
    Todo se dibuja desde el modelo de js/mecanico/arreglo.js: lo que se ve en 2D es lo mismo que se ve en 3D. */
+import { plantillaDe, dibujarPlantilla } from "../mecanico/biblioteca.js";
 import { DXFDoc } from "../engine/tablero-core.js";
 import { dibujarLamina, PASO_HOJAS, A1 } from "./formato.js";
 import { envolver } from "./kit.js";
@@ -189,6 +190,9 @@ function frenteEquipo(v, c, ap){
 }
 export function dibujarEquipo(v, c){   // exportada también para pruebas (galería de la base de apariencia)
   const { x, y, w, h } = c, E = "M-EQUIPO", D = "M-DETALLE";
+  // plantilla de la biblioteca de componentes (vista frontal del DXF del fabricante o del usuario)
+  const pt = plantillaDe(c);
+  if(pt){ dibujarPlantilla(v, c, pt, E); etiqueta(v, c); return; }
   const ap = SIN_BASE_2D.has(c.tipo) ? null : apariencia(c);
   if(ap && ap.rasgos && ap.rasgos.length){
     frenteEquipo(v, c, ap);
@@ -531,7 +535,9 @@ function dibujarLateral(v, m){
     for(const d of m.puerta.filter(d=>d.tipo==="hmi")){ v.R(D - d.prof, d.y - d.recorteH/2, d.prof, d.recorteH, "M-OCULTO"); v.R(D + 22, d.y - d.h/2, 6, d.h, "M-DETALLE"); }
     for(const d of m.puerta.filter(d=>d.tipo==="ventilador")) v.R(D + 22, d.y - d.h/2, 14, d.h, "M-DETALLE"); }
   else v.R(25, 75, dmax - 25, H - 155, "M-OCULTO");
-  if(m.techoTipo==="inclinado"){ v.P([[-40, H], [D + 60, H], [D + 60, H + m.techoAlto], [-40, H + 30]], "M-GABINETE", null, true); v.L(-40, H + 30 - 12, D + 60, H + m.techoAlto - 12, "M-DETALLE"); }
+  if(m.techoTipo==="inclinado"){ v.P([[-40, H], [D + 60, H], [D + 60, H + m.techoAlto], [-40, H + 30]], "M-GABINETE", null, true); v.L(-40, H + 30 - 12, D + 60, H + m.techoAlto - 12, "M-DETALLE");
+    // pendiente del techo: cota angular sobre la cara inclinada
+    v.L(-40, H + 30, D + 60, H + 30, "M-COTA"); v.T(D*0.55, H + 30 + (m.techoAlto - 30)*0.25, 2.2, `${m.techoPendiente || 15}°`, "M-COTA", { halign:1, valign:2 }); }
   else if(m.techo){ v.P([[-40, H], [D + 60, H], [D + 60, H + (m.techoAlto || 55)], [-40, H + (m.techoAlto || 55)]], "M-GABINETE", null, true); }
   // visores y caperuzas vistos de costado: sobresalen de la puerta (la caperuza con su abertura hacia abajo)
   for(const z of m.visores||[]){ v.R(D + 22, z.y0, z.prof, z.y1 - z.y0, "M-DETALLE"); v.L(D + 22 + z.prof - 6, z.y0 + 4, D + 22 + z.prof - 6, z.y1 - 4, "M-DETALLE"); }

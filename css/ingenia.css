@@ -388,6 +388,7 @@ canvas.preview{width:100%; border:1px solid var(--border); border-radius:var(--r
 .ed-table input[type=text], .ed-table input[type=number], .ed-table select{text-align:center; text-align-last:center;}
 .ed-table input.izq, .ed-table select.izq{text-align:left; text-align-last:left;}
 .ed-table td.centro{text-align:center;}
+.ed-table td.izq,.ed-table th.izq{text-align:left;}
 .ed-centrada .ed-table td, .ed-centrada .ed-table th{text-align:center;}
 .ed-table th{white-space:normal; vertical-align:middle;}
 .sec-row td{background:var(--gris-50); font-weight:600; font-size:12px; color:var(--grafito);}
@@ -546,6 +547,9 @@ td.num.err{color:var(--err); font-weight:600;}
 .v3d-etiquetas{position:absolute;inset:0;pointer-events:none;}
 .v3d-tag{font:600 11px var(--mono);color:var(--grafito);background:rgba(245,197,24,.92);padding:1px 5px;border-radius:4px;white-space:nowrap;transform:translateY(-6px);}
 .v3d-tag-chico{font-size:9.5px;background:rgba(255,255,255,.85);border:1px solid rgba(23,25,29,.15);}
+.v3d-tag-caja{line-height:0;}
+.v3d-tag-vert{display:inline-block; writing-mode:vertical-rl; transform:rotate(180deg); padding:4px 1px; line-height:1;}
+.v3d-tag-puerta{background:rgba(245,197,24,.88);border-color:rgba(23,25,29,.25);}
 .v3d-ayuda{position:absolute;left:10px;bottom:8px;font-size:11.5px;color:var(--text-dim);background:rgba(255,255,255,.8);padding:3px 8px;border-radius:6px;pointer-events:none;}
 .v3d-info{position:absolute;top:10px;right:10px;width:270px;max-width:calc(100% - 20px);background:#fff;border:1px solid var(--border);border-top:3px solid var(--amarillo);border-radius:10px;box-shadow:var(--shadow);padding:12px 14px;font-size:12.5px;z-index:2;}
 .v3d-info > div{margin-top:4px;}
@@ -757,7 +761,10 @@ body.con-login .app, body.con-login .mobilebar, body.con-login .cp-btn{visibilit
 .app-idioma button:focus-visible{outline:none; box-shadow:0 0 0 3px rgba(245,197,24,.55);}
 /* filas de sección (un tablero) en las vistas de listados */
 .xl-table tr.xl-seccion td{background:var(--gris-100); font-weight:600; text-align:left; letter-spacing:.02em; color:var(--grafito); border-top:2px solid var(--grafito);}
+.xl-table tr.xl-seccion.amarilla td,.xl-table tr.xl-seccion.amarilla:hover td{background:var(--amarillo); color:var(--grafito); font-weight:700; border-top:1px solid var(--grafito);}
+.xl-table td.nw,.eq-lista td.nw,.ed-table td.nw{white-space:nowrap;}
 .eq-lista input::placeholder{color:#8A939E; font-style:italic;}
+.eq-lista select{min-width:150px;}
 /* planos por tablero: selector en la vista previa y descargas por tablero */
 .planos-sel{display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 12px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-lg);}
 .planos-sel .muted{font-size:12.5px; margin-right:4px;}

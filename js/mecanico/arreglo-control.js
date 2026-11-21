@@ -18,7 +18,7 @@
 import { tablerosControl, ipRecomendado } from "../datos.js";
 import { valoresDiseno, tempDiseno } from "../modules/criterios.js";
 import { equiposControl } from "../control/equipos.js";
-import { cfgMecanico, ACCIONES_MOVER } from "./arreglo.js";
+import { cfgMecanico, ACCIONES_MOVER, conPlantilla } from "./arreglo.js";
 import * as C from "./componentes.js";
 import { aplicarAccesoriosMecanicos } from "./accesorios.js";
 
@@ -66,7 +66,7 @@ const mayus = s => String(s||"").toUpperCase();
 /* ---------- equipos del tablero (con los TAG de equipos.js), en filas lógicas de arriba hacia abajo ---------- */
 export function construir(eq, calef, sup){
   let n = 0;
-  const mk = (o, dim) => Object.assign({ id:"c"+(++n), cant:1, x:0, y:0, z:ZPLACA, etqJusta:true }, dim||{}, o);
+  const mk = (o, dim) => conPlantilla(Object.assign({ id:"c"+(++n), cant:1, x:0, y:0, z:ZPLACA, etqJusta:true }, dim||{}, o));
   // los interruptores modulares trabajan muy por debajo de su In: pérdidas a ~45 % de In
   const mcb = (q, extra) => { const d = C.mcb(q.polos||2); return mk(Object.assign({ tag:q.tag, tipo:"mcb", polos:q.polos||2, desc:q.desc, modelo:q.modelo, val:q.val }, extra||{}), Object.assign(d, { perdidas:+(d.perdidas*0.2).toFixed(2) })); };
   const circ = Object.fromEntries(eq.circuitos.map(c=>[c.tag, c]));
@@ -530,7 +530,7 @@ function listaMateriales(comps, bornes, canaletas, rieles, barras, puerta, cabs,
   const grupos = new Map();
   for(const c of comps){ const k = c.grupoBom ? `${c.grupoBom}|${c.modelo}|${c.descBom||""}` : c.id; if(!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(c); }
   for(const cs of grupos.values()){ const c = cs[0];
-    filas.push({ tag:rango(cs.map(x=>x.tag)), desc: cs.length > 1 ? (c.descBom || c.desc) : c.desc, modelo:c.modelo, cant:cs.length, dim:dim(c), montaje:MONT[c.montaje] || "Placa", fuente:c.fuente||"" }); }
+    filas.push({ tag:rango(cs.map(x=>x.tag)), tipo:c.tipo, val:c.val, polos:c.polos, io:c.io, canales:c.canales, desc: cs.length > 1 ? (c.descBom || c.desc) : c.desc, modelo:c.modelo, cant:cs.length, dim:dim(c), montaje:MONT[c.montaje] || "Placa", fuente:c.fuente||"" }); }
   for(const b of bornes){
     const por = {}; for(const x of b.bornes){ por[x.modelo] = (por[x.modelo]||0) + 1; }
     for(const [m, n] of Object.entries(por)){ const d = C.borneControl(m); filas.push({ tag:b.grupo, desc:`${/HESI/.test(m) ? "Fusible-borne 5x20 con LED" : `Borne ${/PE$/.test(m) ? "de tierra" : /PTTB/.test(m) ? "de dos pisos" : "de paso"}`} — ${b.desc}`, modelo:m, cant:n, dim:`${d.w} x ${d.h} x ${d.d}`, montaje:"Riel DIN", fuente:d.fuente }); }
@@ -543,9 +543,9 @@ function listaMateriales(comps, bornes, canaletas, rieles, barras, puerta, cabs,
   if(bp.length) filas.push({ tag:"PE", desc:"Barra de tierra de protección, perforada", modelo:`Barra Cu ${pe.nombre} mm`, cant:`${(bp.reduce((a, b)=>a + b.w, 0)/1000).toFixed(2)} m`, dim:`${pe.nombre} mm`, montaje:"Placa", fuente:C.FUENTES.barra });
   for(const d of puerta){
     const m = d.modelo || (C.PUERTA[d.tipo]||{}).modelo || d.desc;
-    filas.push({ tag:d.tag||"", desc:d.desc || d.leyenda || "", modelo:m, cant:1, dim: calado(d), montaje:"Puerta", fuente: d.fuente || C.FUENTES.puerta });
+    filas.push({ tag:d.tag||"", tipo:d.tipo, color:d.color, leyenda:d.leyenda, desc:d.desc || d.leyenda || "", modelo:m, cant:1, dim: calado(d), montaje:"Puerta", fuente: d.fuente || C.FUENTES.puerta });
   }
-  filas.push({ tag:"", desc:"Señal de riesgo eléctrico «PELIGRO» (una en cada puerta)", modelo:"Señal autoadhesiva ISO 7010 W012, 110 mm", cant:nHojas, dim:"110 mm", montaje:"Puerta", fuente:"ISO 7010 / NTP 399.010" });
+  filas.push({ tag:"", tipo:"senal", desc:"Señal de riesgo eléctrico «PELIGRO» (una en cada puerta)", modelo:"Señal autoadhesiva ISO 7010 W012, 110 mm", cant:nHojas, dim:"110 mm", montaje:"Puerta", fuente:"ISO 7010 / NTP 399.010" });
   const gl = {}; for(const c of cabs){ if(!c.rosca) continue; gl[c.rosca] = (gl[c.rosca]||0) + 1; }
   for(const [r, n] of Object.entries(gl)) filas.push({ tag:"", desc:"Prensaestopa de poliamida / latón niquelado con contratuerca", modelo:`Prensaestopa ${r}`, cant:n, dim:r, montaje:"Base", fuente:"EN 62444" });
   return filas;

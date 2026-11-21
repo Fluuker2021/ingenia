@@ -1,6 +1,7 @@
 /* Ingenia — formularios de datos de entrada (se muestran solo los que usa cada documento). */
 import { tipoTablerosTxt } from "./catalog.js";
 import { equiposDeTablero } from "./modules/equipos-lista.js";
+import { MARCAS_GABINETE } from "./mecanico/gabinetes.js";
 import { CABLEADO_DEF, AISLAMIENTOS, COLORES, PRESETS_CABLEADO } from "./cad/cableado.js";
 import { $, $$, esc, html, ICON, toast, dropzone, spinner } from "./ui.js";
 import * as S from "./store.js";
@@ -672,9 +673,17 @@ const ED = {
     el.innerHTML = `${lista.length > 1 ? selectorTablero(lista, cur) : ""}
       <p class="muted" style="font-size:12.5px;margin:0 0 10px">Equipos y accesorios del tablero (sin canaletas, riel DIN, borneras, barras ni cables). Marca, modelo y código: los propuestos en gris; escribe encima para cambiarlos. Las marcas por familia se eligen en «Marcas de los equipos» del unifilar.</p>
       <div class="table-wrap"><table class="ed-table eq-lista"><thead><tr><th>Ítem</th><th>TAG</th><th class="izq">Descripción</th><th>Cant.</th><th>Marca</th><th>Modelo</th><th>Código</th></tr></thead><tbody>
-      ${filas.map((f, i)=>`<tr data-k="${esc(f._clave)}"><td class="centro mono">${i+1}</td><td class="centro mono">${esc(f.tag||"—")}</td><td class="izq" style="min-width:280px;white-space:normal">${esc(f.descripcion)}</td><td class="centro">${esc(f.cant)}</td>
-        ${["marca","modelo","codigo"].map(k=>{ const o = (d.equiposOver[f._clave]||{})[k] || ""; const prop = f["_"+k] || ""; return `<td><input type="text" data-c="${k}" value="${esc(o)}" placeholder="${esc(prop || (k==="codigo" ? "—" : ""))}" style="width:${k==="modelo" ? 230 : k==="codigo" ? 170 : 150}px"></td>`; }).join("")}</tr>`).join("")}
+      ${filas.map((f, i)=>`<tr data-k="${esc(f._clave)}"><td class="centro mono">${i+1}</td><td class="centro mono nw">${esc(f.tag||"—")}</td><td class="izq" style="min-width:280px;white-space:normal">${esc(f.descripcion)}${f._nota ? `<div class="muted" style="font-size:11.5px">${esc(f._nota)}</div>` : ""}</td><td class="centro">${esc(f.cant)}</td>
+        ${["marca","modelo","codigo"].map(k=>{
+          // gabinete: la marca se elige (marcas reconocidas o fabricación nacional); su modelo y código salen del catálogo según las medidas
+          if(f._gab && k==="marca") return `<td><select data-gabmarca>${MARCAS_GABINETE.map(m=>`<option ${m===f.marca ? "selected" : ""}>${esc(m)}</option>`).join("")}</select></td>`;
+          const o = (d.equiposOver[f._clave]||{})[k] || ""; const prop = f["_"+k] || ""; return `<td><input type="text" data-c="${k}" value="${esc(o)}" placeholder="${esc(prop || (k==="codigo" ? "—" : ""))}" style="width:${k==="modelo" ? 230 : k==="codigo" ? 170 : 150}px"></td>`; }).join("")}</tr>`).join("")}
       </tbody></table></div>`;
+    // marca del gabinete del tablero (todos sus cuerpos): el modelo y el código propuestos pasan a los de esa marca
+    $$("[data-gabmarca]", el).forEach(sel=>sel.onchange = ()=>{
+      const k = `${t.id}|gabinete`; d.equiposOver[k] = Object.assign({}, d.equiposOver[k]||{}, { marca: sel.value });
+      for(const kk of Object.keys(d.equiposOver)) if(kk.startsWith(`${t.id}|gabinete|`)) d.equiposOver[kk] = Object.assign({}, d.equiposOver[kk], { marca:"", modelo:"", codigo:"" });
+      cambio(); ED.equiposLista(el, p, cambio); });
     const s = $("[data-tsel]", el); if(s) s.onchange = ()=>{ el.dataset.t = s.value; ED.equiposLista(el, p, cambio); };
     $$("tr[data-k] input[data-c]", el).forEach(i=>i.onchange = ()=>{
       const k = i.closest("tr").dataset.k, o = Object.assign({}, d.equiposOver[k]||{}), v = i.value.trim();

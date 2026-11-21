@@ -22,6 +22,9 @@ import { equiposControl } from "../control/equipos.js";
 import { construir as construirControl } from "./arreglo-control.js";
 import { aplicarAccesoriosMecanicos } from "./accesorios.js";
 import { marcasProyecto, modeloEnMarca } from "../engine/marcas.js";
+import { medidasDe } from "./biblioteca.js";
+/* medidas de la biblioteca de componentes (las del DXF del fabricante o las fijadas por el usuario) sobre las de catálogo */
+export function conPlantilla(c){ const b = c && c.modelo ? medidasDe("", c.modelo) : null; if(b){ c.w = b.w; c.h = b.h; if(b.d) c.d = b.d; c.plantilla = b.plantilla; } return c; }
 
 export const CFG_DEF = () => ({ montaje:"auto", ancho:"", alto:"", fondo:"", entrada:"inferior", reserva:"", ventilacion:"auto", mandos:"auto", calefaccion:"auto", tInterior:"",
   canaleta:"", ladoControl:"izq", q1Lado:"auto", panelSeccion:"auto", panelAltura:0, mover:[] });
@@ -55,6 +58,8 @@ const ampsDe = v => num(v, /x?\s*([\d.]+)\s*A/i);
 const sinMarca = s => String(s||"").replace(/^ABB\s+/, "").replace(/\s*\(.*$/, "").trim();
 const item = (c, re) => c.items.find(x=>re.test(x.comp)) || null;
 const nTB = c => C.tagBornera(c.tag);
+/* potencia nominal de la carga («150 HP», «30 kW») para el listado de equipos */
+const potTxt = l => l && +l.power ? `${l.power} ${String(l.powerUnit||"").toLowerCase()==="hp" ? "HP" : String(l.powerUnit||"").toLowerCase()==="w" ? "W" : "kW"}` : "";
 const ZPLACA = 25;                        // superficie de la placa de montaje desde la pared posterior
 const DUCT_GAP = 30;                      // espacio libre entre equipo y canaleta (radio de curvatura de conductores)
 const MARGEN = 10;                        // margen entre canaleta y borde de placa
@@ -64,7 +69,7 @@ function listaEquipos(p, t, calc, cfg, v){
   const g = calc.g, acc = accesoriosTablero(p, t), fa = fusiblesAcometida(acc);
   const E = { acometida:[], aux:[], dol:[], ctrl:[], pot:[], puerta:[], bornes:[], extra:[] };
   let n = 0; const id = () => "e" + (++n);
-  const mk = (o, dim) => Object.assign({ id:id(), cant:1, x:0, y:0, z:ZPLACA }, dim||{}, o);
+  const mk = (o, dim) => conPlantilla(Object.assign({ id:id(), cant:1, x:0, y:0, z:ZPLACA }, dim||{}, o));
   // --- acometida (hoja de acometida del multifilar)
   const q1 = C.interruptor(calc.mainBreaker || 100, true);
   E.acometida.push(mk({ tag:"Q1", tipo:"interruptor", desc:"Interruptor general con bobina de mínima tensión (UVR) y mando rotativo", modelo:q1.modelo, val:`3x${calc.mainBreaker}A`, rol:"general" }, q1));
@@ -88,7 +93,8 @@ function listaEquipos(p, t, calc, cfg, v){
     const l = c.load || {}, cab = c.conductorMemo && c.conductorMemo.cable ? c.conductorMemo.cable[0] : "", circ = { ci, tag:c.tag, carga:l.tag||"", desc:l.desc||c.descLabel||c.title||"" };
     if(c.kind==="control"){
       const f = item(c, /^Portafusible/), tr = item(c, /^Transformador|^Fuente/), q = item(c, /^ITM principal/);
-      const va = num(tr && tr.val, /([\d.]+)\s*VA/i) || 500, dc = /^Fuente/.test(tr ? tr.comp : "");
+      // potencia del transformador: «1 kVA (Σ derivaciones 881 VA)» → 1000 VA (la comercial, no la suma de derivaciones)
+      const va = (num(tr && tr.val, /^\s*([\d.]+)\s*kVA/i)*1000) || num(tr && tr.val, /^\s*([\d.]+)\s*VA/i) || num(tr && tr.val, /([\d.]+)\s*VA/i) || 500, dc = /^Fuente/.test(tr ? tr.comp : "");
       const grp = { circ, partes:[] };
       // control interno: fusibles y transformador (o, con segunda fuente, solo el interruptor general) y derivaciones,
       // con los TAG del unifilar y del multifilar
@@ -104,8 +110,8 @@ function listaEquipos(p, t, calc, cfg, v){
       ramas.forEach((x, i)=>{
         const a = ampsDe(String(x.val).split(" · ")[0]);
         grp.partes.push(mk({ tag:x.devtag, tipo:"mcb", polos:2, desc:x.comp, modelo:"S202-C"+a, val:`2x${a}A`, circ }, C.mcb(2)));
-        if(x.cfg==="luminaria") E.extra.push({ tag:"LM1", desc:`Luminaria LED interna (circuito ${x.devtag})`, modelo:C.LUMINARIA.modelo, cant:1, dim:`${C.LUMINARIA.w} x ${C.LUMINARIA.h} x ${C.LUMINARIA.d}`, montaje:"Techo", fuente:C.LUMINARIA.fuente },
-          { tag:"SQ1", desc:"Interruptor de puerta de la luminaria", modelo:C.FIN_PUERTA.modelo, cant:1, dim:`${C.FIN_PUERTA.w} x ${C.FIN_PUERTA.h} x ${C.FIN_PUERTA.d}`, montaje:"Marco", fuente:C.FIN_PUERTA.fuente });
+        if(x.cfg==="luminaria") E.extra.push({ tag:"LM1", tipo:"luminaria", val:"8 W", desc:`Luminaria LED interna (circuito ${x.devtag})`, modelo:C.LUMINARIA.modelo, cant:1, dim:`${C.LUMINARIA.w} x ${C.LUMINARIA.h} x ${C.LUMINARIA.d}`, montaje:"Techo", fuente:C.LUMINARIA.fuente },
+          { tag:"SQ1", tipo:"finpuerta", val:"1NA", desc:"Interruptor de puerta de la luminaria", modelo:C.FIN_PUERTA.modelo, cant:1, dim:`${C.FIN_PUERTA.w} x ${C.FIN_PUERTA.h} x ${C.FIN_PUERTA.d}`, montaje:"Marco", fuente:C.FIN_PUERTA.fuente });
         if(x.id || (x.id==null && !x.rama && /tomacorriente/i.test(x.comp))) grp.partes.push(mk({ tag:x.id || "ID"+(i+1), tipo:"diferencial", polos:2, desc:"Interruptor diferencial 30 mA de "+x.comp.toLowerCase(), modelo:"FH202 AC-25/0.03", val:"25A 30mA", circ }, C.diferencial(2)));
         if(x.cfg==="tomacorriente") grp.partes.push(mk({ tag:"XS1", tipo:"tomacorriente", desc:`Tomacorriente doble de servicio (protegido por ${x.id || x.devtag})`, modelo:C.TOMA_DIN.modelo, val:"15 A", circ }, C.TOMA_DIN));
         xb.bornes.push({ n:String(xb.bornes.length+1), modelo:"UT 4", fun:"L", ref:x.devtag }, { n:String(xb.bornes.length+2), modelo:"UT 4", fun:"N", ref:x.devtag }, { n:"PE", modelo:"UT 4-PE", pe:true, ref:x.devtag });
@@ -124,13 +130,13 @@ function listaEquipos(p, t, calc, cfg, v){
       if(f){ const d = C.seccionadorFusible(f.model, ampsDe(f.val)); col.partes.push(mk({ tag:f.devtag, tipo:"xlp", polos:3, desc:"Seccionador portafusible "+(l.starter==="vfd"?"con fusibles aR (protección de semiconductores)":"NH"), modelo:sinMarca(f.model).replace(/\s*\+.*$/,"")+" "+(f.model.match(/fusible [^(]+/)||[""])[0].trim(), val:f.val, circ }, d)); }
       if(l.starter==="vfd"){
         const dv = C.variador(dr.model, amps, c.powerKWelec);
-        col.partes.push(mk({ tag:dr.devtag, tipo:"variador", desc:"Variador de frecuencia", modelo:`${sinMarca(dr.model)} (${dv.familia})`, val:dr.val, circ, keypad:true }, dv));
+        col.partes.push(mk({ tag:dr.devtag, tipo:"variador", desc:"Variador de frecuencia", modelo:`${sinMarca(dr.model)} (${dv.familia})`, val:dr.val, pot:potTxt(l), circ, keypad:true }, dv));
         if(rl) col.partes.push(mk({ tag:rl.devtag, tipo:"reactancia", desc:"Reactancia de línea (entrada del variador)", modelo:sinMarca(rl.model), val:rl.val, circ }, C.reactancia(ampsDe(rl.val) || amps, false)));
         if(ml) col.partes.push(mk({ tag:ml.devtag, tipo:"reactancia", desc:"Filtro de carga dv/dt (salida del variador)", modelo:sinMarca(ml.model), val:ml.val, circ, carga:true }, C.reactancia(ampsDe(ml.val) || amps, true)));
         col.tipo = "vfd";
       } else {
         const ds = C.arrancadorSuave(sinMarca(dr.model), amps);
-        col.partes.push(mk({ tag:dr.devtag, tipo:"arrancador", desc:"Arrancador suave", modelo:sinMarca(dr.model), val:dr.val, circ }, ds));
+        col.partes.push(mk({ tag:dr.devtag, tipo:"arrancador", desc:"Arrancador suave", modelo:sinMarca(dr.model), val:dr.val, pot:potTxt(l), circ }, ds));
         if(k){ const dk = C.contactor(sinMarca(k.model)); col.partes.push(mk({ tag:k.devtag, tipo:"contactor", desc:"Contactor de línea", modelo:sinMarca(k.model), val:k.val, circ }, dk));
           if(ft) col.partes.push(mk({ tag:ft.devtag, tipo:"sobrecarga", desc:"Relé de sobrecarga", modelo:sinMarca(ft.model), val:ft.val, circ }, C.releSobrecarga(ft.model, dk))); }
         col.tipo = "ss";
@@ -252,7 +258,7 @@ export function arregloTablero(p, t, calc){
   if(conDif.length){
     filasCtrl.push({ nombre:"Relés diferenciales", grupos:[conDif.map((c, i)=>({ id:"rd"+(i+1), tag:c.diferencial.tag, tipo:"rele", desc:`Relé diferencial de ${(c.load && (c.load.tag || c.load.desc)) || "la carga "+c.tag} (${c.diferencial.sens}), con su toroide en la salida`,
       modelo:"Relé diferencial electrónico regulable 0,03…3 A, riel DIN (ref. ABB RD3 / Schneider Vigirex)", val:c.diferencial.sens, w:36, h:90, d:70, z:ZPLACA, x:0, y:0, cant:1, montaje:"din", perdidas:2, fuente:"Relés diferenciales con toroide (referencial)" }))] });
-    for(const c of conDif){ const a = Math.round(c.installedCurrent || 10); E.extra.push({ tag:"T"+c.diferencial.tag, desc:`Toroide (transformador diferencial) del relé ${c.diferencial.tag}, en el cable de salida de ${(c.load && c.load.tag) || "la carga"}`, modelo:`Toroide cerrado Ø ${a > 120 ? 110 : a > 60 ? 70 : a > 25 ? 46 : 29} mm (ref. ABB TRM / Schneider IA/TA)`, cant:1, dim:"", montaje:"Cable de salida", fuente:"Relés diferenciales con toroide (referencial)" }); }
+    for(const c of conDif){ const a = Math.round(c.installedCurrent || 10); E.extra.push({ tag:"T"+c.diferencial.tag, tipo:"toroide", desc:`Toroide (transformador diferencial) del relé ${c.diferencial.tag}, en el cable de salida de ${(c.load && c.load.tag) || "la carga"}`, modelo:`Toroide cerrado Ø ${a > 120 ? 110 : a > 60 ? 70 : a > 25 ? 46 : 29} mm (ref. ABB TRM / Schneider IA/TA)`, cant:1, dim:"", montaje:"Cable de salida", fuente:"Relés diferenciales con toroide (referencial)" }); }
     criterios.push(`Protección diferencial propia en ${conDif.map(c=>(c.load && c.load.tag) || c.tag).join(", ")}: relé diferencial en riel DIN y toroide en el cable de salida de cada carga.`);
   }
   // tablero de fuerza y control: su etapa de control (fuente de 24 Vdc, distribución de 120 Vac, PLC, red y relés de
@@ -342,13 +348,33 @@ export function arregloTablero(p, t, calc){
         bloques.forEach((b, i)=>out.push({ nombre:f.nombre + (bloques.length>1 ? ` (${i+1})` : ""), columnas:b, bloque:i, peine:f.peine }));
       } else repartirFilas(f.grupos, util, reserva).forEach((gs, i, a)=>out.push({ nombre:f.nombre + (a.length>1 ? ` (${i+1})` : ""), grupos:gs }));
     }
+    // filas funcionales cortas juntas en un mismo riel (en su orden), si entran con la reserva: un tablerista no deja medio
+    // riel vacío por función; así la placa de control es más baja o más angosta y no se agrega un cuerpo antes de tiempo
+    const anchoFila = r => r.grupos.reduce((a, gq)=>a + anchoGrupo(gq) + 10, 0);
+    for(let i = out.length - 1; i > 0; i--){
+      const a = out[i-1], b = out[i];
+      if(a.grupos && b.grupos && (anchoFila(a) + anchoFila(b))*(1+reserva) <= util){ a.grupos = a.grupos.concat(b.grupos); a.nombre = `${a.nombre} · ${b.nombre}`; out.splice(i, 1); }
+    }
+    // el riel de los guardamotores casi nunca se llena: el espacio libre a la derecha de las columnas se usa para los grupos de
+    // las filas siguientes (enteros y en su orden), antes de agregar filas o alto al tablero
+    for(const r of out.filter(r=>r.columnas && r.nombre.startsWith("Guardamotores"))){
+      let libre = util/(1+reserva) - r.columnas.reduce((a, c)=>a + c.ancho, 0) - 20;
+      r.extra = [];
+      // primero las filas más cortas (así se vacían filas enteras y el tablero baja de alto)
+      const cortas = out.filter(x=>x.grupos).sort((a, b)=>a.grupos.reduce((q, g)=>q + anchoGrupo(g), 0) - b.grupos.reduce((q, g)=>q + anchoGrupo(g), 0));
+      for(const f of cortas){
+        const total = f.grupos.reduce((q, g)=>q + anchoGrupo(g) + 10, 0);
+        if(total <= libre){ r.extra.push(...f.grupos); f.grupos = []; libre -= total; }
+      }
+    }
+    for(let i = out.length - 1; i >= 0; i--) if(out[i].grupos && !out[i].grupos.length) out.splice(i, 1);
     // intercalar bloques de guardamotores y contactores: G1, K1, G2, K2…
     const gm = out.filter(r=>r.nombre.startsWith("Guardamotores")), km = out.filter(r=>r.nombre.startsWith("Contactores"));
     if(gm.length > 1){ const resto = out.filter(r=>!gm.includes(r) && !km.includes(r)); const i0 = out.indexOf(gm[0]); const mezcla = gm.flatMap((r, i)=>[r, km[i]].filter(Boolean)); return [...resto.slice(0, i0), ...mezcla, ...resto.slice(i0)]; }
     return out;
   };
   const altoFila = r => {
-    const hs = r.columnas ? r.columnas.map(c=>c.comp.h) : r.grupos.flat().map(x=>x.h);
+    const hs = r.columnas ? r.columnas.map(c=>c.comp.h).concat((r.extra||[]).flat().map(x=>x.h)) : r.grupos.flat().map(x=>x.h);
     return Math.max(...hs, 60) + 2*DUCT_GAP;
   };
   const filaBornes = (grupos, util) => {
@@ -373,7 +399,7 @@ export function arregloTablero(p, t, calc){
   // placa de fuerza: con entrada inferior las barras van arriba y Q1 en la fila de derivaciones, alimentado por abajo
   // (franja libre debajo para los cables de acometida); con entrada superior, Q1 arriba y las barras debajo
   const zonaSupPot = entrada==="inferior" ? 40 + altoBarras + 60 : 110 + q1.h + 60 + altoBarras + 60;
-  const ANCHO_ACOM = entrada==="inferior" ? q1.w + 70 : 0;
+  const ANCHO_ACOM = entrada==="inferior" ? q1.w + 70 : 0, ANCHO_ACOM_ = ANCHO_ACOM;
   // sección única: Q1 arriba, barras debajo y un canal lateral para los cables de acometida
   const zonaSupMix = 110 + q1.h + 60 + altoBarras + 40;
   const CANAL_MIX = entrada==="inferior" ? 70 : 0;
@@ -382,7 +408,40 @@ export function arregloTablero(p, t, calc){
   const fijoW = +cfg.ancho || 0, fijoH = +cfg.alto || 0, fijoD = +cfg.fondo || 0;
   const conPot = colsPot.length > 0;
   let H, secs;
+  /* fuerza: columnas repartidas en el MENOR número de cuerpos y el menor ancho (programación dinámica sobre el orden del
+     multifilar): antes de agregar un cuerpo se llena el anterior. La franja de la acometida (Q1 con entrada inferior) va en
+     el cuerpo donde sobre espacio, no necesariamente en el primero. */
+  const particionPot = (Hc, sinAcom)=>{
+    const n = colsPot.length, ANCHOS = [600, 800, 1000, 1200], ANCHO_ACOM = sinAcom ? 0 : ANCHO_ACOM_;
+    const util = (Wp, acom) => C.placaDe(montaje, Wp, Hc).w - MARGEN - ductV.w - 30 - (acom ? ANCHO_ACOM : 0);
+    const memo = new Map();
+    const mejor = (i, usada) => {
+      if(i===n) return usada || !ANCHO_ACOM ? { cuerpos:0, ancho:0, grupos:[] } : null;
+      const k = i + "|" + usada; if(memo.has(k)) return memo.get(k);
+      let best = null;
+      for(let j=i+1; j<=n; j++){
+        const w = colsPot.slice(i, j).reduce((a, c)=>a + c.ancho, 0);
+        for(const acom of (usada || !ANCHO_ACOM ? [false] : [false, true])){
+          // el menor ancho normalizado en que entran (una columna sola más ancha que el cuerpo mayor va en 1200)
+          const Wp = ANCHOS.find(x=>w <= util(x, acom)) ?? (j===i+1 ? 1200 : null);
+          if(Wp==null) continue;
+          const resto = mejor(j, usada || acom); if(!resto) continue;
+          const c = { cuerpos: resto.cuerpos + 1, ancho: resto.ancho + Wp, grupos: [{ W:Wp, cols:colsPot.slice(i, j), util:util(Wp, acom), acom: acom || (!ANCHO_ACOM && i===0) }, ...resto.grupos] };
+          if(!best || c.cuerpos < best.cuerpos || (c.cuerpos===best.cuerpos && c.ancho < best.ancho)) best = c;
+        }
+      }
+      memo.set(k, best); return best;
+    };
+    const r = mejor(0, false);
+    if(r && !sinAcom && !r.grupos.some(g=>g.acom)) r.grupos[0].acom = true;
+    if(r && sinAcom) r.grupos.forEach(g=>g.acom = false);
+    return r ? r.grupos : null;
+  };
   const elegir = ()=>{
+    // se evalúan todas las alturas normalizadas y se elige el gabinete con MENOS cuerpos, luego el más angosto y luego el
+    // más bajo (antes se tomaba la primera altura en que entraba, aunque una más alta ahorrara un cuerpo)
+    let elegido = null;
+    const puntaje = r => r.secs.length*1e6 + r.secs.reduce((a, s)=>a + s.W, 0)*10 + r.H/100;
     for(const Hc of (fijoH ? [fijoH] : GAB.altos)){
       const pH = C.placaDe(montaje, 800, Hc).h;
       // control: ancho menor en que quepa (altura ≤ placa; si la sección es única, comparte con la zona superior)
@@ -396,25 +455,29 @@ export function arregloTablero(p, t, calc){
       }
       if(!sc) continue;
       const se = seccionEtapa(Hc); if(!se) continue;
-      if(!conPot) return { H:Hc, secs:[...se, { rol:"mixta", W:sc.W, ctrl:sc }] };
-      // fuerza: columnas repartidas en secciones de 600…1200
-      const pots = []; let resto = colsPot.slice();
-      const dispPot = pH - zonaSupPot;
-      if(colsPot.some(c=>c.alto > dispPot)) continue;
-      while(resto.length){
-        let ok = null;
-        for(const Wp of [600, 800, 1000, 1200]){
-          const u = C.placaDe(montaje, Wp, Hc).w - MARGEN - ductV.w - 30 - (pots.length ? 0 : ANCHO_ACOM);
-          let w = 0, k = 0; while(k < resto.length && w + resto[k].ancho <= u){ w += resto[k].ancho; k++; }
-          if(k === resto.length || (Wp===1200 && k>0)){ ok = { W:Wp, cols:resto.slice(0, k), util:u }; break; }
+      let r;
+      if(!conPot) r = { H:Hc, secs:[...se, { rol:"mixta", W:sc.W, ctrl:sc }] };
+      else {
+        const dispPot = pH - zonaSupPot;
+        if(colsPot.some(c=>c.alto > dispPot)) continue;
+        const pots = particionPot(Hc);
+        if(pots) r = { H:Hc, secs:[...se, { rol:"control", W:sc.W, ctrl:sc }, ...pots.map(x=>({ rol:"potencia", W:x.W, pot:x }))] };
+        // alternativa del tablerista: Q1 y la franja de la acometida en el cuerpo de control (a su lado derecho, junto a la
+        // fuerza), colgado de las mismas barras que siguen por todo el tablero; los cuerpos de fuerza quedan enteros para las
+        // columnas y muchas veces se ahorra un cuerpo
+        if(entrada==="inferior" && cfg.ladoControl!=="der"){
+          let scQ = null;
+          for(const Wc of (montaje==="mural" ? GAB.anchos : [600, 800, 1000, 1200])){ const pl = C.placaDe(montaje, Wc, Hc), u = utilDe(pl.w) - ANCHO_ACOM, a = u > 150 ? altoCtrl(u) : null;
+            if(a && a.alto <= pl.h - zonaSupPot){ scQ = { W:Wc, util:u, filas:a.filas, alto:a.alto, conQ1:true }; break; } }
+          const potsB = scQ ? particionPot(Hc, true) : null;
+          if(potsB){ const rB = { H:Hc, secs:[...se, { rol:"control", W:scQ.W, ctrl:scQ }, ...potsB.map(x=>({ rol:"potencia", W:x.W, pot:x }))] };
+            if(!r || puntaje(rB) < puntaje(r)) r = rB; }
         }
-        if(!ok){ ok = { W:1200, cols:[resto[0]], util:C.placaDe(montaje, 1200, Hc).w - MARGEN - ductV.w - 30 - (pots.length ? 0 : ANCHO_ACOM) }; }
-        // el interruptor general debe caber en la primera sección de fuerza
-        pots.push(ok); resto = resto.slice(ok.cols.length);
+        if(!r) continue;
       }
-      return { H:Hc, secs:[...se, { rol:"control", W:sc.W, ctrl:sc }, ...pots.map(x=>({ rol:"potencia", W:x.W, pot:x }))] };
+      if(!elegido || puntaje(r) < puntaje(elegido)) elegido = r;
     }
-    return null;
+    return elegido;
   };
   let sel = elegir();
   if(!sel && montaje==="mural"){ montaje = "piso"; GAB = C.GAB_PISO; if(cfg.montaje==="mural") avisos.push("No entra en un gabinete mural normalizado: se pasa a autosoportado."); sel = elegir(); }
@@ -453,12 +516,22 @@ export function arregloTablero(p, t, calc){
   const sCtrl = secs.find(s=>s.rol!=="potencia" && s.rol!=="etapa");
   const sPot = secs.filter(s=>s.rol==="potencia");
   const pc = sCtrl.placa;
-  const canal = conPot ? 0 : CANAL_MIX;
+  // Q1 en el cuerpo de control (alternativa elegida por ocupar menos cuerpos): franja de acometida a su derecha
+  const q1EnCtrl = !!(conPot && sCtrl.ctrl && sCtrl.ctrl.conQ1);
+  const canal = conPot ? (q1EnCtrl ? ANCHO_ACOM : 0) : CANAL_MIX;
   const xi = pc.x + MARGEN + ductV.w + 15, xf = pc.x + pc.w - MARGEN - ductV.w - 15 - canal;
   const xDuctoDer = pc.x + pc.w - MARGEN - ductV.w - canal, anchoDH = pc.w - 2*(MARGEN + ductV.w) - canal;
   let ytop = pc.y + pc.h - MARGEN;
   let busY = null, busX0 = null, busX1 = null, zonaAcom = null;
-  const sQ1 = sPot[0] || sCtrl;
+  const sQ1 = q1EnCtrl ? sCtrl : sPot.find(s=>s.pot && s.pot.acom) || sPot[0] || sCtrl;
+  if(q1EnCtrl){
+    // barras arriba (a la misma altura en todos los cuerpos), Q1 colgado de ellas en la franja derecha, alimentado por abajo
+    busY = pc.y + pc.h - 40 - fase.ancho/2;
+    const fQ = busY - 2*fase.paso - fase.ancho/2 - 60;
+    q1.x = xDuctoDer + ductV.w + 35; q1.y = fQ - q1.h; add(Object.assign(q1, { placa:pc.id, seccion:sCtrl.id }));
+    zonaAcom = { placa:pc.id, x:q1.x - 25, y:pc.y + 60, w:q1.w + 50, h:q1.y - 20 - (pc.y + 60), nombre:"RECORRIDO DE CABLES DE ACOMETIDA" };
+    ytop = busY - 2*fase.paso - fase.ancho/2 - 40;
+  }
   if(!conPot){
     // Q1 arriba a la derecha, sobre el canal de los cables de acometida; barras debajo
     q1.x = pc.x + pc.w - MARGEN - canal - 20 - q1.w; q1.y = ytop - 110 - q1.h; add(Object.assign(q1, { placa:pc.id, seccion:sCtrl.id }));
@@ -485,6 +558,9 @@ export function arregloTablero(p, t, calc){
         for(const c of r.columnas){ colX.xs.push(x + c.ancho/2); x += c.ancho; }
       }
       r.columnas.forEach((c, i)=>{ const cp = c.comp; cp.x = colX.xs[i] - cp.w/2; cp.y = yc - cp.h/2; cp.placa = pc.id; cp.seccion = sCtrl.id; cp.fila = r.nombre; add(cp); });
+      // grupos de otras filas en el espacio libre a la derecha de los guardamotores
+      if(r.extra && r.extra.length){ let x = xi + r.columnas.reduce((a, c)=>a + c.ancho, 0) + 20;
+        for(const gq of r.extra){ for(const cp of gq){ cp.x = x; cp.y = yc - cp.h/2; cp.placa = pc.id; cp.seccion = sCtrl.id; cp.fila = r.nombre; add(cp); x += cp.w; } x += 10; } }
       if(r.peine && r.columnas.length > 1){
         const a = r.columnas[0].comp, b = r.columnas[r.columnas.length-1].comp;
         add({ id:"peine"+r.bloque, tag:"", tipo:"peine", desc:"Barra de conexión tipo peine 3F para guardamotores, con borne de alimentación", modelo:"PS3-"+r.columnas.length+"-0-65 + S3-...", val:"", x:a.x, y:a.y + a.h - 14, w:(b.x + b.w) - a.x, h:10, d:a.d + 3, z:ZPLACA, placa:pc.id, seccion:sCtrl.id, cant:1, fuente:"ABB barras de conexión PS3 para MS116/MS132 (referencial)" });
@@ -523,8 +599,8 @@ export function arregloTablero(p, t, calc){
   // barra de tierra al pie de la placa de control
   const peY = pc.y + 30;
   const nPE = E.dol.length + bornesCtrl.length + 4;
-  const peW = Math.min(pc.w - 80, Math.max(200, nPE*28 + 60));
-  barras.push({ tag:"PE", fase:"PE", nombre:pe.nombre, x:pc.x + (pc.w - peW)/2, y:peY - pe.ancho/2, w:peW, h:pe.ancho, orient:"h", placa:pc.id, seccion:sCtrl.id, perforaciones: Math.round(peW/25) });
+  const peW = Math.min(pc.w - 80 - canal, Math.max(200, nPE*28 + 60));
+  barras.push({ tag:"PE", fase:"PE", nombre:pe.nombre, x:pc.x + (pc.w - canal - peW)/2, y:peY - pe.ancho/2, w:peW, h:pe.ancho, orient:"h", placa:pc.id, seccion:sCtrl.id, perforaciones: Math.round(peW/25) });
   if(y < pc.y + 70) avisos.push("La placa de control quedó justa: revisa la reserva o aumenta el alto del gabinete.");
 
   // --- sección de la etapa de control (tablero de fuerza y control) ---
@@ -555,8 +631,9 @@ export function arregloTablero(p, t, calc){
   let filaQ = null;
   const q1Izq = q1Lado==="izq";
   if(conPot){
-    const pp = sPot[0].placa;
-    if(entrada==="inferior"){
+    const pp = sQ1.placa;
+    if(q1EnCtrl){ filaQ = busY - 2*fase.paso - fase.ancho/2 - 60; }
+    else if(entrada==="inferior"){
       busY = pp.y + pp.h - 40 - fase.ancho/2;
       filaQ = busY - 2*fase.paso - fase.ancho/2 - 60;
       q1.x = q1Izq ? pp.x + MARGEN + 35 : pp.x + pp.w - MARGEN - ductV.w - 35 - q1.w; q1.y = filaQ - q1.h;
@@ -566,14 +643,15 @@ export function arregloTablero(p, t, calc){
       busY = q1.y - 60 - fase.ancho/2;
       filaQ = busY - 2*fase.paso - fase.ancho/2 - 60;
     }
-    add(Object.assign(q1, { placa:pp.id, seccion:sPot[0].id }));
+    if(!q1EnCtrl) add(Object.assign(q1, { placa:pp.id, seccion:sQ1.id }));
     const ultima = sPot[sPot.length-1].placa;
-    busX0 = pp.x + 40; busX1 = ultima.x + ultima.w - MARGEN - ductV.w - 20;
+    busX0 = (q1EnCtrl ? pc.x : sPot[0].placa.x) + 40; busX1 = ultima.x + ultima.w - MARGEN - ductV.w - 20;
     sPot.forEach((s, si)=>{
       const pl = s.placa;
       // canaleta vertical de control (mando de variadores y arrancadores) a la derecha de cada placa de fuerza
       ductos(s, pl.x + pl.w - MARGEN - ductV.w, pl.y + 70, ductV.w, filaQ - (pl.y + 70), "v", ductV);
-      const xa = pl.x + MARGEN + 10 + (si===0 && q1Izq ? ANCHO_ACOM : 0), xb = pl.x + pl.w - MARGEN - ductV.w - 20 - (si===0 && !q1Izq ? ANCHO_ACOM : 0);
+      const conAcom = !q1EnCtrl && s===sQ1;
+      const xa = pl.x + MARGEN + 10 + (conAcom && q1Izq ? ANCHO_ACOM : 0), xb = pl.x + pl.w - MARGEN - ductV.w - 20 - (conAcom && !q1Izq ? ANCHO_ACOM : 0);
       const wcols = s.pot.cols.reduce((a, c)=>a + c.ancho, 0);
       let x = xa + Math.max(0, (xb - xa - wcols)/2);
       const yBornes = pl.y + 75;
@@ -595,8 +673,8 @@ export function arregloTablero(p, t, calc){
         }
       }
       // barra de tierra de la sección de fuerza
-      const w2 = Math.min(pl.w - 80 - (si===0 ? ANCHO_ACOM : 0), 360);
-      barras.push({ tag:"PE", fase:"PE", nombre:pe.nombre, x:pl.x + 30 + (si===0 && q1Izq ? ANCHO_ACOM : 0), y:pl.y + 22 - pe.ancho/2, w:w2, h:pe.ancho, orient:"h", placa:pl.id, seccion:s.id, perforaciones:Math.round(w2/25) });
+      const w2 = Math.min(pl.w - 80 - (conAcom ? ANCHO_ACOM : 0), 360);
+      barras.push({ tag:"PE", fase:"PE", nombre:pe.nombre, x:pl.x + 30 + (conAcom && q1Izq ? ANCHO_ACOM : 0), y:pl.y + 22 - pe.ancho/2, w:w2, h:pe.ancho, orient:"h", placa:pl.id, seccion:s.id, perforaciones:Math.round(w2/25) });
     });
   }
   // barras L1-L2-L3 con aisladores y bajadas
@@ -702,11 +780,31 @@ export function arregloTablero(p, t, calc){
     if(perd <= term.disipacion && ventCfg!=="forzada"){ term.modo = "natural"; criterios.push(`Pérdidas ${term.perdidas} W ≤ disipación natural ${term.disipacion} W (ΔT ${dT} K): ventilación natural.`); }
     else {
       term.caudal = Math.ceil(fAlt*Math.max(perd - term.disipacion, perd*0.25)/dT);
-      const nV = Math.max(1, Math.ceil(term.caudal/700));
-      const vf = C.ventilador(term.caudal/nV);
-      term.modo = "forzada"; term.ventiladores = nV;
-      vent = { tipo:"ventilador", n:nV, ...vf };
-      criterios.push(`Pérdidas ${term.perdidas} W > disipación natural ${term.disipacion ?? 0} W: ventilación forzada ${term.caudal} m³/h a ${alt} m s.n.m. (factor ${term.fAlt}) con ${nV} ${vf.modelo.toLowerCase()}.`);
+      // criterio de selección por CUERPO del gabinete (tamaño del tablero): cada cuerpo con pérdidas propias mayores que
+      // lo que disipa su superficie lleva su ventilación; el caudal se reparte en sus hojas de puerta (uno por hoja, centrado)
+      // y el marco del ventilador sale del caudal de la hoja, con un mínimo según el tamaño del cuerpo y sin pasar del
+      // ancho de la hoja. El cuerpo con el interruptor general suma las pérdidas de barras y conexiones.
+      const porSec = secs.map(s=>{
+        const ps = comps.filter(c=>c.seccion===s.id).reduce((a, c)=>a + (c.perdidas||0)*(c.cant||1), 0) + (s===sQ1 ? (calc.mainBreaker||0)*0.35 : 0);
+        const as = A*s.W/W, ds = k*as*dT;
+        return { s, ps, ds, q: ps > 0 ? Math.ceil(fAlt*Math.max(ps - ds, ps*0.25)/dT) : 0 };
+      });
+      let conV = porSec.filter(x=>x.ps > x.ds);
+      if(!conV.length) conV = [porSec.slice().sort((a, b)=>b.ps - a.ps)[0]];        // forzada por los accesorios: el de más pérdidas
+      // el caudal total no baja del balance del gabinete completo
+      const qSum = conV.reduce((a, x)=>a + x.q, 0); if(qSum < term.caudal) conV.forEach(x=>x.q = Math.ceil(x.q*term.caudal/Math.max(1, qSum)));
+      const marcoMin = C.marcoMinimoVentilador(montaje, Math.max(...secs.map(s=>s.W)), H);
+      const secV = conV.map(x=>{
+        const hojasN = x.s.puertas || 1, anchoH = x.s.W/hojasN;
+        const vf = C.ventiladoresHoja(x.q/hojasN, anchoH, C.marcoMinimoVentilador(montaje, x.s.W, H));
+        const renov = Math.round(vf.caudal*vf.n*hojasN/((x.s.W*H*D)/1e9));
+        return { ...x, hojas:hojasN, vf, renov };
+      });
+      term.modo = "forzada"; term.ventiladores = secV.reduce((a, x)=>a + x.vf.n*x.hojas, 0);
+      const vf0 = secV[0].vf;
+      vent = { tipo:"ventilador", n:term.ventiladores, ...vf0, secciones:secV };
+      criterios.push(`Pérdidas ${term.perdidas} W > disipación natural ${term.disipacion ?? 0} W: ventilación forzada ${term.caudal} m³/h a ${alt} m s.n.m. (factor ${term.fAlt}, caudal = factor × (pérdidas − disipación) / ΔT, IEC/TR 60890).`);
+      criterios.push(`Ventiladores según el tamaño del tablero: ${secV.map(x=>`cuerpo ${x.s.id.slice(1)} de ${x.s.W} mm (${x.hojas} hoja${x.hojas>1?"s":""}, ${Math.round(x.ps)} W de pérdidas): ${x.vf.n*x.hojas} ventilador${x.vf.n*x.hojas>1?"es":""} de ${x.vf.marco} x ${x.vf.marco} mm, ${x.vf.caudal} m³/h con filtro (${x.renov} renovaciones de aire por hora)`).join("; ")}. Marco mínimo por tamaño de cuerpo: ${marcoMin} mm en ${montaje==="mural" ? "murales" : "autosoportados"} (un ventilador chico no renueva el aire de toda la altura) y máximo el ancho de la hoja menos 140 mm (bisagra y manija); un ventilador centrado por hoja, entrada abajo y salida arriba con filtro del mismo tamaño.`);
     }
   }
   if(cfg.ventilacion==="natural" && vent && vent.tipo==="ventilador"){ vent = null; term.modo = "natural (indicado por el usuario)"; avisos.push("Ventilación natural por indicación del usuario aunque el balance térmico pide ventilación forzada."); }
@@ -715,27 +813,32 @@ export function arregloTablero(p, t, calc){
     const sV = comps.filter(c=>c.tipo==="variador").length ? secs.find(s=>s.id===comps.find(c=>c.tipo==="variador").seccion) : sCtrl;
     if(vent.tipo==="ventilador"){
       // criterio: cada ventilador CENTRADO en su hoja de puerta (en una sección de dos hojas, nunca sobre la junta); si una
-      // hoja lleva más de uno, el grupo queda centrado en ella, simétrico
-      const hojasV = sV.puertas===2 ? [[sV.x0, sV.x0 + sV.W/2], [sV.x0 + sV.W/2, sV.x1]] : [[sV.x0, sV.x1]];
-      const porHoja = hojasV.map((_, j)=>Math.floor(vent.n/hojasV.length) + (j >= hojasV.length - vent.n % hojasV.length ? 1 : 0));
-      const xsV = hojasV.map(([a, b], j)=>Array.from({ length:porHoja[j] }, (_, q)=>(a + b)/2 + (q - (porHoja[j]-1)/2)*(vent.marco + 40)));
-      // el eje queda fijo (centro de la hoja); solo la altura se ajusta para no tocar la manija de Q1, los teclados de los
-      // variadores ni el panel de operación: la entrada lo más abajo posible y la salida lo más arriba, la misma en todas
+      // hoja lleva más de uno, van en columna sobre su eje
       const ocupado = [...puerta.map(d=>{ const w = d.anillo || d.w || d.diam || 40, h = d.anillo || d.h || d.diam || 40; return [d.x - w/2, d.y - h/2, d.x + w/2, d.y + h/2]; }),
         ...(panel ? [[panel.x, panel.y, panel.x + panel.w, panel.y + panel.h]] : [])];
-      const libreV = (x, y) => { const r = vent.marco/2 + 25; return !ocupado.some(o=>x + r > o[0] && x - r < o[2] && y + r > o[1] && y - r < o[3]); };
+      // placa de identificación del tablero (arriba, en la primera hoja)
+      { const pid = C.placaId({ H, secciones }); ocupado.push([pid.x - pid.w/2, pid.y - pid.h/2, pid.x + pid.w/2, pid.y + pid.h/2]); }
       const alturas = (desde, hasta, paso) => { const out = []; for(let y = desde; paso > 0 ? y <= hasta : y >= hasta; y += paso) out.push(y); return out; };
-      const yEnt = alturas(250, H*0.45, 50), ySal = alturas(H - 230, H*0.55, -50);
-      // misma altura en todas las hojas si entra en la franja útil (entrada ≤ 450 mm, salida ≥ H - 450 mm); si no, cada una
-      // lo más abajo / arriba que se pueda (la ventilación manda sobre la simetría en altura)
-      const elegir = (cands, franja) => { const todos = cands.filter(franja).find(y=>xsV.flat().every(x=>libreV(x, y))); return xsV.map(xs=>xs.map(x=>todos ?? cands.find(y=>libreV(x, y)) ?? cands[0])); };
-      const yE = elegir(yEnt, y=>y <= 450), yS = elegir(ySal, y=>y >= H - 450);
-      if(ySal.length && xsV.flat().some(x=>!ySal.some(y=>libreV(x, y)))) avisos.push("No hay lugar libre en el centro de la puerta para un filtro de salida de aire: revisa su ubicación.");
+      const fCap = cfg.caperuza ? 1.24 : 1;     // con caperuza antilluvia el conjunto ocupa más que el marco
       let i = 0;
-      hojasV.forEach((_, j)=>xsV[j].forEach((x, q)=>{ i++;
-        puerta.push({ tag:"FV"+i, tipo:"ventilador", desc:"Ventilador con filtro (entrada de aire)", modelo:vent.modelo, x, y:yE[j][q], w:vent.marco, h:vent.marco, recorte:vent.recorte, seccion:sV.id });
-        puerta.push({ tag:"FS"+i+"S", tipo:"rejilla", desc:"Filtro de salida de aire", modelo:`Filtro de salida ${vent.marco}x${vent.marco} mm`, x, y:yS[j][q], w:vent.marco, h:vent.marco, recorte:vent.recorte, seccion:sV.id });
-      }));
+      for(const sv of (vent.secciones || [{ s:sV, hojas:sV.puertas||1, vf:{ ...vent, n:1 } }])){
+        const s = sv.s, vf = sv.vf, hojasV = s.puertas===2 ? [[s.x0, s.x0 + s.W/2], [s.x0 + s.W/2, s.x1]] : [[s.x0, s.x1]];
+        const libreV = (x, y) => { const r = vf.marco*fCap/2 + 25; return !ocupado.some(o=>x + r > o[0] && x - r < o[2] && y + r > o[1] && y - r < o[3]); };
+        const yEnt = alturas(Math.max(250, vf.marco*fCap/2 + 90), H*0.45, 25), ySal = alturas(H - Math.max(230, vf.marco*fCap/2 + 90), H*0.55, -25);
+        for(const [a, b] of hojasV){
+          const x = (a + b)/2;
+          for(let q=0; q<vf.n; q++){
+            i++;
+            // entrada lo más abajo posible y salida lo más arriba, en el eje de la hoja, sin tocar manija, teclados ni panel
+            const yE = yEnt.find(y=>libreV(x, y)) ?? yEnt[0], yS = ySal.find(y=>libreV(x, y)) ?? ySal[0];
+            if(!ySal.some(y=>libreV(x, y))) avisos.push("No hay lugar libre en el centro de la puerta para un filtro de salida de aire: revisa su ubicación.");
+            const rr = vf.marco*fCap/2 + 20;
+            ocupado.push([x - rr, yE - rr, x + rr, yE + rr], [x - rr, yS - rr, x + rr, yS + rr]);
+            puerta.push({ tag:"FV"+i, tipo:"ventilador", desc:"Ventilador con filtro (entrada de aire)", modelo:vf.modelo, x, y:yE, w:vf.marco, h:vf.marco, recorte:vf.recorte, seccion:s.id });
+            puerta.push({ tag:"FS"+i+"S", tipo:"rejilla", desc:"Filtro de salida de aire", modelo:`Filtro de salida ${vf.marco}x${vf.marco} mm`, x, y:yS, w:vf.marco, h:vf.marco, recorte:vf.recorte, seccion:s.id });
+          }
+        }
+      }
     }
     else puerta.push({ tag:"AA1", tipo:"aa", desc:"Aire acondicionado de puerta", modelo:vent.modelo, x:sV.x0 + sV.W/2, y:H/2, w:vent.w, h:vent.h, seccion:sV.id });
   }
@@ -794,6 +897,8 @@ export function arregloTablero(p, t, calc){
   // modelos en la marca confirmada (mismas dimensiones de referencia; se verifican con el catálogo del fabricante)
   const mr = marcasProyecto(p);
   for(const c of [...comps, ...puerta]) if(c.modelo) c.modelo = modeloEnMarca(c.modelo, c.val || "", mr);
+  // plantilla del modelo final (marca confirmada) si tiene las mismas medidas que se usaron en el arreglo
+  for(const c of comps){ if(c.plantilla) continue; const b = medidasDe("", c.modelo); if(b && Math.abs(b.w - c.w) < 2 && Math.abs(b.h - c.h) < 2) c.plantilla = b.plantilla; }
   const bom = listaMateriales(comps, bloquesB, barras, canaletas, rieles, puerta, fase, pe, aisladores.length*3, cabs, secciones.reduce((a, s)=>a + (s.puertas||1), 0), E.extra);
   // altura de la manija de la puerta: en los murales a media puerta (en uno bajo, 900 mm quedaba fuera de la hoja)
   const manijaY = montaje==="mural" ? Math.round(H/2 - 80) : 900;
@@ -812,7 +917,8 @@ export function arregloTablero(p, t, calc){
       // como el plano de referencia: el variador a la izquierda y una subcolumna a la derecha con el interruptor y el
       // seccionador portafusible arriba y las reactancias abajo, sobre la base (peso), fuera del aire caliente
       const wA = Math.max(q ? q.w : 0, f ? f.w : 0, ...rs.map(r=>r.w), 110);
-      ancho = dr.w + 45 + wA + 35;
+      // variador + 35 mm (paso de cables de fuerza) + subcolumna + 30 mm hasta la columna siguiente
+      ancho = dr.w + 35 + wA + 30;
       const altoIzq = dr.libreArriba + dr.h + dr.libreAbajo + PIE;
       const altoDer = (q ? q.h + 50 : 0) + (f ? f.h + 60 : 0) + rs.reduce((a, r)=>a + r.h + 45, 0) + PIE + 20;
       alto = Math.max(altoIzq, altoDer);
@@ -832,7 +938,7 @@ export function arregloTablero(p, t, calc){
     const topBornes = yBornes + 32;
     if(cl.dr){
       const dr = cl.dr, vDer = cl.src.vfdLado==="der";
-      const xD = vDer ? x0 + 15 + cl.wA + 45 : x0 + 15, xA = vDer ? x0 + 15 + cl.wA/2 : xD + dr.w + 45 + cl.wA/2;
+      const xD = vDer ? x0 + 15 + cl.wA + 35 : x0 + 15, xA = vDer ? x0 + 15 + cl.wA/2 : xD + dr.w + 35 + cl.wA/2;
       let y = yTop;
       if(cl.q){ put(cl.q, xA - cl.q.w/2, y - cl.q.h); y -= cl.q.h + 50; }
       if(cl.f){ put(cl.f, xA - cl.f.w/2, y - cl.f.h); y -= cl.f.h + 60; }
@@ -894,7 +1000,7 @@ function descOp(o){
 function listaMateriales(comps, bornes, barras, canaletas, rieles, puerta, fase, pe, nAisl, cabs, nHojas = 1, extra = []){
   const filas = [];
   for(const c of comps){ if(c.tipo==="peine" && !c.modelo) continue;
-    filas.push({ tag:c.tag, desc:c.desc, modelo:c.modelo, cant:c.cant||1, dim:c.w ? `${Math.round(c.w*10)/10} x ${Math.round(c.h)} x ${Math.round(c.d||0)}` : "", montaje:{ din:"Riel DIN", placa:"Placa", base:"Base", contactor:"Bajo contactor" }[c.montaje] || "Placa", fuente:c.fuente||"" }); }
+    filas.push({ tag:c.tag, tipo:c.tipo, val:c.val, pot:c.pot, polos:c.polos, rol:c.rol, carga:c.carga, desc:c.desc, modelo:c.modelo, cant:c.cant||1, dim:c.w ? `${Math.round(c.w*10)/10} x ${Math.round(c.h)} x ${Math.round(c.d||0)}` : "", montaje:{ din:"Riel DIN", placa:"Placa", base:"Base", contactor:"Bajo contactor" }[c.montaje] || "Placa", fuente:c.fuente||"" }); }
   for(const b of bornes){
     const por = {}; for(const x of b.bornes){ por[x.modelo] = (por[x.modelo]||0) + 1; }
     for(const [m, n] of Object.entries(por)){ const d = C.borne(m); filas.push({ tag:b.grupo, desc:`Borne ${/PE$/.test(m) ? "de tierra" : "de paso"} — ${b.desc}`, modelo:m, cant:n, dim:`${d.w} x ${d.h} x ${d.d}`, montaje:"Riel DIN", fuente:C.FUENTES.borne }); }
@@ -909,11 +1015,11 @@ function listaMateriales(comps, bornes, barras, canaletas, rieles, puerta, fase,
   if(bp.length) filas.push({ tag:"PE", desc:"Barra de tierra de protección, perforada", modelo:`Barra Cu ${pe.nombre} mm`, cant:`${(bp.reduce((a, b)=>a + b.w, 0)/1000).toFixed(2)} m`, dim:`${pe.nombre} mm`, montaje:"Placa", fuente:C.FUENTES.barra });
   for(const d of puerta){
     const m = d.modelo || (C.PUERTA[d.tipo]||{}).modelo || d.desc;
-    filas.push({ tag:d.tag||"", desc:d.desc || d.leyenda || "", modelo:m, cant:1, dim:calado(d), montaje:"Puerta", fuente:C.FUENTES.puerta });
+    filas.push({ tag:d.tag||"", tipo:d.tipo, color:d.color, leyenda:d.leyenda, desc:d.desc || d.leyenda || "", modelo:m, cant:1, dim:calado(d), montaje:"Puerta", fuente:C.FUENTES.puerta });
   }
   filas.push(...extra);
-  if(puerta.some(d=>d.lockout)) filas.push({ tag:"Q1", desc:"Candado de bloqueo de seguridad con tarjeta de advertencia (lock out / tag out)", modelo:"Candado dieléctrico de seguridad + tarjeta LOTO", cant:1, dim:"", montaje:"Manija", fuente:"OSHA 1910.147 / NFPA 70E" });
-  filas.push({ tag:"", desc:"Señal de riesgo eléctrico «PELIGRO» (una en cada puerta)", modelo:"Señal autoadhesiva ISO 7010 W012, 110 mm", cant:nHojas, dim:"110 mm", montaje:"Puerta", fuente:"ISO 7010 / NTP 399.010" });
+  if(puerta.some(d=>d.lockout)) filas.push({ tag:"Q1", tipo:"candado", desc:"Candado de bloqueo de seguridad con tarjeta de advertencia (lock out / tag out)", modelo:"Candado dieléctrico de seguridad + tarjeta LOTO", cant:1, dim:"", montaje:"Manija", fuente:"OSHA 1910.147 / NFPA 70E" });
+  filas.push({ tag:"", tipo:"senal", desc:"Señal de riesgo eléctrico «PELIGRO» (una en cada puerta)", modelo:"Señal autoadhesiva ISO 7010 W012, 110 mm", cant:nHojas, dim:"110 mm", montaje:"Puerta", fuente:"ISO 7010 / NTP 399.010" });
   const gl = {}; for(const c of cabs){ if(!c.rosca) continue; gl[c.rosca] = (gl[c.rosca]||0) + 1; }
   for(const [r, n] of Object.entries(gl)) filas.push({ tag:"", desc:"Prensaestopa de poliamida / latón niquelado con contratuerca", modelo:`Prensaestopa ${r}`, cant:n, dim:r, montaje:"Base", fuente:"EN 62444" });
   return filas;

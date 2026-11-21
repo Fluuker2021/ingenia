@@ -255,7 +255,17 @@ function encabezadosYPies(doc, paginas){
     }
   }
 }
+/* la fuente estándar del PDF (Helvetica, codificación WinAnsi) no tiene algunos símbolos: jsPDF escribía ese texto con
+   otra codificación y la celda salía con otra letra y otro ancho (se salía de su caja). Se reemplazan por su equivalente. */
+const WINANSI = new Set([..."€‚ƒ„…†‡ˆ‰Š‹ŒŽ‘’“”•–—˜™š›œžŸ"].map(c=>c.charCodeAt(0)));
+const EQUIV = { "≈":"~", "≤":"<=", "≥":">=", "Ω":"ohm", "Δ":"D", "Σ":"S", "→":"->", "←":"<-", "↔":"<->", "✓":"v", "✔":"v", "○":"o", "●":"o", "√":"raiz ", "∅":"Ø", "μ":"µ", "×":"x", "−":"-", "‐":"-", "‑":"-", "′":"'", "″":"\"", "⁄":"/", "\u00A0":" ", "\u2009":" ", "\u202F":" " };
+export function textoWinAnsi(t){
+  let out = "";
+  for(const ch of String(t)){ const c = ch.codePointAt(0); out += c < 256 || WINANSI.has(c) ? ch : (EQUIV[ch] ?? "?"); }
+  return out;
+}
 function textoCelda(doc, cell, txt, x, y, w, h, k){
+  txt = textoWinAnsi(txt);
   const f = cell.font || {}, al = cell.alignment || {};
   const pt = (f.size || 11)*k;
   doc.setFont("helvetica", f.bold && f.italic ? "bolditalic" : f.bold ? "bold" : f.italic ? "italic" : "normal");

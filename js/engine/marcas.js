@@ -12,13 +12,14 @@ export const FAMILIAS_MARCA = [
   { k:"arrancadores", nombre:"Arrancadores suaves", def:"ABB", opciones:["ABB","Schneider Electric","Siemens","Allen-Bradley"] },
   { k:"spd", nombre:"Supresores de sobretensiones (OVR / SPD)", def:"ABB", opciones:["ABB","Schneider Electric","Siemens","Phoenix Contact"] },
   { k:"reles", nombre:"Relés de monitoreo de fases", def:"ABB", opciones:["ABB","Schneider Electric","Siemens","Eaton"] },
-  { k:"gabinetes", nombre:"Gabinetes", def:"Rittal", opciones:["Rittal","Schneider Electric","nVent Hoffman","Fabricación local"] },
+  { k:"gabinetes", nombre:"Gabinetes", def:"Rittal", opciones:["Rittal","Schneider Electric","nVent Hoffman","Legrand","Nacional"] },
 ];
 
 /* marcas confirmadas del proyecto (con las sugeridas en lo que no se cambió) */
 export function marcasProyecto(p){
   const m = (p && p.datos && p.datos.marcas) || {};
-  const r = {}; for(const f of FAMILIAS_MARCA) r[f.k] = f.opciones.includes(m[f.k]) ? m[f.k] : f.def;
+  // «Fabricación local» (versiones anteriores) es hoy «Nacional»
+  const r = {}; for(const f of FAMILIAS_MARCA){ const x = f.k==="gabinetes" && /^fabricaci[oó]n local$/i.test(m[f.k]||"") ? "Nacional" : m[f.k]; r[f.k] = f.opciones.includes(x) ? x : f.def; }
   return r;
 }
 

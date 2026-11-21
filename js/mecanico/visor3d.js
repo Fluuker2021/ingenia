@@ -239,7 +239,9 @@ export async function visor3D(cont, modelo, opciones){
     }
   };
 
-  const chicas = [];
+  const chicas = [], etiqPuerta = [];
+  /* TAG vertical apoyado sobre el punto (el renderizador fija el «transform» del elemento: el giro va en un span interior) */
+  const vertical = o2 => { o2.center.set(0.5, 1); const el = o2.element, sp = document.createElement("span"); sp.className = el.className + " v3d-tag-vert"; sp.textContent = el.textContent; el.className = "v3d-tag-caja"; el.textContent = ""; el.appendChild(sp); return o2; };
   const etiqueta = (txt, x, y, z, clase) => { const d = document.createElement("div"); d.className = "v3d-tag" + (clase ? " "+clase : ""); d.textContent = txt; const o2 = new CSS2DObject(d); o2.position.set(x*k, y*k, z*k); capas.etiquetas.add(o2); if(clase==="v3d-tag-chico") chicas.push(o2); return o2; };
 
   // ===== gabinete =====
@@ -254,9 +256,14 @@ export async function visor3D(cont, modelo, opciones){
   for(const s of m.secciones.slice(1)) caja(s.x0 - 20, 0, 0, 40, H, 40, mat(0xa9aeb5), capas.envolvente);
   if(m.techoTipo==="inclinado"){
     // techo inclinado: cae del frente (alero) hacia atrás
-    const caida = Math.max(20, (m.techoAlto || 90) - 30), ang = Math.atan2(caida, D + 80), largo = Math.hypot(D + 80, caida);
-    const g = new THREE.Mesh(new THREE.BoxGeometry((W + 80)*k, 14*k, largo*k), mat(RAL7035)); g.rotation.x = -ang; g.position.set((W/2)*k, (H + 30 + caida/2)*k, (D/2)*k); g.castShadow = g.receiveShadow = true; capas.envolvente.add(g);
-    caja(-40, H, -40, W + 80, 30, 8, mat(RAL7035), capas.envolvente); caja(-40, H, D + 32, W + 80, 30, 8, mat(RAL7035), capas.envolvente);
+    // sólido en cuña (el mismo perfil de la vista lateral del plano): canto delantero alto (techoAlto) sobre la puerta y
+    // trasero de 30 mm, con 40 mm de alero por lado; se extruye a lo ancho del gabinete
+    const ta = m.techoAlto || 90, perfil = new THREE.Shape();
+    // (u, v) = (-z, y): al girar 90° sobre Y la extrusión queda a lo ancho (x) y u pasa a la profundidad
+    perfil.moveTo(40*k, H*k); perfil.lineTo(-(D + 40)*k, H*k); perfil.lineTo(-(D + 40)*k, (H + ta)*k); perfil.lineTo(40*k, (H + 30)*k); perfil.closePath();
+    const geo = new THREE.ExtrudeGeometry(perfil, { depth:(W + 80)*k, bevelEnabled:false });
+    const g = new THREE.Mesh(geo, mat(RAL7035)); g.rotation.y = Math.PI/2; g.position.set(-40*k, 0, 0); g.castShadow = g.receiveShadow = true; capas.envolvente.add(g);
+    const ar = new THREE.LineSegments(new THREE.EdgesGeometry(geo, 20), new THREE.LineBasicMaterial({ color:0x6b7078 })); ar.rotation.copy(g.rotation); ar.position.copy(g.position); capas.envolvente.add(ar);
   } else if(m.techo) caja(-40, H, -40, W + 80, 30, D + 80, mat(RAL7035), capas.envolvente);
   for(const [xe, ze] of [[80, 80], [W - 80, 80], [80, D - 80], [W - 80, D - 80]]){ const t = new THREE.Mesh(new THREE.TorusGeometry(16*k, 4*k, 8, 20), metal(0x8a8f96)); t.position.set(xe*k, (H + (m.techoTipo==="inclinado" ? ((m.techoAlto || 90) + 30)/2 : m.techo ? 30 : 0) + 30)*k, ze*k); capas.envolvente.add(t); }
   // (los visores, las caperuzas y las manijas con lock out se montan en su hoja de puerta: ver «puertas»)
@@ -306,10 +313,14 @@ export async function visor3D(cont, modelo, opciones){
     else cuerpo(G, c.x, c.y, z0, c.w, c.h, c.d || 60, plas(c.color || COL_TIPO[c.tipo] || 0xdddddd), 1, inf, []);
     G.userData.base = G.position.clone(); G.userData.comp = c;
     piezas.push(G);
-    if(c.tag) etiqueta(c.tag, c.x + c.w/2, c.y + c.h + 10, z0 + (c.d||60), c.tipo==="variador" || c.tipo==="interruptor" || c.tipo==="cpu" ? "" : "v3d-tag-chico");
+    // TAG de cada equipo: los grandes en horizontal; los de riel DIN (angostos y juntos) en vertical, apoyados sobre el equipo,
+    // como se rotulan en los planos de tableros, así no se tapan entre sí y se leen todos
+    if(c.tag){ const grande = c.tipo==="variador" || c.tipo==="interruptor" || c.tipo==="cpu" || c.w >= 90;
+      const o2 = etiqueta(c.tag, c.x + c.w/2, c.y + c.h + (grande ? 10 : 4), z0 + (c.d||60), grande ? "" : "v3d-tag-chico");
+      if(!grande) vertical(o2); }
   }
   // bornes: una bornera = un grupo con sus piezas instanciadas (cuerpo, marcador, tornillos, topes)
-  for(const b of m.bornes){ const G = new THREE.Group(); capas.interior.add(G); bornera(b, G); G.userData.base = G.position.clone(); G.userData.comp = { d:50 }; piezas.push(G); etiqueta(b.grupo, (b.x0 + b.x1)/2, b.y + 45, 90, "v3d-tag-chico"); }
+  for(const b of m.bornes){ const G = new THREE.Group(); capas.interior.add(G); bornera(b, G); G.userData.base = G.position.clone(); G.userData.comp = { d:50 }; piezas.push(G); vertical(etiqueta(b.grupo, (b.x0 + b.x1)/2, b.y + 45, 90, "v3d-tag-chico")); }
 
   // ===== cableado de fuerza =====
   for(const cx of m.conexiones){
@@ -441,6 +452,13 @@ export async function visor3D(cont, modelo, opciones){
     traseraPuerta(L, d);
     L.fin(g);
     if(obj) obj.userData.info = { tag:d.tag, desc:d.desc || d.leyenda, modelo:d.modelo || (C.PUERTA[d.tipo]||{}).modelo || "", dim: d.w ? `${d.w} × ${d.h} mm` : "", fuente: ap.fuente };
+    // TAG del dispositivo de puerta: va con su hoja (gira con ella al abrirla) y se ve con el check «TAG»
+    if(d.tag){
+      if(!h.etq){ h.etq = new THREE.Group(); g.add(h.etq); etiqPuerta.push(h.etq); }
+      const alto = d.h || d.anillo || d.diam || 30;
+      const e = document.createElement("div"); e.className = "v3d-tag v3d-tag-chico v3d-tag-puerta"; e.textContent = d.tag;
+      const o2 = new CSS2DObject(e); o2.position.set(d.x*k, (d.y + alto/2 + (d.leyenda && !d.w ? 30 : 8))*k, (z + 30)*k); h.etq.add(o2);
+    }
   }
   // señal de riesgo eléctrico en cada hoja de puerta (la misma posición que en el plano 2D)
   for(const sr of C.senalesRiesgo(m)){
@@ -455,7 +473,8 @@ export async function visor3D(cont, modelo, opciones){
     pl.userData.info = { tag:m.tablero.tag, desc:"Placa de identificación (nombre, TAG y tensión)", modelo:`${pid.w} × ${pid.h} mm` };
     for(const [dy, f, hh] of [[pid.h*0.25, 0.6, 5], [0, 0.4, 7], [-pid.h*0.25, 0.7, 4]]) L0.box(pid.x - pid.w*f/2, pid.y + dy - hh/2, D + 21.5, pid.w*f, hh, 0.3, plas(0xf4f5f6)); L0.fin(h.grupo); }
   // capa de dispositivos de puerta = todo lo que cuelga de las puertas menos la hoja
-  const ocultarPuertas = v => hojas.forEach(h=>h.grupo.children.forEach((ch, i)=>{ if(i>0) ch.visible = v; }));
+  let dispPuerta = true;
+  const ocultarPuertas = v => { dispPuerta = v; hojas.forEach(h=>h.grupo.children.forEach((ch, i)=>{ if(i>0) ch.visible = v; })); };
 
   /* ---------- equipo con la apariencia de su familia ---------- */
   function equipo(c, ap, G, z0, inf){
@@ -701,15 +720,16 @@ export async function visor3D(cont, modelo, opciones){
     const dt = Math.min(0.05, (t - ultimo)/1000); ultimo = t;
     for(const h of hojas){ const antes = h.abierto; h.abierto += (h.objetivo - h.abierto)*Math.min(1, dt*5); if(Math.abs(h.abierto - antes) > 1e-4) sombras(); h.piv.rotation.y = (h.bis==="izq" ? -1 : 1)*h.abierto*Math.PI*0.86; }
     // los TAG del interior no se ven a través de las puertas cerradas; los de equipos pequeños, al acercarse
+    // con el check «TAG» se rotulan TODOS los equipos (también los pequeños, sin tener que acercarse) y los dispositivos de puerta
     const verTags = chkTags.checked && (!capas.envolvente.visible || hojas.some(h=>h.abierto > 0.25 || !h.piv.visible));
     capas.etiquetas.visible = verTags;
-    const cerca = camara.position.distanceTo(ctrl.target) < R*1.25*fz();
-    for(const e of chicas) e.visible = cerca;
+    for(const e of chicas) e.visible = true;
+    for(const g of etiqPuerta) g.visible = chkTags.checked && dispPuerta;
     const exAntes = explosion; explosion += (explObj - explosion)*Math.min(1, dt*4); if(Math.abs(explosion - exAntes) > 1e-4) sombras();
     for(const g of piezas){ const c = g.userData.comp; const dz = explosion*(120 + ((c && c.d) || 50)*0.6); g.position.z = g.userData.base.z + dz*k; }
     if(anim){ anim.t = Math.min(1, anim.t + dt*1.8); const e = 1 - Math.pow(1 - anim.t, 3); camara.position.lerpVectors(anim.desde, anim.hasta, e); ctrl.target.lerp(anim.objetivo, e); if(anim.t>=1) anim = null; }
     if(anim) redibujar();
-    const vt = capas.etiquetas.visible + "" + chicas.some(e=>e.visible); if(vt!==ciclo.vt){ ciclo.vt = vt; redibujar(); }
+    const vt = capas.etiquetas.visible + "" + etiqPuerta.some(e=>e.visible); if(vt!==ciclo.vt){ ciclo.vt = vt; redibujar(); }
     if(ctrl.update()) redibujar();
     if(sucio){ sucio = false; renderer.render(escena, camara); etiq.render(escena, camara); }
     requestAnimationFrame(ciclo);

@@ -150,7 +150,9 @@ export function datosMemoria(p, docId = "ele-md"){
   for(const calc of calcs){
     const tb = calc.tablero;
     const cargas = calc.circuits.map(c=>({ descripcion: (c.load.desc||c.descLabel||c.title), tag: c.load.tag||c.tag, carga_kw: c.kind==="motor" ? r2(c.powerKWelec,2) : r2(c.installedKVA*(c.kind==="control"?0.88:0.85),2), fp: c.kind==="motor" ? c.fp : (c.kind==="control"?0.88:0.85), eff: c.kind==="motor" ? r2(c.effPct/100,3) : 1, si_kva: r2(c.installedKVA,2), fu: c.fu, dmi_kva: r2(c.installedKVA*c.fu,2), fs:c.fs }));
-    tablerosM.push({ nombre:(tb.nombre||"tablero").toLowerCase(), tag: tb.tag, cargas, s_global: r2(calc.installedKVA,2), factores: cargas.map(c=>({ nombre:c.descripcion, fs:c.fs })), tension: g.voltage, fases:"Trifásico", i_md: r2(calc.demandCurrent,2), dm_global: r2(calc.totalKVA,2) });
+    // factores de simultaneidad en texto (conclusión de la máxima demanda del tablero): uno solo si es el mismo en todas
+    const fsTxt = (()=>{ const v = [...new Set(cargas.map(c=>+c.fs))]; return v.length===1 ? `${String(v[0]).replace(".", ",")} en todas las cargas` : cargas.map(c=>`${c.descripcion} ${String(c.fs).replace(".", ",")}`).join("; "); })();
+    tablerosM.push({ nombre:(tb.nombre||"tablero").toLowerCase(), tag: tb.tag, cargas, s_global: r2(calc.installedKVA,2), fs_txt: fsTxt, n_cargas: cargas.length, factores: cargas.map(c=>({ nombre:c.descripcion, fs:c.fs })), tension: g.voltage, fases:"Trifásico", fases_min:"trifásico", i_md: r2(calc.demandCurrent,2), dm_global: r2(calc.totalKVA,2) });
     calc.circuits.forEach(c=>{
       const m = c.conductorMemo; const main = c.items[0] || {};
       const cf = cab.get(c);

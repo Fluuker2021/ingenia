@@ -305,12 +305,20 @@ export async function renderWord(buffer, host){
   buffer = await zip.generateAsync({ type:"arraybuffer" });
   await docx.renderAsync(new Blob([buffer]), host, host, { className:"docx", inWrapper:false, breakPages:true, renderHeaders:true, renderFooters:true, ignoreLastRenderedPageBreak:true, useBase64URL:true, experimental:true });
   // sin guiones automáticos del navegador (Word no los usa y la captura los dibuja mal)
-  const est = document.createElement("style"); est.textContent = "section.docx, section.docx *{ hyphens:manual !important; -webkit-hyphens:manual !important; }"; host.appendChild(est);
+  const est = document.createElement("style"); est.textContent = "section.docx, section.docx *{ hyphens:manual !important; -webkit-hyphens:manual !important; }"
+    // las tablas del Word no heredan el estilo de las tablas de la aplicación (relleno de 8 px, ancho 100 %, bordes y
+    // mayúsculas): con :where() la especificidad es mínima y los estilos del visor (en línea o por clase) siguen mandando;
+    // sin esto las filas salían el doble de altas que en Word y el PDF tenía más páginas
+    + ":where(section.docx) table{ width:auto; font-size:inherit; border-collapse:collapse; margin:0; }"
+    + ":where(section.docx) th, :where(section.docx) td{ padding:0 5.4pt; border:none; background:transparent; vertical-align:top; text-align:left; text-transform:none; letter-spacing:normal; font-weight:normal; font-size:inherit; color:inherit; line-height:normal; }";
+  host.appendChild(est);
   // el visor calcula los tabuladores (encabezado, pie e índice) medio segundo después de dibujar: se espera a que termine
   // antes de reordenar el índice (si no, su cálculo falla y el encabezado y el pie quedan sin tabular)
   await new Promise(r=>setTimeout(r, 650));
   arreglarNumeracion(host);
   arreglarIndice(host);
+  arreglarTabDerecha(host);
+  marcarEncabezadosTabla(host, zip);
   await (document.fonts ? document.fonts.ready : Promise.resolve());
   return host;
 }
@@ -356,6 +364,28 @@ function arreglarNumeracion(host){
     sp.style.cssText = `display:inline-block; min-width:${Math.max(0, -ti)}px; padding-right:4pt; box-sizing:border-box; text-indent:0; white-space:nowrap;`;
     sp.style.fontFamily = a.fontFamily || cs.fontFamily; sp.style.fontWeight = a.fontWeight || cs.fontWeight; sp.style.fontSize = a.fontSize || cs.fontSize; sp.style.color = a.color || cs.color;
     p.insertBefore(sp, p.firstChild);
+  }
+}
+/* encabezado y pie de página: el texto izquierdo y el derecho separados por un tabulador; el visor le da un ancho fijo y,
+   al escribir «Página 10 de 11», la línea se partía. Se arma como fila flexible (izquierda · espacio · derecha). */
+function arreglarTabDerecha(host){
+  for(const p of host.querySelectorAll("section.docx > header p, section.docx > footer p")){
+    const tabs = p.querySelectorAll(".docx-tab-stop"); if(tabs.length!==1) continue;
+    const tab = tabs[0], cont = [...p.childNodes];
+    const k = cont.findIndex(n=>n===tab || (n.nodeType===1 && n.contains(tab))); if(k < 0) continue;
+    const izq = document.createElement("span"), der = document.createElement("span"), hueco = document.createElement("span");
+    cont.slice(0, k).forEach(n=>izq.appendChild(n)); cont.slice(k+1).forEach(n=>der.appendChild(n)); cont[k].remove();
+    hueco.style.cssText = "flex:1 1 auto;"; der.style.cssText = "white-space:nowrap;"; izq.style.cssText = "white-space:nowrap;";
+    p.style.display = "flex"; p.style.alignItems = "baseline"; p.append(izq, hueco, der);
+  }
+}
+/* filas de encabezado de las tablas (<w:tblHeader/>): el visor no las distingue; se marcan para repetirlas en el PDF */
+function marcarEncabezadosTabla(host, zip){
+  for(const t of host.querySelectorAll("section.docx table")){
+    const filas = [...t.querySelectorAll(":scope > tbody > tr, :scope > thead > tr, :scope > tr")];
+    // primera fila con fondo oscuro (el encabezado de las tablas del formato) y las que la siguen con el mismo fondo
+    const oscuro = tr => { const td = tr.querySelector("td, th"); if(!td) return false; const m = /rgb\((\d+), (\d+), (\d+)/.exec(getComputedStyle(td).backgroundColor); return !!m && (+m[1] + +m[2] + +m[3]) < 200; };
+    for(const tr of filas){ if(!oscuro(tr)) break; tr.classList.add("docx-tbl-encabezado"); }
   }
 }
 /* índice (párrafos «TDC1…TDC9»): número, título y página con los tabuladores de Word (página alineada a la derecha y
@@ -418,13 +448,21 @@ export async function pdfWord(buffer){
       // franja del cuerpo; las secciones muy largas bajan la resolución para no pasar el alto máximo de un lienzo
       const esc = Math.min(ESC, 30000/sec.offsetHeight);
       const cv = await h2c(sec, { scale:esc, backgroundColor:"#ffffff", logging:false, useCORS:true });
-      const ctx = cv.getContext("2d"), fin = Math.min(cv.height, Math.round((rc.y + rc.h)*esc));
-      let y0 = Math.round(rc.y*esc);
-      while(y0 < fin - 2){
-        let y1 = Math.min(fin, y0 + Math.floor(util*esc));
-        if(y1 < fin) y1 = corteEnBlanco(ctx, cv.width, y0, y1);
-        plan.push(Object.assign({ cv, esc, y0, y1, cab, pie, yCuerpo, padB }, pag));
-        y0 = y1;
+      // fin del contenido: el último bloque con texto, tabla o imagen (los párrafos vacíos del final, como el del salto de
+      // sección, no abren una página en blanco)
+      const llenos = [...cuerpo.children].filter(el=>el.offsetHeight > 0 && (el.textContent.trim() || el.querySelector("img, svg, canvas, table") || el.tagName==="TABLE"));
+      const finCss = llenos.length ? Math.max(...llenos.map(el=>{ const r = rel(el, sec); return r.y + r.h; })) + 2 : rc.y + rc.h, puntos = puntosDeCorte(cuerpo, sec, rel, util);
+      let y0 = rc.y, encPend = null;
+      while(y0 < finCss - 1){
+        // corte en un límite de párrafo o de fila de tabla (nunca dentro de una fila); en una tabla que continúa, la línea
+        // del borde se repite arriba de la página siguiente
+        const hEnc = encPend ? encPend.y1 - encPend.y0 : 0;
+        const c = finCss - y0 <= util - hEnc ? { y: finCss, enTabla:false } : elegirCorte(puntos, y0, y0 + util - hEnc);
+        const y1 = Math.min(finCss, c.y + (c.enTabla ? 1.5 : 0));
+        plan.push(Object.assign({ cv, esc, y0: Math.round(y0*esc), y1: Math.round(y1*esc), cab, pie, yCuerpo, padB,
+          enc: encPend ? { y0: Math.round(encPend.y0*esc), y1: Math.round((encPend.y1 + 1)*esc) } : null }, pag));
+        encPend = c.enTabla && c.enc ? c.enc : null;
+        y0 = c.enTabla ? c.y - (encPend ? 0 : 1.5) : c.y;
       }
     }
     // 2) páginas, con «Página N de M» en el encabezado y el pie
@@ -438,9 +476,12 @@ export async function pdfWord(buffer){
         doc.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, Wmm, Hmm);
         continue;
       }
-      const trozo = document.createElement("canvas"); trozo.width = pg.cv.width; trozo.height = pg.y1 - pg.y0;
-      trozo.getContext("2d").drawImage(pg.cv, 0, pg.y0, pg.cv.width, pg.y1 - pg.y0, 0, 0, pg.cv.width, pg.y1 - pg.y0);
-      doc.addImage(trozo.toDataURL("image/jpeg", 0.92), "JPEG", 0, pg.yCuerpo*pxMm, Wmm, (pg.y1 - pg.y0)/pg.esc*pxMm);
+      const hE = pg.enc ? pg.enc.y1 - pg.enc.y0 : 0;
+      const trozo = document.createElement("canvas"); trozo.width = pg.cv.width; trozo.height = hE + pg.y1 - pg.y0;
+      const tx = trozo.getContext("2d");
+      if(hE) tx.drawImage(pg.cv, 0, pg.enc.y0, pg.cv.width, hE, 0, 0, pg.cv.width, hE);     // encabezado de la tabla que continúa
+      tx.drawImage(pg.cv, 0, pg.y0, pg.cv.width, pg.y1 - pg.y0, 0, hE, pg.cv.width, pg.y1 - pg.y0);
+      doc.addImage(trozo.toDataURL("image/jpeg", 0.92), "JPEG", 0, pg.yCuerpo*pxMm, Wmm, trozo.height/pg.esc*pxMm);
       if(pg.cab){ const r = rel(pg.cab, pg.sec), cv = await h2c(pg.cab, { scale:ESC, backgroundColor:"#ffffff", logging:false }); doc.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", r.x*pxMm, r.y*pxMm, r.w*pxMm, r.h*pxMm); }
       if(pg.pie){ const r = rel(pg.pie, pg.sec), cv = await h2c(pg.pie, { scale:ESC, backgroundColor:"#ffffff", logging:false }); doc.addImage(cv.toDataURL("image/jpeg", 0.92), "JPEG", r.x*pxMm, (pg.Hpag - Math.max(pg.padB*0.67, r.h + 8))*pxMm, r.w*pxMm, r.h*pxMm); }
     }
@@ -485,6 +526,56 @@ function numerar(sec, n, total){
   }
 }
 /* fila de píxeles (casi) en blanco más cercana por encima del corte (hasta un 20 % de la página), para no partir una línea */
+/* posibles cortes de página de una sección (px CSS desde el borde superior de la sección): entre los bloques del cuerpo,
+   entre las filas de las tablas y entre las líneas de los párrafos largos. Cada punto sabe qué deja arriba (título que debe ir
+   con lo siguiente) y si está dentro de una tabla «chica» que conviene no partir. */
+function puntosDeCorte(cuerpo, sec, rel, util){
+  const pts = [], bloques = [...cuerpo.children].filter(el=>el.offsetHeight > 0 && !/^(STYLE|SCRIPT)$/.test(el.tagName));
+  const esTitulo = el => el.tagName==="P" && (/\bdocx_(t[ií]?tulo|heading)\d/i.test(el.className) || (el.textContent.trim().length < 70 && /^[a-z]\)\s|:$/.test(el.textContent.trim())));
+  bloques.forEach((el, i)=>{
+    const r = rel(el, sec), fin = r.y + r.h, sig = bloques[i+1];
+    // un título (o un rótulo «a) Parámetros») va con lo que le sigue: no se corta justo después
+    const pegado = esTitulo(el) && sig;
+    if(el.tagName==="TABLE"){
+      const filas = [...el.querySelectorAll(":scope > tbody > tr, :scope > thead > tr, :scope > tr")];
+      const chica = r.h <= util*0.45;
+      // inicio de la tabla y de su título: adonde se mueve el corte si cae dentro de una tabla chica
+      let ini = r.y; for(let k = i - 1; k >= 0 && esTitulo(bloques[k]); k--) ini = rel(bloques[k], sec).y;
+      // filas de encabezado (se repiten arriba de cada página en que sigue la tabla, como en Word)
+      const nEnc = filas.findIndex(tr=>!tr.classList.contains("docx-tbl-encabezado"));
+      const enc = nEnc > 0 ? { y0: rel(filas[0], sec).y, y1: rel(filas[nEnc-1], sec).y + rel(filas[nEnc-1], sec).h } : null;
+      filas.forEach((tr, k)=>{ if(k===filas.length-1) return; const rr = rel(tr, sec);
+        pts.push({ y: rr.y + rr.h, enTabla:true, chica, ini, encabezado: k < Math.max(1, nEnc), enc }); });
+    } else if(el.tagName==="P" && r.h > 40 && !esTitulo(el)){
+      // párrafo largo: también entre sus líneas
+      const rg = document.createRange(); rg.selectNodeContents(el); const sr = sec.getBoundingClientRect();
+      const lineas = [...new Set([...rg.getClientRects()].map(q=>Math.round((q.bottom - sr.top)*2)/2))].sort((a, b)=>a - b);
+      for(const y of lineas.slice(0, -1)) if(y > r.y + 4 && y < fin - 4) pts.push({ y, enTabla:false });
+    }
+    // listas cortas (viñetas o numeradas, hasta 8 ítems): no se parten entre páginas
+    const esItem = x => x && x.tagName==="P" && /\bnum-docx\b|\bdocx_prrafodelista\b/.test(x.className);
+    let enLista = false, iniLista = 0;
+    if(esItem(el) && esItem(sig)){
+      let a = i; while(a > 0 && esItem(bloques[a-1])) a--; let b = i; while(esItem(bloques[b+1])) b++;
+      if(b - a + 1 <= 8){ enLista = true; iniLista = rel(bloques[a], sec).y; }
+    }
+    pts.push({ y: fin, enTabla:false, pegado, enLista, ini: enLista ? iniLista : undefined });
+  });
+  return pts.sort((a, b)=>a.y - b.y);
+}
+function elegirCorte(pts, y0, lim){
+  const ok = pts.filter(p=>p.y > y0 + 20 && p.y <= lim);
+  if(!ok.length) return { y: lim, enTabla:false };
+  for(let k = ok.length - 1; k >= 0; k--){
+    const p = ok[k];
+    if(p.pegado) continue;                                   // no dejar un título solo al pie de la página
+    if(p.enTabla && p.encabezado) continue;                  // ni el encabezado de una tabla sin filas
+    if(p.enTabla && p.chica){ if(p.ini > y0 + 20) return { y: p.ini, enTabla:false }; continue; }   // tabla chica: entera a la página siguiente
+    if(p.enLista){ if(p.ini > y0 + 20) return { y: p.ini, enTabla:false }; continue; }             // lista corta: entera
+    return p;
+  }
+  return ok[ok.length - 1];
+}
 function corteEnBlanco(ctx, w, y0, y1){
   const min = y0 + Math.floor((y1 - y0)*0.8);
   const datos = ctx.getImageData(0, min, w, y1 - min).data;

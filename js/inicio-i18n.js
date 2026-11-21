@@ -1,6 +1,6 @@
 /* Ingenia — idioma de la página de inicio (ES / EN). Se traduce cada texto de la página (nodos de texto y atributos
    alt / aria-label / title / data-t / data-d), así se conservan las negritas, los enlaces y las cifras animadas. El idioma
-   elegido se recuerda en el navegador. La plataforma (app.html) sigue en español. */
+   elegido se recuerda en el navegador (clave «ingenia.idioma»); la plataforma (app.html) lo sigue con js/app-i18n.js. */
 
 const EN = {
   "Saltar al contenido":"Skip to content",
